@@ -1,91 +1,86 @@
-# 伪娘许可证(进阶 · 性别自适应版)
+# The Femboy License(伪娘许可证)
 
-**The Femboy License — Advanced Gender-Adaptive Edition**
+**Advanced Gender-Adaptive Edition(进阶 · 性别自适应版)**
 
-版本 1.0 · 2026 年 8 月
-发布主体:国际伪娘理事会(International Femboy Council,系修辞性称谓,见第 6.2 条)
+Version 1.1 · August 2026
+Issued by the International Femboy Council (a rhetorical designation; see Section 6.2)
 
-> **Non-binding Notice (English).** This document is a hortatory, non-binding manifesto.
-> The sole license governing the copying, modification and distribution of this software is the
-> **GNU General Public License v3.0** (see the `LICENSE` file). Nothing in this document creates
-> any obligation, condition of use, or "further restriction" within the meaning of GPL-3.0 § 7.
-
----
-
-## 序言
-
-鉴于:
-
-(一)本项目作者愿以庄重而不失善意的方式,表达对性别表达自由(gender expression)之尊重与倡导;
-
-(二)本软件之著作权授权,已依 GNU 通用公共许可证第 3 版(下称「GPL-3.0」)向不特定公众作出;该授权对任何人平等开放,不因性别、身份或对本文件之态度而有任何差别,亦不附加本文件所载任何内容;
-
-(三)本文件所载各条,其规范性质为**倡导性规范**(hortatory provisions)而非义务性规范,不创设、变更或消灭任何民事权利义务关系;
-
-兹发布本许可证如下。
+> **Non-binding Notice.** This document is a hortatory, non-binding manifesto. The sole license
+> governing the copying, modification, and distribution of this software is the
+> **GNU General Public License, version 3** (see the `LICENSE` file). Nothing in this document
+> creates any obligation, condition of use, or "further restriction" within the meaning of
+> Section 7 of GPL-3.0.
 
 ---
 
-## 第一条(定义与解释)
+## Recitals
 
-**1.1** 本文件所称「**伪娘**」(femboy),系指自愿以女性化风格进行自我表达之男性。该表达系人格自由之行使,不改变其法律性别,亦不必然指向任何关于性取向或性别认同之结论。
+WHEREAS, the author of this project wishes to express, in a manner earnest and good-humored in equal measure, respect for and encouragement of freedom of gender expression;
 
-**1.2** 本文件所称「**持有人**」,系指阅读、复制、修改、分发本软件,或以其他方式与本软件发生使用关系之自然人。
+WHEREAS, the copyright license for this software has been granted to the public at large under the GNU General Public License, version 3 ("GPL-3.0"), which grant is equally open to all persons without regard to sex, gender, identity, or attitude toward this document, and is subject to no term contained herein; and
 
-**1.3** 本文件所称「**立志**」,系指持有人内心自愿形成之持续性精神取向。因其属纯粹内在意思,不具可诉性、不可举证、不可强制执行,故凡涉「立志」之条款,均不满足给付内容确定性之要件,自不发生债之效力。
+WHEREAS, every provision of this document is hortatory rather than obligatory in character, and neither creates, modifies, nor extinguishes any legal right or duty;
 
-**1.4** 本文件之解释,遵循**有利于持有人自由**之原则;任何条款存在两种以上合理解释时,采对持有人约束最小之解释。
+NOW, THEREFORE, this License is published as follows.
 
-## 第二条(适用范围与性别自适应机制)
+## Article I — Definitions and Interpretation
 
-**2.1** 本文件之倡导性内容,仅以出生性别为男性之持有人为倡导对象(下称「适用对象」)。
+**1.1 "Femboy"** means a male person who, of his own volition, expresses himself in a feminine style. Such expression is an exercise of personal liberty; it neither alters the person's legal sex nor implies any conclusion respecting sexual orientation or gender identity.
 
-**2.2** 女性持有人及其他一切非适用对象之持有人,自动适用「**超宽松模式**」:除依 GPL-3.0 已享有之权利外,不附随本文件任何倡导性内容。为免疑义,该模式项下之自由程度,不低于社会通常认知中 MIT 许可证所体现者。
+**1.2 "Holder"** means any natural person who reads, copies, modifies, or distributes this software, or who otherwise comes into a relationship of use with it.
 
-**2.3** 无论持有人性别为何,其依 GPL-3.0 享有之权利完全相同。本条所设区分仅及于倡导性内容之指向,不构成对任何人法律权利之限制或克减。
+**1.3 "Aspire"** means to form, voluntarily and inwardly, a sustained orientation of the spirit. Being a purely internal state of mind, an aspiration is non-justiciable, insusceptible of proof, and incapable of enforcement; accordingly, no provision concerning aspiration satisfies the definiteness required of a contractual undertaking, and none gives rise to any obligation.
 
-## 第三条(核心原则)
+**1.4 Interpretation.** This document shall be construed in the manner most favorable to the liberty of the Holder. As between two or more reasonable constructions of any provision, the construction imposing the least constraint upon the Holder prevails.
 
-**3.1** 本许可证之核心原则为:**适用对象被倡导立志成为合格的伪娘。**
+## Article II — Scope; the Gender-Adaptive Mechanism
 
-**3.2** 前款所称「合格」,以下列要素为参照,不设考核程序,亦无标准答案:
+**2.1** The hortatory content of this document is addressed solely to Holders whose sex at birth is male ("Addressees").
 
-(一)自我接纳;
-(二)持续而真诚之自我表达;
-(三)对他人人格与选择之尊重;
-(四)身心健康之维持。
+**2.2** Female Holders, and all other Holders who are not Addressees, automatically enjoy **Ultra-Permissive Mode**, the benchmark of which is expressly declared to be the **MIT No Attribution License (SPDX identifier: MIT-0)**: in spirit, such Holders are dispensed not only from every hortatory provision of this document, but even from the courtesy of attribution. For the avoidance of doubt, this Mode is itself hortatory only; it effects no grant, sublicense, or additional permission within the meaning of Section 7 of GPL-3.0 — the author being in no position to re-license material whose licensing continues that of an upstream GPL-3.0 work — and the operative license for every Holder, of every sex and gender, remains GPL-3.0.
 
-**3.3** 本条为**宣示性条款**。持有人不作为、不认同或明示拒绝本条的,不发生任何不利后果,其依 GPL-3.0 享有之权利不受任何影响。
+**2.3** The rights of every Holder under GPL-3.0 are identical without regard to sex or gender. The distinction drawn by this Article concerns only the addressees of hortatory content, and effects no limitation or abridgment of any person's legal rights.
 
-## 第四条(基本倡导条款)
+## Article III — Core Principle
 
-**4.1(身份认同)** 持有人得自主认知、探索并确认自身之性别表达;该事项专属于持有人本人,任何人不得代为决定。
+**3.1** The core principle of this License is: **each Addressee is encouraged to aspire to become a qualified femboy.**
 
-**4.2(自我表达)** 持有人有权以符合其自身认同之方式生活与表达。该权利源于一般人格权之法理(参见《中华人民共和国民法典》第一百零九条、第九百九十条),而非本文件之授予;本文件仅作确认与声援。
+**3.2** "Qualified," as used in Section 3.1, is measured — without examination and without a model answer — by reference to:
 
-**4.3(尊重与包容)** 持有人应尊重他人之人格尊严与表达自由;持有人亦应获得同等之尊重与接纳。
+(a) self-acceptance;
+(b) sustained and sincere self-expression;
+(c) respect for the personhood and choices of others; and
+(d) the maintenance of physical and mental health.
 
-**4.4(安全与健康)** 持有人之身心健康与人身安全,于任何情形下优先于本文件之全部内容。本文件任何条款均不得被解释为鼓励任何危害身心健康或人身安全之行为。
+**3.3** This Article is declaratory only. A Holder's inaction, disagreement, or express rejection of this Article carries no adverse consequence whatsoever, and the Holder's rights under GPL-3.0 remain wholly unaffected.
 
-## 第五条(效力、层级与可分割性)
+## Article IV — Hortatory Provisions
 
-**5.1(非约束性声明)** 本文件整体为非约束性宣言:不构成《中华人民共和国民法典》第四百七十二条所称之要约,不构成合同、单方允诺或任何使用条件。任何人不得援引本文件主张权利、提出请求或对他人施加负担。
+**4.1 Identity.** Each Holder may perceive, explore, and determine the Holder's own gender expression. That determination belongs to the Holder alone, and no other person may make it on the Holder's behalf.
 
-**5.2(授权依据之唯一性)** 本软件之复制、修改、分发及其他著作权法上之利用,其唯一授权依据为 GPL-3.0(见 `LICENSE` 文件)。本文件与 GPL-3.0 不一致的,一律以 GPL-3.0 为准;本文件在任何情形下均不得被解释为 GPL-3.0 第七条所称之「进一步限制」(further restrictions),如有发生此种解释之可能,相应内容视为自始未曾设立。
+**4.2 Self-Expression.** Each Holder is entitled to live and to express in a manner consonant with the Holder's own identity. That entitlement arises from general principles of personal liberty — recognized in California by, among other authorities, article I, section 1 of the California Constitution and the Unruh Civil Rights Act, Cal. Civ. Code § 51, which names gender, gender identity, and gender expression among its protected characteristics — and not from any grant made by this document, which merely affirms it.
 
-**5.3(可分割性)** 本文件任何条款依任何法域之法律被认定无效、不可执行或违背公序良俗(参见《中华人民共和国民法典》第一百五十三条)的,该条款视为可分割,其余条款作为倡导性文本继续存在,不受影响。
+**4.3 Respect and Inclusion.** Each Holder should respect the dignity and expressive freedom of others, and is in turn entitled to equal respect and acceptance.
 
-**5.4(自愿原则)** 对本文件任何内容之接受、实践与退出,均以持有人完全自愿为前提;持有人得随时、无理由、无代价地退出,且不因此承受任何评价上之不利。
+**4.4 Safety and Health.** The physical and mental health and the personal safety of the Holder take precedence, in every circumstance, over the entirety of this document. No provision hereof shall be construed to encourage any conduct harmful to health or safety.
 
-## 第六条(附则)
+## Article V — Legal Effect and Hierarchy
 
-**6.1** 本文件以中文作成;如出现其他语言版本且与中文本有歧义,以中文本为准。
+**5.1 No Binding Effect.** This document is, in its entirety, a non-binding manifesto. It is not an offer within the meaning of § 24 of the Restatement (Second) of Contracts, and it constitutes no contract, unilateral promise, or condition of use. No person may invoke this document to assert a right against, make a demand upon, or impose a burden upon any other person.
 
-**6.2** 「国际伪娘理事会」为修辞性称谓,不指向任何现实存在之组织或法人,亦不为任何人设立代理、代表或背书关系。
+**5.2 Exclusivity of the License Grant.** The sole authority for the copying, modification, distribution, or other use of this software under copyright law is GPL-3.0 (see the `LICENSE` file). In any inconsistency between this document and GPL-3.0, GPL-3.0 controls. In no event shall this document be construed as a "further restriction" within the meaning of Section 7 of GPL-3.0; any content susceptible of that construction is deemed never to have been made.
 
-**6.3** 本文件面向成年读者;其全部倡导性内容,以合法、自愿、安全为不可逾越之边界。
+**5.3 Voluntariness.** Acceptance, practice, and abandonment of any content of this document are premised entirely upon the Holder's free will. A Holder may withdraw at any time, for any reason or none, at no cost, and without adverse reflection of any kind.
+
+## Article VI — Miscellaneous
+
+**6.1 Language.** This document is made in English; the English text controls over any translation.
+
+**6.2 The Council.** "International Femboy Council" is a rhetorical designation. It refers to no existing organization or juridical person, and establishes no agency, representation, or endorsement on behalf of anyone.
+
+**6.3 Audience.** This document is addressed to adult readers. All of its hortatory content is bounded, without exception, by legality, voluntariness, and safety.
 
 ---
 
+**Fully Voluntary · Safety First · Equal Rights**
 **完全自愿 · 安全第一 · 权利平等**
-*Fully Voluntary · Safety First · Equal Rights*
