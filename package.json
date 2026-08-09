@@ -2,7 +2,7 @@
   "name": "echo-read",
   "private": true,
   "version": "0.1.0",
-  "license": "GPL-3.0-only",
+  "license": "SEE LICENSE IN LICENSE",
   "description": "EchoRead · AI 听书 — 顶级 PWA TTS 听书应用",
   "type": "module",
   "scripts": {
