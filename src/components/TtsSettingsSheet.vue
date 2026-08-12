@@ -1,8 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
 import BottomSheet from './BottomSheet.vue'
-import { useSettingsStore, VOICE_PRESETS } from '../store/settings'
-import { testOpenAIConfig, fetchTtsModels } from '../tts/providers/openai-speech'
+import { useSettingsStore } from '../store/settings'
+import { testOpenAIConfig, fetchTtsModels, isOpenRouterBase } from '../tts/providers/openai-speech'
+import {
+  RECOMMENDED_MODELS,
+  modelHints,
+  catalogVoices,
+  groupVoices,
+  defaultVoiceFor,
+  formatModelMeta
+} from '../tts/voices'
 import { audioCacheStats, clearAudioCache } from '../lib/db'
 import { toast } from '../lib/toast'
 
@@ -17,14 +25,26 @@ const testResult = ref('')
 const cache = ref({ count: 0, bytes: 0 })
 const showAdvanced = ref(false)
 const fetchingModels = ref(false)
+/** 音色语言筛选：空串 = 全部 */
+const voiceLang = ref('')
 
-/** 模型的已知音色：内置预设优先，其次在线列表的 supported_voices；空数组表示未知 */
-function voicesFor(id: string): string[] {
-  return VOICE_PRESETS[id]?.voices ?? settings.ttsModels.find(m => m.id === id)?.voices ?? []
+function serverVoicesFor(id: string): string[] | undefined {
+  return settings.ttsModels.find(m => m.id === id)?.voices
 }
 
-const presetModels = computed(() => Object.entries(VOICE_PRESETS))
-const voicePresets = computed(() => voicesFor(tts.openai.model))
+const hints = computed(() => modelHints(tts.openai.model))
+const freeVoice = computed(() => hints.value?.freeVoice)
+const voiceCatalog = computed(() => catalogVoices(tts.openai.model, serverVoicesFor(tts.openai.model)))
+const voiceGroups = computed(() => groupVoices(voiceCatalog.value))
+const shownGroups = computed(() =>
+  voiceLang.value ? voiceGroups.value.filter(g => g.lang === voiceLang.value) : voiceGroups.value
+)
+const modelMeta = computed(() =>
+  formatModelMeta(settings.ttsModels.find(m => m.id === tts.openai.model), tts.openai.model)
+)
+/** 语气指令仅对 OpenAI 官方等直连服务有意义（OpenRouter 现役 TTS 模型均不支持） */
+const showInstructions = computed(() => !isOpenRouterBase(tts.openai.baseUrl))
+
 /** 在线模型下拉项：当前模型不在列表中时补一项，避免 select 显示空白 */
 const modelOptions = computed(() => {
   const list = settings.ttsModels
@@ -47,14 +67,27 @@ async function fetchModels() {
   }
 }
 
-// 切换模型时若当前音色不在该模型已知音色中，回退到第一个已知音色
+// 切换模型：恢复该模型记忆的音色，否则用目录默认音色（中文优先）
 watch(
   () => tts.openai.model,
   id => {
-    const voices = voicesFor(id)
-    if (voices.length && !voices.includes(tts.openai.voice)) tts.openai.voice = voices[0]
+    const mem = tts.voiceByModel[id]
+    const usable = mem !== undefined && (mem !== '' || modelHints(id)?.voiceOptional)
+    tts.openai.voice = usable ? mem : defaultVoiceFor(id, serverVoicesFor(id))
+    voiceLang.value = ''
   }
 )
+// 记住每个模型的音色选择
+watch(
+  () => tts.openai.voice,
+  v => {
+    if (tts.openai.model) tts.voiceByModel[tts.openai.model] = v
+  }
+)
+// 在线列表刷新可能让目录收敛:失效的语言筛选会清空音色区,而筛选行同时隐藏、无 UI 可解,须自动复位
+watch(voiceGroups, gs => {
+  if (voiceLang.value && !gs.some(g => g.lang === voiceLang.value)) voiceLang.value = ''
+})
 
 async function runTest() {
   if (!tts.openai.apiKey) {
@@ -174,45 +207,129 @@ watch(
         />
         <div class="flex flex-wrap gap-1.5">
           <button
-            v-for="[id, p] in presetModels"
-            :key="id"
+            v-for="r in RECOMMENDED_MODELS"
+            :key="r.id"
             class="rounded-full border px-2.5 py-1 text-[11px] transition-all"
-            :class="tts.openai.model === id
+            :class="tts.openai.model === r.id
               ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
               : 'border-[var(--border)] text-[var(--text-2)]'"
-            @click="tts.openai.model = id; if (VOICE_PRESETS[id]) tts.openai.voice = VOICE_PRESETS[id].voices[0]"
+            @click="tts.openai.model = r.id"
           >
-            {{ p.label }}
+            {{ r.label }}<span class="ml-1 opacity-60">{{ r.tag }}</span>
           </button>
         </div>
+        <p v-if="modelMeta" class="mt-2 text-[11px] leading-relaxed text-[var(--text-3)]">{{ modelMeta }}</p>
       </div>
 
       <!-- 音色 -->
       <div class="mb-4">
-        <div class="mb-2 text-xs font-medium tracking-wider text-[var(--text-3)]">音色</div>
+        <div class="mb-2 flex items-center justify-between">
+          <span class="text-xs font-medium tracking-wider text-[var(--text-3)]">音色</span>
+          <span v-if="voiceCatalog.length" class="text-[11px] text-[var(--text-3)]">{{ voiceCatalog.length }} 个</span>
+        </div>
+
+        <!-- 开放音色模型（Fish / MiniMax）：自由输入 + 官方建议 -->
+        <template v-if="freeVoice">
+          <input
+            v-model.trim="tts.openai.voice"
+            type="text"
+            :placeholder="freeVoice.placeholder"
+            class="mb-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-sm outline-none placeholder:text-[var(--text-3)] focus:border-[var(--accent)]"
+          />
+          <p class="mb-2 text-[11px] leading-relaxed text-[var(--text-3)]">{{ freeVoice.hint }}</p>
+          <div v-if="hints?.voiceOptional || freeVoice.suggestions?.length" class="flex flex-wrap gap-1.5">
+            <button
+              v-if="hints?.voiceOptional"
+              class="rounded-full border px-2.5 py-1 text-[11px] transition-all"
+              :class="tts.openai.voice === ''
+                ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                : 'border-[var(--border)] text-[var(--text-2)]'"
+              @click="tts.openai.voice = ''"
+            >
+              默认音色
+            </button>
+            <button
+              v-for="v in freeVoice.suggestions"
+              :key="v.id"
+              :title="v.id"
+              class="rounded-full border px-2.5 py-1 text-[11px] transition-all"
+              :class="tts.openai.voice === v.id
+                ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                : 'border-[var(--border)] text-[var(--text-2)]'"
+              @click="tts.openai.voice = v.id"
+            >
+              {{ v.label }}
+              <span v-if="v.gender === 'f'" class="text-pink-400">♀</span>
+              <span v-else-if="v.gender === 'm'" class="text-sky-400">♂</span>
+            </button>
+          </div>
+        </template>
+
+        <!-- 有目录模型：语言分组 + 性别/风格标注 -->
+        <template v-else-if="voiceCatalog.length">
+          <input
+            v-model.trim="tts.openai.voice"
+            type="text"
+            placeholder="音色 ID"
+            class="mb-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
+          />
+          <div v-if="voiceGroups.length > 1" class="mb-2 flex flex-wrap gap-1.5">
+            <button
+              class="rounded-full border px-2.5 py-1 text-[11px] transition-all"
+              :class="voiceLang === ''
+                ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                : 'border-[var(--border)] text-[var(--text-2)]'"
+              @click="voiceLang = ''"
+            >
+              全部
+            </button>
+            <button
+              v-for="g in voiceGroups"
+              :key="g.lang"
+              class="rounded-full border px-2.5 py-1 text-[11px] transition-all"
+              :class="voiceLang === g.lang
+                ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                : 'border-[var(--border)] text-[var(--text-2)]'"
+              @click="voiceLang = g.lang"
+            >
+              {{ g.label }}<span class="ml-0.5 opacity-60">{{ g.voices.length }}</span>
+            </button>
+          </div>
+          <div class="max-h-64 space-y-2 overflow-y-auto pr-1">
+            <div v-for="g in shownGroups" :key="g.lang">
+              <div v-if="shownGroups.length > 1" class="mb-1 text-[11px] text-[var(--text-3)]">{{ g.label }}</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button
+                  v-for="v in g.voices"
+                  :key="v.id"
+                  :title="v.id + (v.note ? '（' + v.note + '）' : '')"
+                  class="rounded-full border px-2.5 py-1 text-[11px] transition-all"
+                  :class="tts.openai.voice === v.id
+                    ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                    : 'border-[var(--border)] text-[var(--text-2)]'"
+                  @click="tts.openai.voice = v.id"
+                >
+                  {{ v.label }}<span v-if="v.note" class="opacity-60">·{{ v.note }}</span>
+                  <span v-if="v.gender === 'f'" class="text-pink-400">♀</span>
+                  <span v-else-if="v.gender === 'm'" class="text-sky-400">♂</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- 未知模型：纯手动 -->
         <input
+          v-else
           v-model.trim="tts.openai.voice"
           type="text"
-          placeholder="留空则使用服务默认音色"
-          class="mb-2 w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-sm outline-none focus:border-[var(--accent)]"
+          placeholder="该模型未提供音色列表，可手动填写（留空试用服务默认）"
+          class="w-full rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5 text-sm outline-none placeholder:text-[var(--text-3)] focus:border-[var(--accent)]"
         />
-        <div v-if="voicePresets.length" class="flex flex-wrap gap-1.5">
-          <button
-            v-for="v in voicePresets"
-            :key="v"
-            class="rounded-full border px-2.5 py-1 text-[11px] capitalize transition-all"
-            :class="tts.openai.voice === v
-              ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
-              : 'border-[var(--border)] text-[var(--text-2)]'"
-            @click="tts.openai.voice = v"
-          >
-            {{ v }}
-          </button>
-        </div>
       </div>
 
-      <!-- 语气指令 -->
-      <div class="mb-4">
+      <!-- 语气指令（OpenAI 官方等直连服务） -->
+      <div v-if="showInstructions" class="mb-4">
         <div class="mb-2 text-xs font-medium tracking-wider text-[var(--text-3)]">语气指令（部分模型支持）</div>
         <input
           v-model.trim="tts.openai.instructions"
@@ -269,8 +386,9 @@ watch(
     </div>
 
     <p class="text-[11px] leading-relaxed text-[var(--text-3)]">
-      兼容所有 OpenAI 格式语音接口：OpenRouter、OpenAI 官方、SiliconFlow、FishAudio 等。
-      在 <a href="https://openrouter.ai/settings/keys" target="_blank" class="text-[var(--accent)]">openrouter.ai</a> 创建 API Key，推荐模型 openai/gpt-4o-mini-tts。
+      已内置 OpenRouter 全部语音模型的音色目录（含中文音色标注），也兼容 OpenAI 官方、SiliconFlow 等
+      OpenAI 格式接口。在 <a href="https://openrouter.ai/settings/keys" target="_blank" class="text-[var(--accent)]">openrouter.ai</a>
+      创建 API Key 即可使用；Fish S2.1 有免费档可先试听。
     </p>
   </BottomSheet>
 </template>

@@ -67,6 +67,8 @@ export interface OpenAISpeechConfig {
 export interface TTSSettings {
   provider: TTSProviderKind
   openai: OpenAISpeechConfig
+  /** 每模型记忆的音色选择（切换模型来回不丢音色） */
+  voiceByModel: Record<string, string>
   /** 播放倍速（客户端 playbackRate，避免重复合成） */
   rate: number
   /** 单个合成片段的最大字符数 */
@@ -93,4 +95,10 @@ export interface TtsModelInfo {
   name: string
   /** 服务端声明的可用音色（supported_voices），null/缺失表示未提供 */
   voices?: string[]
+  /** 模型简介 */
+  description?: string
+  /** 每字符美元单价（OpenRouter TTS 按输入字符计价） */
+  promptPrice?: number
+  /** 输出 token 单价（Gemini 等按 token 计费的模型才有） */
+  completionPrice?: number
 }
