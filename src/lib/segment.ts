@@ -1,4 +1,5 @@
 import type { Range } from '../types'
+import { alignSurrogateCut } from './text'
 
 /** 句子切分：优先 Intl.Segmenter（中文支持好），否则用标点正则兜底。返回纯偏移区间。 */
 function splitSentences(text: string): Range[] {
@@ -29,6 +30,8 @@ function splitSentences(text: string): Range[] {
  * 同时保留较细的朗读高亮粒度）。超长单句硬切。
  */
 export function segmentChapter(text: string, maxChunkChars: number): Range[] {
+  // 持久化配置可能带回 0/负数/NaN（load 仅做形状合并）：步长 <1 会让硬切循环失去推进，库侧钳制兜底
+  maxChunkChars = Number.isFinite(maxChunkChars) && maxChunkChars >= 1 ? Math.floor(maxChunkChars) : 120
   const segments: Range[] = []
 
   let start = -1
@@ -43,10 +46,16 @@ export function segmentChapter(text: string, maxChunkChars: number): Range[] {
     const sLen = s.end - s.start
     if (sLen > maxChunkChars) {
       flush()
-      for (let cur = s.start; cur < s.end; cur += maxChunkChars) {
-        const hardEnd = Math.min(cur + maxChunkChars, s.end)
+      for (let cur = s.start; cur < s.end; ) {
+        let hardEnd = Math.min(cur + maxChunkChars, s.end)
+        if (hardEnd < s.end) {
+          // 切点避开代理对（劈开的片段渲染成 �、TTS 编码被污染）；步长 1 时回退会原地踏步，改为多带一个码元包住整对
+          const aligned = alignSurrogateCut(text, hardEnd)
+          hardEnd = aligned > cur ? aligned : hardEnd + 1
+        }
         // 硬切也要跳过纯空白片段（劣质排版的长空格段不送合成）
         if (text.slice(cur, hardEnd).trim()) segments.push({ start: cur, end: hardEnd })
+        cur = hardEnd
       }
       continue
     }

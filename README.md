@@ -7,10 +7,11 @@
 ## 核心特性
 
 - **任意字开始读**：渲染层与朗读引擎共享同一套「章节纯文本字符偏移」坐标系。点击位置经 `caretRangeFromPoint` 换算成精确字符偏移 → 二分定位到最近合成片段 → 从该处起播。
-- **真 AI TTS**：对接 OpenAI 兼容语音接口（`POST {baseUrl}/audio/speech`），默认支持 **OpenRouter**（`https://openrouter.ai/api/v1`），亦兼容 OpenAI 官方、SiliconFlow、FishAudio 等。推荐模型 `openai/gpt-4o-mini-tts`，支持音色 / 语气指令 / 倍速。
+- **真 AI TTS · 深度适配 OpenRouter**：对接 OpenAI 兼容语音接口（`POST {baseUrl}/audio/speech`），默认指向 **OpenRouter**（`https://openrouter.ai/api/v1`）：在线拉取全部语音模型（`/models?output_modalities=speech`）、内置各模型音色目录（中文名/性别/风格标注、语言分组、每模型记忆音色）、单价与能力展示、请求方言自动适配（`response_format` 收敛 mp3/pcm、Gemini PCM 裸流自动封 WAV、开放音色 ID 自由输入）、应用归因头；亦兼容 OpenAI 官方、SiliconFlow、FishAudio 等同格式服务。
 - **离线兜底**：一键切换浏览器系统语音（Web Speech API），无 Key 也能听。
-- **流畅播放**：句子级分段（`Intl.Segmenter`）合并为 ≤180 字片段，当前片段播放时后台预取后续片段；音频按 `模型|音色|文本` 哈希缓存进 IndexedDB（LRU 300MB），断句重听零流量。
-- **移动优先阅读器**：句级跟随高亮 + 自动居中滚动、锁屏媒体控制（Media Session）、五套阅读主题、字号/行距/衬线调节、章末导航、目录抽屉。
+- **锁屏可听 · 断网自愈**：所有片段复用同一被用户手势授权的音频元素，段间以静音循环保活占住后台音频权（iOS 锁屏连播的架构基础）；网络抖动/限流按指数退避自动重试（1s→30s 封顶 ±20% 抖动，最多 8 次、暂停即中止），单段穷尽自动跳段续播，连续 3 段失败才停播提示，401 等配置错误则快速失败。
+- **流畅播放**：句子级分段（`Intl.Segmenter`）合并为 ≤120 字片段（80–400 可调），当前片段播放时后台预取后续片段；音频按 `模型|音色|格式|指令|文本` 哈希缓存进 IndexedDB（LRU 300MB），断句重听零流量。
+- **移动优先阅读器**：句级跟随高亮 + 自动居中滚动、锁屏媒体控制（Media Session）、睡眠定时器（15–90 分钟或播完本章）、五套阅读主题、字号/行距/衬线调节、章末导航、目录抽屉。
 - **PWA**：Service Worker 预缓存 + 可安装 manifest（含 maskable 图标），书架与已缓存音频完全离线可用。
 
 ## 书籍导入与解析
@@ -35,13 +36,13 @@ npm run build      # 类型检查 + 生产构建（输出 dist/，含 SW）
 npm run preview    # 预览生产构建
 npx tsx test/sanity.ts       # TXT 解析 / 分段 / 偏移定位冒烟测试
 npx tsx test/epub-sanity.ts  # EPUB 解析冒烟测试（内存构造最小 EPUB）
-npm run e2e        # Playwright 端到端（13 用例，需本机 Chrome，自动起 preview）
+npm run e2e        # Playwright 端到端（16 用例，需本机 Chrome，自动起 preview）
 ```
 
 ## 使用
 
 1. 部署 `dist/` 到任意静态托管（HTTPS 或 localhost 才能启用 PWA 与音频自动播放）。
-2. 打开应用 → 右上角齿轮 → 填入 OpenRouter API Key（[在此创建](https://openrouter.ai/settings/keys)），选择模型与音色，点「试听测试」验证。
+2. 打开应用 → 右上角齿轮 → 填入 OpenRouter API Key（[在此创建](https://openrouter.ai/settings/keys)），点「获取在线模型」后选择模型与音色（默认 Kokoro 超低价中文音色，Fish S2.1 有免费档可先试听），点「试听测试」验证。
 3. 点「导入」选择 TXT / EPUB 文件。
 4. 打开书籍，**轻点正文任意位置**，AI 即从该字开始朗读。
 

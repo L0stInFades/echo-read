@@ -1,6 +1,8 @@
 /** DOM 点读定位：把屏幕坐标换算为章节文本的字符偏移（任意字开始读的前半段） */
 
-/** 点击坐标 → 章节字符偏移；点不到文字上返回 null */
+/** 点击坐标 → 章节字符偏移；点不到文字上返回 null。
+ *  契约：span 的 data-start 必须等于其文本节点首字符的真实章节偏移
+ *  （跨段落片段渲染时须按段落钳制后再绑定，否则此处结果整体偏小） */
 export function offsetFromPoint(x: number, y: number): number | null {
   const doc = document as any
   let node: Node | null = null

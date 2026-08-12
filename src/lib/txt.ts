@@ -58,7 +58,7 @@ export function decodeText(buffer: ArrayBuffer | Uint8Array): { text: string; en
  *  min：采纳所需的最少匹配数——编号列表模式幻影风险高，要求更多佐证 */
 const CHAPTER_PATTERNS: { re: RegExp; min: number }[] = [
   { re: /^[ \t]*第[0-9零〇一二三四五六七八九十百千万两\d]+[章节卷回部集篇幕][^\n。！？!?；;…]{0,30}[ \t]*$/gm, min: 1 },
-  { re: /^[ \t]*(?:Chapter|CHAPTER|chap)\s*[0-9零〇一二三四五六七八九十]+[^\n。！？!?；;…]{0,30}[ \t]*$/gim, min: 1 },
+  { re: /^[ \t]*(?:Chapter|CHAPTER|chap)[ \t]*[0-9零〇一二三四五六七八九十]+[^\n。！？!?；;…]{0,30}[ \t]*$/gim, min: 1 },
   { re: /^[ \t]*(?:楔子|序言?|前言|序章|引子|终章|尾声|后记|番外篇?)[^\n。！？!?；;…]{0,30}[ \t]*$/gm, min: 1 },
   { re: /^[ \t]*[0-9]{1,5}[、.．][ \t]?[^\n。！？!?；;…]{1,30}[ \t]*$/gm, min: 3 },
   { re: /^[ \t]*卷[0-9零〇一二三四五六七八九十]+[^\n。！？!?；;…]{0,30}[ \t]*$/gm, min: 1 }

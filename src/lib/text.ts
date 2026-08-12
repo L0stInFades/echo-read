@@ -6,6 +6,13 @@ export const CHAPTER_MAX_CHARS = 8000
 /** 段落数组 → 规范章节文本（入库唯一形态） */
 export const joinParagraphs = (paragraphs: string[]): string => paragraphs.join('\n')
 
+/** 硬切点校正：cut 恰落在代理对中间时回退到高代理之前（劈开的两半经 UTF-8 编码各自变成 U+FFFD） */
+export function alignSurrogateCut(text: string, cut: number): number {
+  const hi = text.charCodeAt(cut - 1)
+  const lo = text.charCodeAt(cut)
+  return hi >= 0xd800 && hi <= 0xdbff && lo >= 0xdc00 && lo <= 0xdfff ? cut - 1 : cut
+}
+
 /** 规范文本 → 段落区间序列（O(n) 单趟，零字符串副本） */
 export function paraRanges(text: string): Range[] {
   const out: Range[] = []
@@ -61,9 +68,12 @@ export function boundChapters(
     for (const p of c.paragraphs) {
       if (len + p.length > CHAPTER_MAX_CHARS) flush()
       if (p.length > CHAPTER_MAX_CHARS) {
-        // 无换行的巨型段落：硬切
-        for (let i = 0; i < p.length; i += CHAPTER_MAX_CHARS) {
-          parts.push(p.slice(i, i + CHAPTER_MAX_CHARS))
+        // 无换行的巨型段落：硬切（切点避开代理对——劈开即畸形文本永久入库）
+        for (let i = 0; i < p.length; ) {
+          const end =
+            i + CHAPTER_MAX_CHARS >= p.length ? p.length : alignSurrogateCut(p, i + CHAPTER_MAX_CHARS)
+          parts.push(p.slice(i, end))
+          i = end
         }
         continue
       }
