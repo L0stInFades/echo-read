@@ -66,9 +66,21 @@ function openBook(b: BookMeta) {
 
 /* 长按弹出操作菜单 */
 let pressTimer: ReturnType<typeof setTimeout> | null = null
+/** 长按成功时刻:触屏抬手后浏览器按 touchend 坐标补发合成 click,
+    命中的是刚出现的遮罩会把菜单瞬间关掉,须在 document 捕获阶段吞掉这一次 */
+let longPressAt = 0
+function swallowGhostClick(e: Event) {
+  if (Date.now() - longPressAt < 700) {
+    e.preventDefault()
+    e.stopPropagation()
+  }
+  longPressAt = 0
+}
 function pressStart(b: BookMeta) {
   pressTimer = setTimeout(() => {
     pressTimer = null
+    longPressAt = Date.now()
+    document.addEventListener('click', swallowGhostClick, { capture: true, once: true })
     actionBook.value = b
   }, 550)
 }
@@ -76,6 +88,9 @@ function pressEnd() {
   if (pressTimer) {
     clearTimeout(pressTimer)
     pressTimer = null
+  } else if (longPressAt) {
+    // 合成 click 跟随抬手而非定时器触发,时效窗须从抬手时刻重新起算(慢松手同样要吞)
+    longPressAt = Date.now()
   }
 }
 
@@ -87,7 +102,11 @@ async function removeBook() {
 }
 
 function progressText(b: BookMeta) {
-  if (b.chapterCount <= 1) return '未开始'
+  // 单章书没有章节维度,以章内偏移计进度
+  if (b.chapterCount <= 1) {
+    const p = Math.min(100, (b.progress.offset / Math.max(b.totalChars, 1)) * 100)
+    return b.progress.offset === 0 ? '未开始' : `已读 ${p.toFixed(0)}%`
+  }
   const p = (b.progress.chapterIndex / Math.max(b.chapterCount - 1, 1)) * 100
   return b.progress.chapterIndex === 0 && b.progress.offset === 0 ? '未开始' : `已读 ${p.toFixed(0)}%`
 }

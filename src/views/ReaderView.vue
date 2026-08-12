@@ -5,7 +5,7 @@ import { getBook } from '../lib/db'
 import { getDerivedChapter, type DerivedChapter } from '../lib/chapters'
 import { layoutBlocks, fragText } from '../lib/text'
 import { offsetFromPoint, spanElAt } from '../lib/locate'
-import { usePlayerStore } from '../store/player'
+import { usePlayerStore, type SleepMode } from '../store/player'
 import { useLibraryStore } from '../store/library'
 import { useSettingsStore } from '../store/settings'
 import type { BookMeta } from '../types'
@@ -32,6 +32,7 @@ const bodyEl = ref<HTMLElement>()
 const showChapters = ref(false)
 const showStyle = ref(false)
 const showTts = ref(false)
+const showSleep = ref(false)
 
 /* ---------- 渲染布局：段落区间 × 片段区间的双指针归并（O(P+S)，零文本副本） ---------- */
 
@@ -258,6 +259,29 @@ function cycleRate() {
   toast(`${next.toFixed(2)}× 倍速`, 'info', 1200)
 }
 
+/* ---------- 睡眠定时 ---------- */
+
+const SLEEP_OPTIONS: { label: string; mode: SleepMode }[] = [
+  { label: '15分', mode: 15 },
+  { label: '30分', mode: 30 },
+  { label: '60分', mode: 60 },
+  { label: '90分', mode: 90 },
+  { label: '播完本章', mode: 'chapter' },
+  { label: '关闭', mode: 'off' }
+]
+
+function pickSleep(mode: SleepMode) {
+  player.setSleepTimer(mode)
+  showSleep.value = false
+}
+
+/** 定时按钮文案：分钟模式 mm:ss 倒计时，本章模式「本章」 */
+const sleepLabel = computed(() => {
+  if (player.sleepMode === 'chapter') return '本章'
+  const r = player.sleepRemaining
+  return `${Math.floor(r / 60)}:${String(r % 60).padStart(2, '0')}`
+})
+
 const playing = computed(
   () => player.snap.state === 'playing' && player.snap.bookId === props.bookId
 )
@@ -332,8 +356,8 @@ const bodyStyle = computed(() => ({
                 'seg-active': activeStart >= sp.start && activeStart < sp.end,
                 shimmer: synthesizing && activeStart >= sp.start && activeStart < sp.end
               }"
-              :data-start="sp.start"
-              :data-end="sp.end"
+              :data-start="Math.max(sp.start, para.start)"
+              :data-end="Math.min(sp.end, para.end)"
             >{{ fragText(text, sp, para) }}</span>
           </p>
 
@@ -359,11 +383,23 @@ const bodyStyle = computed(() => ({
       <!-- 底部悬浮播放坞 -->
       <div class="pointer-events-none fixed inset-x-0 bottom-0 z-30 px-4 pb-5 safe-bottom">
         <div class="pointer-events-auto mx-auto max-w-md">
+          <!-- 睡眠定时选项（展开态） -->
+          <div v-if="showSleep" class="glass mb-2 flex flex-wrap items-center justify-center gap-1.5 rounded-2xl px-3 py-2 shadow-2xl">
+            <button
+              v-for="o in SLEEP_OPTIONS"
+              :key="o.label"
+              class="rounded-full border px-2.5 py-1 text-[11px] transition-all"
+              :class="player.sleepMode === o.mode
+                ? 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]'
+                : 'border-[var(--border)] text-[var(--text-2)]'"
+              @click="pickSleep(o.mode)"
+            >{{ o.label }}</button>
+          </div>
           <div class="glass flex items-center gap-3 rounded-full py-2 pl-4 pr-2 shadow-2xl">
             <!-- 进度 -->
             <div class="flex h-10 min-w-0 flex-1 flex-col justify-center" @click="showChapters = true">
-              <div class="truncate text-[12px] font-medium">
-                {{ playing || player.snap.state === 'paused' ? (player.snap.chapterTitle || derived?.title) : '轻点正文任意字开始朗读' }}
+              <div class="truncate text-[12px] font-medium" :class="player.snap.retryNote ? 'text-amber-400' : ''">
+                {{ player.snap.retryNote || (playing || player.snap.state === 'paused' ? (player.snap.chapterTitle || derived?.title) : '轻点正文任意字开始朗读') }}
               </div>
               <div class="mt-1.5 h-0.5 w-full overflow-hidden rounded-full bg-white/10">
                 <div
@@ -402,6 +438,18 @@ const bodyStyle = computed(() => ({
               @click="gotoChapter(currentChapterIndex + 1)"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16 6h2v12h-2zM6 18l8.5-6L6 6z"/></svg>
+            </button>
+            <!-- 睡眠定时：未激活显示月亮，激活显示剩余 mm:ss 或「本章」 -->
+            <button
+              class="shrink-0 rounded-full active:scale-90"
+              :class="player.sleepMode === 'off'
+                ? 'p-2 text-[var(--text-2)]'
+                : 'px-1 py-1 text-[11px] font-bold tabular-nums text-[var(--accent)]'"
+              aria-label="睡眠定时"
+              @click="showSleep = !showSleep"
+            >
+              <svg v-if="player.sleepMode === 'off'" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+              <template v-else>{{ sleepLabel }}</template>
             </button>
             <!-- 倍速 -->
             <button
