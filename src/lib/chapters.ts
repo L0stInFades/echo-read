@@ -21,8 +21,21 @@ export interface DerivedChapter {
 
 const LRU_MAX = 4
 const cache = new Map<string, DerivedChapter>()
+// 在途派生登记：并发未命中共享同一 Promise，保证注释承诺的“同章只有一份实例”
+const pending = new Map<string, Promise<DerivedChapter | null>>()
 
 const keyOf = (bookId: string, index: number, maxChunk: number) => `${bookId}:${index}:${maxChunk}`
+
+async function derive(bookId: string, index: number, maxChunk: number): Promise<DerivedChapter | null> {
+  const row = await getChapter(bookId, index)
+  if (!row) return null
+  return {
+    title: row.title,
+    text: row.text,
+    paras: paraRanges(row.text),
+    segments: segmentChapter(row.text, maxChunk)
+  }
+}
 
 export async function getDerivedChapter(
   bookId: string,
@@ -37,23 +50,30 @@ export async function getDerivedChapter(
     cache.set(key, hit)
     return hit
   }
-  const row = await getChapter(bookId, index)
-  if (!row) return null
-  const derived: DerivedChapter = {
-    title: row.title,
-    text: row.text,
-    paras: paraRanges(row.text),
-    segments: segmentChapter(row.text, maxChunk)
+  const inflight = pending.get(key)
+  if (inflight) return inflight
+  const p = derive(bookId, index, maxChunk)
+  pending.set(key, p)
+  try {
+    const derived = await p
+    // 登记仍在才转正：invalidateDerived（删书）已清理时不得把亡书派生写回缓存
+    if (derived && pending.get(key) === p) {
+      cache.set(key, derived)
+      if (cache.size > LRU_MAX) {
+        cache.delete(cache.keys().next().value!)
+      }
+    }
+    return derived
+  } finally {
+    if (pending.get(key) === p) pending.delete(key)
   }
-  cache.set(key, derived)
-  if (cache.size > LRU_MAX) {
-    cache.delete(cache.keys().next().value!)
-  }
-  return derived
 }
 
 export function invalidateDerived(bookId: string) {
   for (const k of cache.keys()) {
     if (k.startsWith(bookId + ':')) cache.delete(k)
+  }
+  for (const k of pending.keys()) {
+    if (k.startsWith(bookId + ':')) pending.delete(k)
   }
 }

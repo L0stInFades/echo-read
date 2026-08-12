@@ -84,6 +84,16 @@ async function main() {
     const span = page.locator('.reader-body [data-start]').first()
     const box = await span.boundingBox()
     assert(box, 'span 不可见')
+    // 偏移对齐不变式：每个 span 的 [data-start, data-end) 长度必须等于其渲染文本长度
+    // （跨段落合并片段按段落钳制后绑定，否则点读偏移整体偏小）
+    const badSpans = await page.evaluate(() => {
+      let bad = 0
+      for (const s of document.querySelectorAll('.reader-body [data-start]')) {
+        if (Number(s.dataset.end) - Number(s.dataset.start) !== (s.textContent ?? '').length) bad++
+      }
+      return bad
+    })
+    assert(badSpans === 0, `data 区间与渲染文本不对齐的 span 数: ${badSpans}`)
     await page.mouse.click(box.x + Math.min(box.width * 0.6, box.width - 4), box.y + box.height / 2)
     await page.waitForSelector('.seg-active', { timeout: 5000 })
   })
@@ -200,9 +210,41 @@ async function main() {
     assert(progress !== '0%' && progress !== '0.0%', `片段未推进（进度=${progress}，前置高亮=${before}）`)
   })
 
+  await test('睡眠定时：设定 15 分钟出现倒计时，关闭后复原', async () => {
+    await page.getByRole('button', { name: '睡眠定时' }).click()
+    await page.locator('button:has-text("15分")').click()
+    // 激活后按钮内直接显示 mm:ss 倒计时
+    await page.waitForFunction(() => {
+      const b = document.querySelector('button[aria-label="睡眠定时"]')
+      return /^1[45]:\d\d$/.test(b?.textContent?.trim() ?? '')
+    }, { timeout: 3000 })
+    await page.getByRole('button', { name: '睡眠定时' }).click()
+    await page.locator('button:has-text("关闭")').click()
+    // 复位后按钮回到月亮图标（无文本）
+    await page.waitForFunction(() => {
+      const b = document.querySelector('button[aria-label="睡眠定时"]')
+      return (b?.textContent?.trim() ?? '') === ''
+    }, { timeout: 3000 })
+  })
+
   await test('持久化：刷新后书架保留书籍', async () => {
     await page.goto(BASE)
     await page.waitForSelector('text=深夜书屋（示例）', { timeout: 8000 })
+  })
+
+  await test('长按书籍卡片：操作菜单不被抬手合成 click 误关', async () => {
+    // 真实触屏序列:长按开菜单后,浏览器按 touchend 坐标补发的合成 click 会命中新遮罩
+    const box = await page.locator('.grid > div').first().boundingBox()
+    const cdp = await context.newCDPSession(page)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: box.x + box.width / 2, y: box.y + box.height / 2 }] })
+    await sleep(800)
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+    await cdp.detach()
+    await sleep(400)
+    assert(await page.locator('button:has-text("从书架删除")').isVisible(), '长按菜单被合成 click 瞬间关闭')
+    assert(!page.url().includes('#/read/'), '长按误触发开书导航')
+    await page.locator('button[aria-label="关闭"]').first().click()
+    await page.waitForFunction(() => !document.querySelector('.fixed.inset-0.z-40'), { timeout: 3000 })
   })
 
   await test('从书架打开书籍并恢复阅读', async () => {

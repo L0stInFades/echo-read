@@ -1,5 +1,6 @@
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb'
 import type { BookMeta, ChapterContent, ChapterIndex } from '../types'
+import { toast } from './toast'
 
 const DB_NAME = 'echo-read'
 const DB_VERSION = 2
@@ -23,10 +24,12 @@ interface EchoReadDB extends DBSchema {
 }
 
 let dbp: Promise<IDBPDatabase<EchoReadDB>> | null = null
+/** 库已被其它标签页升到更高版本的提示只发一次，重试再失败不刷屏 */
+let versionWarned = false
 
 function db() {
   if (!dbp) {
-    dbp = openDB<EchoReadDB>(DB_NAME, DB_VERSION, {
+    const p: Promise<IDBPDatabase<EchoReadDB>> = openDB<EchoReadDB>(DB_NAME, DB_VERSION, {
       upgrade(d, oldVersion) {
         // v1 → v2：章节由 paragraphs[] 改为规范纯文本，旧数据不兼容，清空重导
         if (oldVersion >= 1) {
@@ -42,14 +45,22 @@ function db() {
           d.createObjectStore('audio', { keyPath: 'key' })
         }
       },
-      // 其它标签页持库时让出版本升级，并允许连接被升级方关闭
+      // 其它标签页持库时让出版本升级：关闭本连接并丢弃缓存，下次调用重新打开
+      //（不丢缓存会一直复用已关闭的连接，后续所有读写抛 InvalidStateError）
       blocking() {
-        void dbp?.then(d => d.close()).catch(() => {})
+        if (dbp === p) dbp = null
+        void p.then(d => d.close()).catch(() => {})
       }
     })
+    dbp = p
     // 打开失败（配额/隐私模式/被阻塞）不缓存 rejected Promise，下次调用重试
-    dbp.catch(() => {
-      dbp = null
+    p.catch(e => {
+      if (dbp === p) dbp = null
+      // 让位后库已被升到更高版本：本页旧代码无法再打开，只能提示刷新
+      if ((e as DOMException)?.name === 'VersionError' && !versionWarned) {
+        versionWarned = true
+        toast('应用已在其它页面更新，请刷新本页', 'error', 6000)
+      }
     })
   }
   return dbp

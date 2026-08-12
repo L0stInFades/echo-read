@@ -10,7 +10,7 @@
     "build": "vue-tsc -b && vite build",
     "build:only": "vite build",
     "preview": "vite preview",
-    "test": "tsx test/sanity.ts && tsx test/epub-sanity.ts",
+    "test": "tsx test/sanity.ts && tsx test/epub-sanity.ts && tsx test/qa-g1.ts && tsx test/qa-g2.ts && tsx test/qa-g3.ts && tsx test/qa-g4.ts && tsx test/qa-g5.ts",
     "e2e": "node e2e/run.mjs",
     "icons": "pwa-assets-generator --preset minimal public/logo.svg"
   },
