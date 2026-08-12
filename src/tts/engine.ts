@@ -3,8 +3,8 @@ import { audioGet, audioPut } from '../lib/db'
 import { getDerivedChapter, type DerivedChapter } from '../lib/chapters'
 import { segmentIndexAt } from '../lib/segment'
 import { cyrb53 } from '../lib/hash'
-import { synthesizeOpenAI } from './providers/openai-speech'
-import { AudioHandle, UtteranceHandle, type PlayHandle } from './handles'
+import { isFatalSpeechError, synthesizeOpenAI } from './providers/openai-speech'
+import { AudioHandle, UtteranceHandle, keepAliveStart, keepAliveStop, primeSharedAudio, type PlayHandle } from './handles'
 
 export interface EngineSnapshot {
   state: PlayerState
@@ -17,12 +17,23 @@ export interface EngineSnapshot {
   segmentEnd: number
   /** 正在调用 TTS 接口合成（尚未开始出声） */
   synthesizing: boolean
+  /** 自愈进行时的可见提示（退避倒计时/跳段说明），空闲时缺省 */
+  retryNote?: string
   error?: string
 }
 
 type Listener = (snap: EngineSnapshot) => void
 
-const MAX_RETRIES = 2
+/** 单个片段的合成尝试总数上限（含首次） */
+const MAX_ATTEMPTS = 8
+/** 连续多少个片段合成失败（各自穷尽重试）才停播报错 */
+const MAX_FAIL_STREAK = 3
+
+/** 指数退避延迟（毫秒）：1s 起倍增、30s 封顶、±20% 抖动；attempt 从 0 计，rand 可注入便于测试 */
+export function backoffDelay(attempt: number, rand: () => number = Math.random): number {
+  const base = Math.min(1000 * 2 ** attempt, 30000)
+  return Math.round(base * (1 + (rand() * 2 - 1) * 0.2))
+}
 
 /**
  * 朗读引擎：只持有 派生章节引用 + 当前片段下标 两个核心状态。
@@ -47,6 +58,9 @@ export class TTSEngine {
   private generation = 0
   private synthesizing = false
   private errorMsg = ''
+  private retryNote = ''
+  /** 连续合成失败的片段数，任一片段成功播出即清零 */
+  private failStreak = 0
   private prefetching = new Set<string>()
 
   constructor(settings: TTSSettings, openaiCfg: OpenAISpeechConfig) {
@@ -79,6 +93,7 @@ export class TTSEngine {
       segmentStart: seg?.start ?? 0,
       segmentEnd: seg?.end ?? 0,
       synthesizing: this.synthesizing,
+      retryNote: this.retryNote || undefined,
       error: this.errorMsg || undefined
     }
   }
@@ -138,20 +153,7 @@ export class TTSEngine {
   private unlockAudio() {
     if (TTSEngine.audioUnlocked) return
     TTSEngine.audioUnlocked = true
-    try {
-      const a = new Audio(
-        'data:audio/mp3;base64,//uQZAAAAAAAAAAAAAAAAAAAAAAAWGluZwAAAA8AAAACAAACcQCA' +
-        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
-        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
-        'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' +
-        'AAAAAAAAAAAAAAAAAAAAAAAAAAAA//sQZAAP8AAAaQAAAAgAAA0gAAABAAABpAAAACAAADS' +
-        'AAAAETEFNRTMuMTAwVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV'
-      )
-      a.volume = 0
-      void a.play().catch(() => {})
-    } catch {
-      /* ignore */
-    }
+    primeSharedAudio()
   }
 
   async play() {
@@ -165,6 +167,7 @@ export class TTSEngine {
       return
     }
     this.errorMsg = ''
+    this.failStreak = 0
     this.state = 'playing'
     this.emit()
     void this.loop(this.generation)
@@ -198,6 +201,7 @@ export class TTSEngine {
     this.stopHandle()
     this.segmentIndex = segmentIndexAt(segments, offset)
     this.errorMsg = ''
+    this.failStreak = 0
     if (wasPlaying) {
       this.state = 'playing'
       this.emit()
@@ -227,6 +231,7 @@ export class TTSEngine {
 
   private stopHandle() {
     this.synthesizing = false
+    this.retryNote = ''
     this.aborter?.abort()
     this.aborter = null
     this.handle?.stop()
@@ -260,32 +265,58 @@ export class TTSEngine {
       this.emit() // 更新高亮
 
       let handle: PlayHandle
+      // 合成窗口保活：Blob 路径以静音循环占住后台音频权；webspeech 无此需要
+      const keepAlive = this.settings.provider !== 'webspeech'
       try {
         this.synthesizing = true
         this.emit()
+        if (keepAlive) keepAliveStart()
         handle = await this.createHandle(this.slice(seg), gen)
       } catch (e: any) {
-        this.synthesizing = false
+        // 僵尸 loop（已换代）不得回写共享合成状态；keepAliveStop 与本次 keepAliveStart 配对，必须无条件执行
+        if (gen === this.generation) this.synthesizing = false
+        if (keepAlive) keepAliveStop()
         if (gen !== this.generation) return
         if (e?.message === 'aborted') return
-        this.state = 'error'
-        this.errorMsg = e?.message ?? String(e)
+        if (isFatalSpeechError(e)) {
+          // 配置类错误（无效 Key 等）：跳段无意义，立即停播暴露给用户
+          this.state = 'error'
+          this.errorMsg = e?.message ?? String(e)
+          this.retryNote = ''
+          this.emit()
+          return
+        }
+        // 单段重试穷尽：跳过本段续播，连续多段失败才认定环境不可用
+        this.failStreak++
+        if (this.failStreak >= MAX_FAIL_STREAK) {
+          this.state = 'error'
+          this.errorMsg = '连续多段合成失败，请检查网络或 TTS 配置'
+          this.retryNote = ''
+          this.emit()
+          return
+        }
+        this.retryNote = '本段合成失败，已跳过'
+        this.segmentIndex++
         this.emit()
-        return
+        continue
       }
-      this.synthesizing = false
+      if (gen === this.generation) this.synthesizing = false
+      if (keepAlive) keepAliveStop()
       // 合成窗口期被 pause/seek/换章：句柄不落地，直接停掉（防孤儿音频）
       if (gen !== this.generation || this.state !== 'playing') {
         handle.stop()
         return
       }
       this.handle = handle
+      this.failStreak = 0
+      this.emit() // 句柄落地：广播合成结束，出声期间不再显示「合成中」
       this.prefetchFrom(this.segmentIndex + 1)
 
       try {
         await handle.ended
       } catch {
-        // 被打断（seek/pause 内部 stop）或播放错误
+        // 被打断（seek/pause 内部 stop）或播放错误；死句柄必须摘除，否则 play() 误走 resume 分支成假播放
+        if (this.handle === handle) this.handle = null
         if (gen !== this.generation) return
         if (this.state === 'playing') {
           this.state = 'error'
@@ -301,58 +332,87 @@ export class TTSEngine {
     }
   }
 
-  private cacheKey(text: string) {
-    const c = this.openaiCfg
-    return cyrb53(`${this.settings.provider}|${c.model}|${c.voice}|${c.format}|${text}`)
+  private cacheKey(text: string, c: OpenAISpeechConfig = this.openaiCfg) {
+    return cyrb53(`${this.settings.provider}|${c.model}|${c.voice}|${c.format}|${c.instructions ?? ''}|${text}`)
   }
 
-  /** 合成一个片段并返回可播放句柄（带缓存、重试与中止） */
+  /** 合成一个片段并返回可播放句柄（带缓存、指数退避重试与可中止等待） */
   private async createHandle(text: string, gen: number): Promise<PlayHandle> {
     if (this.settings.provider === 'webspeech') {
       return new UtteranceHandle(text, this.settings.rate)
     }
 
-    const key = this.cacheKey(text)
-    const cached = await audioGet(key)
+    // 退避重试窗口可达分钟级，期间 updateConfig 改音色/模型不换代：
+    // 缓存键与全部重试锚定入口配置快照，防止新配置的音频写入旧配置的缓存键
+    const cfg = this.openaiCfg
+    const key = this.cacheKey(text, cfg)
+    // 缓存读失败只当 miss（与写侧 audioPut 的尽力而为对称），不拦合成
+    const cached = await audioGet(key).catch(() => undefined)
     if (gen !== this.generation) throw new Error('aborted')
-    if (cached) return new AudioHandle(cached, this.settings.rate)
+    if (cached) {
+      this.setRetryNote('', gen)
+      return new AudioHandle(cached, this.settings.rate)
+    }
 
     const aborter = (this.aborter = new AbortController())
     let lastErr: any = null
-    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
       if (gen !== this.generation) throw new Error('aborted')
       try {
-        const blob = await synthesizeOpenAI(this.openaiCfg, text, aborter.signal)
+        const blob = await synthesizeOpenAI(cfg, text, aborter.signal)
         if (gen !== this.generation) throw new Error('aborted')
         void audioPut(key, blob).catch(() => {})
+        this.setRetryNote('', gen)
         return new AudioHandle(blob, this.settings.rate)
       } catch (e: any) {
         if (e?.message === 'aborted' || e?.name === 'AbortError') throw new Error('aborted')
+        // 配置类错误（401/404 等）重试救不了：立即上抛，保证无 Key 场景快速报错
+        if (isFatalSpeechError(e)) throw e
         lastErr = e
-        if (attempt < MAX_RETRIES) {
-          await new Promise(r => setTimeout(r, 800 * (attempt + 1)))
-        }
+      }
+      if (attempt < MAX_ATTEMPTS - 1) {
+        const delay = backoffDelay(attempt)
+        this.setRetryNote(`网络异常，${Math.round(delay / 1000)} 秒后重试（第 ${attempt + 2}/${MAX_ATTEMPTS} 次）`, gen)
+        await this.abortableSleep(delay, gen)
       }
     }
     throw lastErr
+  }
+
+  /** 更新自愈提示并广播；换代后（暂停/跳转）静默忽略，防僵尸 loop 污染新状态 */
+  private setRetryNote(note: string, gen: number) {
+    if (gen !== this.generation || this.retryNote === note) return
+    this.retryNote = note
+    this.emit()
+  }
+
+  /** 可中止睡眠：拆成 ≤500ms 分片，每次醒来查代际，暂停/跳转后最迟 500ms 退出 */
+  private async abortableSleep(ms: number, gen: number) {
+    const deadline = Date.now() + ms
+    while (Date.now() < deadline) {
+      const chunk = Math.min(deadline - Date.now(), 500)
+      await new Promise(r => setTimeout(r, chunk))
+      if (gen !== this.generation) throw new Error('aborted')
+    }
   }
 
   /** 后台预取后续 N 个片段到缓存（换代后静默丢弃结果） */
   private prefetchFrom(index: number) {
     if (this.settings.provider === 'webspeech' || !this.derived) return
     const gen = this.generation
+    const cfg = this.openaiCfg
     const segments = this.derived.segments
     const n = this.settings.prefetch
     for (let i = index; i < Math.min(index + n, segments.length); i++) {
       const text = this.slice(segments[i])
-      const key = this.cacheKey(text)
+      const key = this.cacheKey(text, cfg)
       if (this.prefetching.has(key)) continue
       this.prefetching.add(key)
       void (async () => {
         try {
           const cached = await audioGet(key)
           if (cached) return
-          const blob = await synthesizeOpenAI(this.openaiCfg, text)
+          const blob = await synthesizeOpenAI(cfg, text)
           if (gen !== this.generation) return
           await audioPut(key, blob)
         } catch {

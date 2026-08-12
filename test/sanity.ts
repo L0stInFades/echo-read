@@ -7,7 +7,16 @@ import iconv from 'iconv-lite'
 import { decodeText, splitChapters } from '../src/lib/txt'
 import { segmentChapter, segmentIndexAt } from '../src/lib/segment'
 import { paraRanges, layoutBlocks, fragText, boundChapters, joinParagraphs, CHAPTER_MAX_CHARS } from '../src/lib/text'
-import { pickTtsModels } from '../src/tts/providers/openai-speech'
+import { pickTtsModels, buildSpeechBody, parsePcmParams, pcmToWav, buildHeaders, isFatalSpeechError } from '../src/tts/providers/openai-speech'
+import { backoffDelay } from '../src/tts/engine'
+import {
+  canonicalModelId,
+  describeVoice,
+  catalogVoices,
+  groupVoices,
+  defaultVoiceFor,
+  modelHints
+} from '../src/tts/voices'
 
 // 1. UTF-8 解码
 {
@@ -193,6 +202,174 @@ import { pickTtsModels } from '../src/tts/providers/openai-speech'
   assert.deepEqual(pickTtsModels(null), [])
   assert.deepEqual(pickTtsModels({ data: 'junk' }), [])
   console.log('✓ 在线模型筛选（id 启发式 + 腐坏响应兜底）')
+}
+
+// N+2. 在线模型筛选：简介与单价随行（OpenRouter TTS 按字符计价，Gemini 另有 token 价）
+{
+  const models = pickTtsModels({
+    data: [
+      {
+        id: 'hexgrad/kokoro-82m',
+        name: 'Kokoro',
+        architecture: { input_modalities: ['text'], output_modalities: ['speech'] },
+        description: ' 开源轻量 TTS ',
+        pricing: { prompt: '0.00000062', completion: '0' }
+      },
+      {
+        id: 'google/gemini-3.1-flash-tts-preview',
+        name: 'Gemini TTS',
+        architecture: { input_modalities: ['text'], output_modalities: ['speech'] },
+        pricing: { prompt: '0.000001', completion: '0.00002' }
+      }
+    ]
+  })
+  assert.equal(models[1].description, '开源轻量 TTS')
+  assert.equal(models[1].promptPrice, 0.00000062)
+  assert.equal(models[1].completionPrice, undefined) // '0' 不算有效单价
+  assert.equal(models[0].completionPrice, 0.00002)
+  console.log('✓ 在线模型筛选（简介/单价提取）')
+}
+
+// N+3. 音色目录：结构化音色 ID 解析（语言/性别/风格）
+{
+  assert.equal(canonicalModelId('fish-audio/s2.1-pro-free:free'), 'fish-audio/s2.1-pro-free')
+  // Kokoro：前缀 = 语言 + 性别；中文音色有通行中文名
+  const xiaoxiao = describeVoice('hexgrad/kokoro-82m', 'zf_xiaoxiao')
+  assert.deepEqual([xiaoxiao.label, xiaoxiao.lang, xiaoxiao.gender], ['晓晓', 'zh', 'f'])
+  const emma = describeVoice('hexgrad/kokoro-82m', 'bf_emma')
+  assert.deepEqual([emma.label, emma.lang, emma.gender, emma.note], ['Emma', 'en', 'f', '英音'])
+  // Deepgram：aura-2-{name}-{lang}
+  const thalia = describeVoice('deepgram/aura-2', 'aura-2-thalia-en')
+  assert.deepEqual([thalia.label, thalia.lang, thalia.gender], ['Thalia', 'en', 'f'])
+  // Voxtral：{地区}_{人名}_{情绪}
+  const jane = describeVoice('mistralai/voxtral-mini-tts-2603', 'gb_jane_confident')
+  assert.deepEqual([jane.label, jane.lang, jane.gender, jane.note], ['Jane·自信', 'en', 'f', '英音'])
+  // MAI：{locale}-{Name}:MAI-Voice-2
+  const harper = describeVoice('microsoft/mai-voice-2', 'en-US-Harper:MAI-Voice-2')
+  assert.deepEqual([harper.label, harper.lang, harper.gender], ['Harper', 'en', 'f'])
+  // Gemini 具名表
+  const kore = describeVoice('google/gemini-3.1-flash-tts-preview', 'Kore')
+  assert.deepEqual([kore.lang, kore.gender, kore.note], ['multi', 'f', '坚定'])
+  // 未知音色退化为原样标签
+  const raw = describeVoice('unknown/model', 'nova')
+  assert.deepEqual([raw.label, raw.lang], ['nova', undefined])
+  console.log('✓ 音色 ID 解析（Kokoro/Deepgram/Voxtral/MAI/Gemini + 兜底）')
+}
+
+// N+4. 音色目录：兜底表完整性与语言分组排序
+{
+  assert.equal(catalogVoices('hexgrad/kokoro-82m').length, 54)
+  assert.equal(catalogVoices('deepgram/aura-2').length, 90)
+  assert.equal(catalogVoices('mistralai/voxtral-mini-tts-2603').length, 30)
+  assert.equal(catalogVoices('google/gemini-3.1-flash-tts-preview').length, 30)
+  // 开放音色模型不给目录（由 freeVoice 建议接管）
+  assert.equal(catalogVoices('fish-audio/s2.1-pro-free:free').length, 0)
+  assert.equal(catalogVoices('minimax/speech-2.8-turbo').length, 0)
+  // 在线列表优先于兜底表
+  assert.deepEqual(catalogVoices('hexgrad/kokoro-82m', ['zm_yunxi']).map(v => v.id), ['zm_yunxi'])
+  // 分组：中文最前，组内保序
+  const groups = groupVoices(catalogVoices('hexgrad/kokoro-82m'))
+  assert.equal(groups[0].lang, 'zh')
+  assert.equal(groups[0].voices.length, 8)
+  assert.ok(groups.every(g => g.voices.length > 0))
+  console.log('✓ 音色目录（兜底表 54/90/30/30 + 中文分组置顶）')
+}
+
+// N+5. 默认音色：模型偏好 → 中文优先 → 首个；开放音色模型给建议/留空
+{
+  assert.equal(defaultVoiceFor('hexgrad/kokoro-82m'), 'zf_xiaoxiao') // preferred
+  assert.equal(defaultVoiceFor('openai/tts-1-hd', ['nova', 'shimmer']), 'nova') // 无中文 → 首个
+  assert.equal(defaultVoiceFor('fish-audio/s2.1-pro-free:free'), '') // voice 可省略
+  assert.equal(defaultVoiceFor('minimax/speech-2.8-turbo'), 'audiobook_female_1') // 建议首项
+  assert.equal(defaultVoiceFor('google/gemini-3.1-flash-tts-preview'), 'Kore')
+  assert.ok(modelHints('fish-audio/s9-future')?.voiceOptional, '厂商前缀兜底应命中 fish-audio')
+  console.log('✓ 默认音色选择（偏好/中文优先/开放音色）')
+}
+
+// N+6. 请求体组装：OpenRouter 方言（format 收敛、instructions 经 provider.options、voice 省略）
+{
+  const orCfg = {
+    baseUrl: 'https://openrouter.ai/api/v1',
+    apiKey: 'k',
+    model: 'hexgrad/kokoro-82m',
+    voice: 'zf_xiaoxiao',
+    instructions: '温柔一点',
+    format: 'opus' as const
+  }
+  const body = buildSpeechBody(orCfg, '你好')
+  assert.equal(body.response_format, 'mp3') // OpenRouter 不支持 opus → 收敛 mp3
+  assert.deepEqual(body.provider, { options: { openai: { instructions: '温柔一点' } } })
+  assert.equal((body as any).instructions, undefined)
+  // Gemini 仅支持 pcm → 强制 pcm
+  const gemini = buildSpeechBody({ ...orCfg, model: 'google/gemini-3.1-flash-tts-preview', voice: 'Kore' }, 'hi')
+  assert.equal(gemini.response_format, 'pcm')
+  // voice 留空 → 省略参数（fish 默认音色场景）
+  const fish = buildSpeechBody({ ...orCfg, model: 'fish-audio/s1', voice: ' ' }, 'hi')
+  assert.equal('voice' in fish, false)
+  // 非 OpenRouter（OpenAI 官方等）：保留顶层 instructions 与原始 format
+  const oa = buildSpeechBody({ ...orCfg, baseUrl: 'https://api.openai.com/v1' }, 'hi')
+  assert.equal(oa.response_format, 'opus')
+  assert.equal(oa.instructions, '温柔一点')
+  assert.equal((oa as any).provider, undefined)
+  console.log('✓ 请求体组装（OpenRouter 方言 vs OpenAI 官方）')
+}
+
+// N+7. PCM 封 WAV：Content-Type 参数解析 + RIFF 头
+{
+  assert.deepEqual(parsePcmParams('audio/pcm;rate=24000;channels=1'), { rate: 24000, channels: 1 })
+  assert.deepEqual(parsePcmParams('audio/pcm'), { rate: 24000, channels: 1 }) // 缺省值
+  const pcm = new Uint8Array([1, 2, 3, 4]).buffer
+  const wav = pcmToWav(pcm, 24000, 1)
+  assert.equal(wav.type, 'audio/wav')
+  assert.equal(wav.size, 44 + 4)
+  const head = new DataView(await wav.arrayBuffer())
+  assert.equal(String.fromCharCode(head.getUint8(0), head.getUint8(1), head.getUint8(2), head.getUint8(3)), 'RIFF')
+  assert.equal(head.getUint32(24, true), 24000) // 采样率
+  assert.equal(head.getUint16(22, true), 1) // 声道
+  assert.equal(head.getUint32(40, true), 4) // data 长度
+  console.log('✓ PCM 封 WAV（参数解析 + RIFF 头字段）')
+}
+
+// N+8. 请求头组装：归因头只对 OpenRouter 附加，其他服务保持纯净
+{
+  const cfg = {
+    baseUrl: 'https://openrouter.ai/api/v1',
+    apiKey: 'sk-or-test',
+    model: 'hexgrad/kokoro-82m',
+    voice: 'zf_xiaoxiao',
+    format: 'mp3' as const
+  }
+  const or = buildHeaders(cfg)
+  assert.equal(or.Authorization, 'Bearer sk-or-test')
+  assert.equal(or['X-OpenRouter-Title'], 'EchoRead')
+  assert.ok(or['HTTP-Referer']?.startsWith('https://'), 'HTTP-Referer 缺失')
+  const oa = buildHeaders({ ...cfg, baseUrl: 'https://api.openai.com/v1' })
+  assert.equal(oa.Authorization, 'Bearer sk-or-test')
+  assert.equal(oa['X-OpenRouter-Title'], undefined)
+  assert.equal(oa['HTTP-Referer'], undefined)
+  console.log('✓ 请求头组装（OpenRouter 归因头按端点附加）')
+}
+
+// N+9. 指数退避：固定 rand 消除随机性（1s 起倍增、30s 封顶、±20% 抖动边界）
+{
+  assert.deepEqual(
+    [0, 1, 2, 3, 4, 5, 6].map(a => backoffDelay(a, () => 0.5)),
+    [1000, 2000, 4000, 8000, 16000, 30000, 30000]
+  )
+  assert.equal(backoffDelay(0, () => 0), 800) // -20% 下界
+  assert.equal(backoffDelay(0, () => 1), 1200) // +20% 上界
+  assert.equal(backoffDelay(5, () => 0), 24000)
+  assert.equal(backoffDelay(5, () => 1), 36000)
+  console.log('✓ 指数退避（倍增封顶 + 抖动边界）')
+}
+
+// N+10. 致命合成错误判定：4xx 配置类立即失败，408/429/5xx/网络层错误可重试
+{
+  const withStatus = (status: number) => Object.assign(new Error(`HTTP ${status}`), { status })
+  for (const s of [400, 401, 402, 404]) assert.equal(isFatalSpeechError(withStatus(s)), true, `${s} 应为致命错误`)
+  for (const s of [429, 408, 500, 502]) assert.equal(isFatalSpeechError(withStatus(s)), false, `${s} 应可重试`)
+  assert.equal(isFatalSpeechError(new TypeError('fetch failed')), false)
+  console.log('✓ 致命合成错误判定（4xx 配置类 vs 可重试）')
 }
 
 console.log('\n全部冒烟测试通过')
