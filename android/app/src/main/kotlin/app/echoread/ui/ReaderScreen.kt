@@ -226,10 +226,13 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
             prev != null && a.chapter == target && prev.pageCount > a.page -> laid.pageOf(prev.pageStartOffset(a.page))
             else -> a.page
         }
+        var landed = false
         preemptable {
             pager.jumpTo(PageRef(target, landing.coerceIn(0, laid.pageCount - 1))) { window.put(target, laid, sp) }
+            landed = true
         }
-        if (req != null) request = null
+        // 被更高优先级抢占时请求必须留着：preemptable 会把取消吞掉，这里若照常清空就等于把切章请求丢了
+        if (landed && req != null) request = null
     }
 
     // 排版规格去抖：字号/行距滑块每像素回调不再触发整章重排；首屏不等待
@@ -359,7 +362,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
 
     /* ---------- 进度：手动翻页（非播放中）也记录当前页首字 ---------- */
 
-    var lastManualSave by remember { mutableStateOf(0L) }
+    var lastManualSave by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
     LaunchedEffect(pager.anchor, curPages, playing) {
         val pg = curPages ?: return@LaunchedEffect
         if (playing) return@LaunchedEffect
@@ -475,8 +478,11 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
     }
     BackHandler { leave() }
 
+    // 只消费一次：重排版会换出新的 ChapterPages，光靠宿主把 autoplay 置回 false 不够及时
+    var autoplayDone by remember { mutableStateOf(false) }
     LaunchedEffect(autoplay, curPages) {
-        if (autoplay && curPages != null) {
+        if (autoplay && !autoplayDone && curPages != null) {
+            autoplayDone = true
             onAutoplayConsumed()
             togglePlay()
         }

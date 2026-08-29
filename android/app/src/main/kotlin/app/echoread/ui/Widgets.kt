@@ -42,6 +42,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -80,6 +81,7 @@ import app.echoread.ui.motion.Thr
 import app.echoread.ui.motion.driveVertically
 import app.echoread.ui.motion.echoPress
 import app.echoread.ui.motion.echoTap
+import app.echoread.ui.motion.preemptable
 import app.echoread.ui.motion.settleTarget
 import kotlinx.coroutines.launch
 
@@ -388,7 +390,9 @@ fun BoxScope.EchoSheet(
     val dismissRef = rememberUpdatedState(onDismiss)
     var mounted by remember { mutableStateOf(false) }
 
-    // open 只是「目标」，动画永远从当前呈现值出发
+    // open 只是「目标」，动画永远从当前呈现值出发。
+    // 这里刻意不包 preemptable：被手指抢占时就该跳过 mounted = false（用户正抓着它），
+    // 收尾交给下面的对账 effect。
     LaunchedEffect(open) {
         if (open) {
             mounted = true
@@ -397,6 +401,18 @@ fun BoxScope.EchoSheet(
             driver.animateTo(0f, spec = EchoMotion.Emphasized.float())
             mounted = false
         }
+    }
+
+    // 对账：宿主说已关闭、手指也松开了，就必须收敛到「落到底 → 卸载」。
+    // 没有它的话，「关闭动画播到一半被手指抓住」会让 LaunchedEffect(open) 随之取消，
+    // 而 open 已经是 false、不会再触发一次 —— 弹层就永远卡在挂载态（一层看不见却拦点击的遮罩）。
+    LaunchedEffect(Unit) {
+        snapshotFlow { Triple(open, driver.isDragging, driver.isSettling) }
+            .collect { (want, dragging, settling) ->
+                if (want || dragging || settling) return@collect
+                if (driver.value > 0.001f) preemptable { driver.animateTo(0f, spec = EchoMotion.Emphasized.float()) }
+                else mounted = false
+            }
     }
 
     // 松手落点：逃逸速度 → 投影 → 阈值，与翻页共用同一套判定

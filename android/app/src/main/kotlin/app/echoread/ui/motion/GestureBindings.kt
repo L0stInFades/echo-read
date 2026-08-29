@@ -3,8 +3,6 @@ package app.echoread.ui.motion
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
-import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.ui.Modifier
@@ -20,6 +18,8 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.abs
+import kotlin.math.sign
 
 /** 速度继承系数：完全继承会让连续快扫失控，完全丢弃会让「追着自己的动画再推一把」没反应 */
 const val VELOCITY_CARRY_RATIO = 0.5f
@@ -102,19 +102,38 @@ private fun Modifier.driveAxis(
             if (!enabled()) return@awaitEachGesture
             val tracker = VelocityTracker()
             tracker.addPointerInputChange(down)
+            // 自己等 slop：官方的 awaitXxxTouchSlopOrCancellation 用一个 null 同时表示「抬手」「被别人消费」
+            // 「另一轴移动过大」，三者不能混为一谈 —— 否则一次纵向滑动会被当成点按去翻页 / 点读。
+            val slop = viewConfiguration.touchSlop
+            var travel = Offset.Zero
             var overSlop = 0f
             var dragging = false
-            val slopChange = if (orientation == Orientation.Horizontal) {
-                awaitHorizontalTouchSlopOrCancellation(down.id) { c, over -> c.consume(); dragging = true; overSlop = over }
-            } else {
-                awaitVerticalTouchSlopOrCancellation(down.id) { c, over -> c.consume(); dragging = true; overSlop = over }
+            var tapped = false
+            while (true) {
+                val ev = awaitPointerEvent()
+                val ch = ev.changes.firstOrNull { it.id == down.id }
+                if (ch == null || ch.isConsumed) break
+                if (!ch.pressed) {
+                    // 抬手：位移仍在 slop 内才算点按
+                    tapped = travel.getDistance() <= slop
+                    break
+                }
+                tracker.addPointerInputChange(ch)
+                travel += ch.positionChange()
+                val main = axisOf(travel, orientation)
+                if (abs(main) > slop) {
+                    overSlop = main - sign(main) * slop
+                    dragging = true
+                    ch.consume()
+                    break
+                }
+                // 另一轴明显主导：既不接管也不算点按，把手势让给别人
+                if (abs(crossAxisOf(travel, orientation)) > slop * 1.5f) break
             }
-            if (!dragging || slopChange == null) {
-                // 未达到 touch slop 就抬手 —— 纯点击（左右点按翻页 / 中间点读）
-                if (!dragging && onTap != null) onTap(down.position, size)
+            if (!dragging) {
+                if (tapped && onTap != null) onTap(down.position, size)
                 return@awaitEachGesture
             }
-            tracker.addPointerInputChange(slopChange)
             onDragStart()
             signals.trySend(DriveSignal.Start)
             // 内容位移与手指方向相反：手指左滑 = 下一页进来 = value 增大
@@ -141,3 +160,6 @@ private fun Modifier.driveAxis(
 
 private fun axisOf(offset: Offset, orientation: Orientation): Float =
     if (orientation == Orientation.Horizontal) offset.x else offset.y
+
+private fun crossAxisOf(offset: Offset, orientation: Orientation): Float =
+    if (orientation == Orientation.Horizontal) offset.y else offset.x

@@ -155,7 +155,8 @@ class MotionDriver(initialValue: Float = 0f, private val threshold: Float = Thr.
      * 返回实际消费的像素。动画进行中不参与，避免与 Animatable 抢写同一个值。
      */
     fun dispatchRawDeltaPx(deltaPx: Float, bounds: ClosedFloatingPointRange<Float>? = null): Float {
-        if (isSettling) return 0f
+        // 动画在跑或手指正持有时一律让位：这条路径不走 MutatorMutex，同时写入会互相覆盖
+        if (isSettling || isDragging) return 0f
         val before = value
         val raw = before + deltaPx / safeUnit
         value = if (bounds == null) raw else applyRubberBand(raw, bounds)
