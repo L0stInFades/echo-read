@@ -23,8 +23,8 @@ android {
         applicationId = "app.echoread"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = (project.findProperty("APP_VERSION_CODE") as String).toInt()
+        versionName = project.findProperty("APP_VERSION_NAME") as String
         vectorDrawables.useSupportLibrary = true
     }
 
