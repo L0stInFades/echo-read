@@ -11,6 +11,9 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshots.Snapshot
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.isActive
+import kotlin.coroutines.coroutineContext
 import kotlin.math.abs
 import kotlin.math.sign
 
@@ -131,11 +134,19 @@ class MotionDriver(initialValue: Float = 0f, private val threshold: Float = Thr.
         }
     }
 
-    suspend fun snapTo(v: Float, priority: MutatePriority = MutatePriority.PreventUserInput) {
+    /** 抢占并原子落位：取消在跑的动画后，把模型层与呈现值放在同一次 snapshot 里复位 */
+    suspend fun snapTo(
+        v: Float,
+        priority: MutatePriority = MutatePriority.PreventUserInput,
+        commitModel: (() -> Unit)? = null,
+    ) {
         mutex.mutate(priority) {
             running = null
             carried = 0f
-            value = v
+            Snapshot.withMutableSnapshot {
+                commitModel?.invoke()
+                value = v
+            }
         }
     }
 
@@ -176,4 +187,17 @@ fun applyRubberBand(x: Float, bounds: ClosedFloatingPointRange<Float>): Float {
     }
     val edge = if (over > 0f) bounds.endInclusive else bounds.start
     return edge + sign(over) * (1f - 1f / (abs(over) * Rubber.C + 1f))
+}
+
+/**
+ * 驱动器被更高优先级抢占（手指按下打断程序化动画，或程序化动画让位给手指）时，`MutatorMutex`
+ * 抛的是 `CancellationException` —— 那不是「我这个协程被取消了」，不该把外层的手势泵 / Flow 收集
+ * 一起带走。只有自身确实被取消时才继续向上抛。
+ */
+suspend fun preemptable(block: suspend () -> Unit) {
+    try {
+        block()
+    } catch (e: CancellationException) {
+        if (!coroutineContext.isActive) throw e
+    }
 }

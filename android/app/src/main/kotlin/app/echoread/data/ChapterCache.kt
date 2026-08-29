@@ -8,6 +8,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -60,6 +61,19 @@ class ChapterCache(private val dao: BookDao) {
         return result
     }
 
+    /**
+     * 邻章预取：只触发派生（DB 读 + 段落/片段切分），不等待结果、失败静默。
+     * 翻页越过章界时下一章已经在缓存里，视图层就不必再走「置空 → 转圈 → 硬切」那条路。
+     */
+    fun prefetch(bookId: String, index: Int, maxChunk: Int) {
+        if (index < 0) return
+        val key = keyOf(bookId, index, maxChunk)
+        scope.launch {
+            mutex.withLock { if (cache.containsKey(key) || pending.containsKey(key)) return@launch }
+            runCatching { get(bookId, index, maxChunk) }
+        }
+    }
+
     suspend fun invalidate(bookId: String) {
         mutex.withLock {
             cache.keys.removeAll { it.startsWith("$bookId:") }
@@ -68,6 +82,7 @@ class ChapterCache(private val dao: BookDao) {
     }
 
     companion object {
-        private const val LRU_MAX = 4
+        // 3 章窗口（上一章 / 当前章 / 下一章）+ 1 个余量
+        private const val LRU_MAX = 5
     }
 }
