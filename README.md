@@ -23,6 +23,10 @@
 
 书籍元数据、章节目录、章节正文、音频缓存分仓存储于 IndexedDB（`idb`），大书不卡顿。
 
+## 安卓原生版
+
+`android/` 目录是一套独立的 **Kotlin 原生安卓应用**（Jetpack Compose + Room + Media3），功能与网页版对齐：任意字点读、OpenRouter/OpenAI 兼容 TTS 与系统语音兜底、锁屏与通知栏控制、后台连播、断网自愈、音频缓存、TXT/EPUB 导入。设计上融合了 HarmonyOS 的大圆角卡片、One UI 的大标题下沉与拇指可达布局、ColorOS 式弹簧动效。构建与使用见 [android/README.md](android/README.md)。
+
 ## 技术栈
 
 Vite 6 · Vue 3 · TypeScript · Pinia · Vue Router（hash 模式，静态托管友好）· Tailwind CSS 4 · vite-plugin-pwa（Workbox）· JSZip · jschardet · idb
