@@ -95,6 +95,9 @@ class TtsEngine(
 
     val current: EngineSnapshot get() = _snapshot.value
 
+    /** 当前片段已朗读的比例（0..1，按音频进度）；无在播句柄时为 0 */
+    fun playbackFraction(): Float = if (handle != null) playback.progressFraction() else 0f
+
     private fun emit() {
         _snapshot.value = EngineSnapshot(
             state = state,

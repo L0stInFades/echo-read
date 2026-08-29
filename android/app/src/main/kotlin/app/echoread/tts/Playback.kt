@@ -130,6 +130,13 @@ class Playback(private val context: Context) {
         }
     }
 
+    /** 当前片段的播放进度 0..1（无时长信息时为 0） */
+    fun progressFraction(): Float {
+        if (!playerCreated) return 0f
+        val d = player.duration
+        return if (d > 0) (player.currentPosition.toFloat() / d).coerceIn(0f, 1f) else 0f
+    }
+
     /** 播放一个音频文件；deleteAfter 为临时文件（系统语音）播完即删 */
     fun play(file: File, rate: Float, deleteAfter: Boolean = false): PlayHandle {
         current?.detach()
