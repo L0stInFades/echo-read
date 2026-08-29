@@ -107,6 +107,11 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
+import androidx.compose.ui.graphics.CompositingStrategy
+import app.echoread.ui.motion.EchoMotion
+import app.echoread.ui.motion.EchoTransitions
+import app.echoread.ui.motion.PressScale
+import app.echoread.ui.motion.echoPress
 
 private val RATE_STEPS = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 private val SLEEP_OPTIONS: List<Pair<String, SleepMode>> = listOf(
@@ -579,7 +584,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
                 }
 
                 // 睡眠定时选项：悬浮在页面区底部（临时弹出，不改变页面尺寸）
-                androidx.compose.animation.AnimatedVisibility(visible = showSleep, enter = Motion.expandIn, exit = Motion.collapseOut, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp).zIndex(5f)) {
+                androidx.compose.animation.AnimatedVisibility(visible = showSleep, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp).zIndex(5f)) {
                     FlowRow(
                         Modifier
                             .shadow(18.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.4f))
@@ -619,7 +624,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(
-                        Modifier.weight(1f).height(40.dp).bounceClick(pressedScale = 0.99f) {
+                        Modifier.weight(1f).height(40.dp).echoPress(pressedScale = PressScale.Tile) {
                             // 点标题：播放中回到朗读所在页（跨章则装载朗读章）并恢复跟随；否则打开目录
                             if (playing && !follow) {
                                 follow = true
@@ -661,12 +666,12 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
                         Text(
                             if (sleepMode === SleepMode.Chapter) "本章" else "%d:%02d".format(java.util.Locale.ROOT, sleepRemaining / 60, sleepRemaining % 60),
                             color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                            modifier = Modifier.bounceClick { showSleep = !showSleep }.padding(horizontal = 6.dp, vertical = 8.dp)
+                            modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showSleep = !showSleep }.padding(horizontal = 6.dp, vertical = 8.dp)
                         )
                     }
                     Text(
                         "${formatRate(tts.rate)}×", color = theme.text.copy(alpha = 0.75f), fontSize = 11.sp, fontWeight = FontWeight.Bold,
-                        modifier = Modifier.bounceClick { cycleRate() }.padding(horizontal = 8.dp, vertical = 8.dp)
+                        modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { cycleRate() }.padding(horizontal = 8.dp, vertical = 8.dp)
                     )
                 }
             }
@@ -732,22 +737,27 @@ private fun PageCanvas(pages: ChapterPages, page: Int, active: Range?, synthesiz
 @Composable
 private fun PlayButton(playing: Boolean, busy: Boolean, onClick: () -> Unit) {
     // 播放中用静态柔光 + 状态切换时的弹簧缩放，而非持续 60fps 的呼吸环：听书动辄数小时，省电优先
-    val glow by animateFloatAsState(if (playing) 1f else 0f, Motion.soft, label = "glow")
-    val pop by animateFloatAsState(if (playing) 1.06f else 1f, Motion.bouncy, label = "pop")
+    val glow by animateFloatAsState(if (playing) 1f else 0f, EchoMotion.Gentle.float(), label = "glow")
+    val pop by animateFloatAsState(if (playing) 1.06f else 1f, EchoMotion.Playful.float(), label = "pop")
+    val brush = rememberAurora()
+    val ringBrush = rememberAurora()
     Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
         Box(
             Modifier
                 .size(52.dp)
-                .graphicsLayer { scaleX = 1f + glow * 0.18f; scaleY = 1f + glow * 0.18f; alpha = glow * 0.35f }
-                .background(Aurora, CircleShape)
+                .graphicsLayer {
+                    scaleX = 1f + glow * 0.18f; scaleY = 1f + glow * 0.18f; alpha = glow * 0.35f
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                }
+                .background(ringBrush, CircleShape)
         )
         Box(
             Modifier
                 .size(48.dp)
                 .graphicsLayer { scaleX = pop; scaleY = pop }
                 .shadow(12.dp, CircleShape, spotColor = Color(0xFF7C9BFF).copy(alpha = 0.6f))
-                .background(Aurora, CircleShape)
-                .bounceClick(pressedScale = 0.9f, onClick = onClick),
+                .echoPress(pressedScale = PressScale.Button, onClickLabel = if (playing) "暂停" else "播放", onClick = onClick)
+                .background(brush, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             if (busy) CircularProgressIndicator(color = Color.White, strokeWidth = 2.5.dp, modifier = Modifier.size(20.dp))

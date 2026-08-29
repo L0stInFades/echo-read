@@ -54,6 +54,9 @@ import app.echoread.tts.Voices
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import app.echoread.ui.motion.EchoTransitions
+import app.echoread.ui.motion.PressScale
+import app.echoread.ui.motion.echoPress
 
 /* ---------- 目录 ---------- */
 
@@ -72,7 +75,7 @@ fun BoxScope.ChapterListSheet(open: Boolean, titles: List<String>, current: Int,
                     Modifier
                         .fillMaxWidth()
                         .background(if (active) c.accentSoft else Color.Transparent, RoundedCornerShape(Radius.md))
-                        .bounceClick(pressedScale = 0.98f) { onSelect(i); onClose() }
+                        .echoPress(pressedScale = PressScale.Tile) { onSelect(i); onClose() }
                         .padding(horizontal = 12.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -108,7 +111,7 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                             .height(50.dp)
                             .background(t.bg, RoundedCornerShape(Radius.md))
                             .border(if (selected) 2.dp else 1.dp, if (selected) c.accent else c.border, RoundedCornerShape(Radius.md))
-                            .bounceClick { graph.settings.updateReader { r -> r.copy(theme = t.id) } },
+                            .echoPress(pressedScale = PressScale.Chip) { graph.settings.updateReader { r -> r.copy(theme = t.id) } },
                         contentAlignment = Alignment.Center
                     ) { Text("文", color = t.text, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
                     Spacer(Modifier.height(5.dp))
@@ -257,7 +260,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
             SectionLabel(if (isOpenRouter) "OpenRouter" else "API 配置") {
                 if (isOpenRouter) Text(
                     "创建 Key →", color = c.accent, fontSize = 12.sp,
-                    modifier = Modifier.bounceClick(pressedScale = 0.97f) { runCatching { uriHandler.openUri("https://openrouter.ai/settings/keys") } }
+                    modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { runCatching { uriHandler.openUri("https://openrouter.ai/settings/keys") } }
                 )
             }
             EchoTextField(tts.openai.baseUrl, { v -> settings.updateOpenAI { it.copy(baseUrl = v.trim()) } }, label = "Base URL", placeholder = "https://openrouter.ai/api/v1", keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri)
@@ -280,7 +283,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                 Spacer(Modifier.width(7.dp))
                 Text(text, color = if (sync is SyncState.Failed) c.danger else c.text2, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
                 if (sync !is SyncState.Syncing && tts.openai.apiKey.isNotBlank()) {
-                    Text("刷新", color = c.accent, fontSize = 12.sp, modifier = Modifier.bounceClick(pressedScale = 0.95f) { scope.launch { syncModels(tts.openai, silent = false) } }.padding(start = 8.dp))
+                    Text("刷新", color = c.accent, fontSize = 12.sp, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { scope.launch { syncModels(tts.openai, silent = false) } }.padding(start = 8.dp))
                 }
             }
             Spacer(Modifier.height(18.dp))
@@ -317,7 +320,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                                 .fillMaxWidth()
                                 .background(if (selected) c.accentSoft else c.cardAlt, RoundedCornerShape(Radius.md))
                                 .border(1.dp, if (selected) c.accent else Color.Transparent, RoundedCornerShape(Radius.md))
-                                .bounceClick(pressedScale = 0.985f) { settings.setModel(m.id) }
+                                .echoPress(pressedScale = PressScale.Tile) { settings.setModel(m.id) }
                                 .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -431,9 +434,9 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
         Text(
             if (showAdvanced) "收起高级选项 ▲" else "高级选项 ▼",
             color = c.text2, fontSize = 12.sp,
-            modifier = Modifier.bounceClick(pressedScale = 0.97f) { showAdvanced = !showAdvanced }.padding(vertical = 4.dp)
+            modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showAdvanced = !showAdvanced }.padding(vertical = 4.dp)
         )
-        AnimatedVisibility(showAdvanced, enter = Motion.expandIn, exit = Motion.collapseOut) {
+        AnimatedVisibility(showAdvanced, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut) {
             EchoCard(Modifier.padding(top = 8.dp), radius = Radius.lg, padding = androidx.compose.foundation.layout.PaddingValues(14.dp), color = c.cardAlt) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Text("单片段字数 ", color = c.text, fontSize = 13.sp)
@@ -452,7 +455,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                         if (st == null) "音频缓存 …" else "音频缓存 ${st.count} 条 · ${formatBytes(st.bytes)}",
                         color = c.text2, fontSize = 12.sp, modifier = Modifier.weight(1f)
                     )
-                    Text("清空", color = c.danger, fontSize = 12.sp, modifier = Modifier.bounceClick {
+                    Text("清空", color = c.danger, fontSize = 12.sp, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) {
                         scope.launch {
                             graph.audioCache.clear()
                             cacheStats = graph.audioCache.stats()
@@ -507,7 +510,7 @@ fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Un
                 Modifier
                     .fillMaxWidth()
                     .background(c.cardAlt, RoundedCornerShape(Radius.md))
-                    .bounceClick(pressedScale = 0.98f, enabled = !checking) {
+                    .echoPress(pressedScale = PressScale.Tile, enabled = !checking) {
                         checking = true
                         scope.launch {
                             val r = runCatching { graph.updater.check(force = true) }.getOrNull()

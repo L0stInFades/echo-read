@@ -1,14 +1,10 @@
 package app.echoread.ui
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -20,12 +16,10 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -41,18 +35,28 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -62,12 +66,25 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.activity.compose.BackHandler
-import kotlin.math.roundToInt
+import app.echoread.ui.motion.Dur
+import app.echoread.ui.motion.Ease
+import app.echoread.ui.motion.EchoMotion
+import app.echoread.ui.motion.MotionDriver
+import app.echoread.ui.motion.PressScale
+import app.echoread.ui.motion.Thr
+import app.echoread.ui.motion.driveVertically
+import app.echoread.ui.motion.echoPress
+import app.echoread.ui.motion.echoTap
+import app.echoread.ui.motion.settleTarget
+import kotlinx.coroutines.launch
+
+/** 颜色不做弹簧：色彩空间上过冲没有意义，短 tween 更省（一屏 20 个 Chip 曾经是 60 条并发弹簧） */
+private val colorSpec = tween<Color>(Dur.Short, easing = Ease.Standard)
 
 /* ---------- 卡片 / 分组 ---------- */
 
@@ -103,7 +120,7 @@ fun SectionLabel(text: String, modifier: Modifier = Modifier, trailing: (@Compos
 
 /* ---------- 按钮 ---------- */
 
-/** 圆形图标按钮（按压回弹，无水波纹） */
+/** 圆形图标按钮（按压回弹，无水波纹）。命中区恒为 [size]，缩放只发生在其内部。 */
 @Composable
 fun IconButtonEcho(
     icon: ImageVector,
@@ -119,9 +136,18 @@ fun IconButtonEcho(
     Box(
         modifier
             .size(size)
-            .graphicsLayer { alpha = if (enabled) 1f else 0.3f }
-            .background(background, CircleShape)
-            .bounceClick(enabled = enabled, pressedScale = 0.88f, onClick = onClick),
+            .graphicsLayer {
+                alpha = if (enabled) 1f else 0.3f
+                compositingStrategy = CompositingStrategy.ModulateAlpha
+            }
+            .echoPress(
+                enabled = enabled,
+                pressedScale = PressScale.Icon,
+                pressedAlpha = 0.6f,
+                onClickLabel = contentDescription,
+                onClick = onClick
+            )
+            .background(background, CircleShape),
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, contentDescription, tint = tint, modifier = Modifier.size(iconSize))
@@ -139,12 +165,16 @@ fun GradientButton(
     fontSize: Int = 15,
     onClick: () -> Unit
 ) {
+    val brush = rememberAurora()
     Row(
         modifier
             .height(height)
-            .graphicsLayer { alpha = if (enabled) 1f else 0.6f }
-            .background(Aurora, CircleShape)
-            .bounceClick(enabled = enabled, onClick = onClick)
+            .graphicsLayer {
+                alpha = if (enabled) 1f else 0.6f
+                compositingStrategy = CompositingStrategy.ModulateAlpha
+            }
+            .echoPress(enabled = enabled, pressedScale = PressScale.Button, onClick = onClick)
+            .background(brush, CircleShape)
             .padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
@@ -164,9 +194,9 @@ fun OutlineButton(text: String, modifier: Modifier = Modifier, color: Color = ec
     Box(
         modifier
             .height(height)
+            .echoPress(pressedScale = PressScale.Button, onClick = onClick)
             .border(1.dp, c.border, CircleShape)
             .background(c.card, CircleShape)
-            .bounceClick(onClick = onClick)
             .padding(horizontal = 20.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -185,14 +215,14 @@ fun Chip(
     onClick: () -> Unit
 ) {
     val c = echo
-    val bg by animateColorAsState(if (selected) c.accentSoft else Color.Transparent, Motion.colorSpring, label = "chipBg")
-    val fg by animateColorAsState(if (selected) c.accent else c.text2, Motion.colorSpring, label = "chipFg")
-    val border by animateColorAsState(if (selected) c.accent else c.border, Motion.colorSpring, label = "chipBorder")
+    val bg by animateColorAsState(if (selected) c.accentSoft else Color.Transparent, colorSpec, label = "chipBg")
+    val fg by animateColorAsState(if (selected) c.accent else c.text2, colorSpec, label = "chipFg")
+    val border by animateColorAsState(if (selected) c.accent else c.border, colorSpec, label = "chipBorder")
     Row(
         modifier
+            .echoPress(pressedScale = PressScale.Chip, onClick = onClick)
             .border(1.dp, border, CircleShape)
             .background(bg, CircleShape)
-            .bounceClick(pressedScale = 0.93f, onClick = onClick)
             .padding(horizontal = 11.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -215,13 +245,13 @@ fun OptionTile(
     onClick: () -> Unit
 ) {
     val c = echo
-    val bg by animateColorAsState(if (selected) c.accentSoft else c.cardAlt, Motion.colorSpring, label = "tileBg")
-    val border by animateColorAsState(if (selected) c.accent else Color.Transparent, Motion.colorSpring, label = "tileBorder")
+    val bg by animateColorAsState(if (selected) c.accentSoft else c.cardAlt, colorSpec, label = "tileBg")
+    val border by animateColorAsState(if (selected) c.accent else Color.Transparent, colorSpec, label = "tileBorder")
     Column(
         modifier
+            .echoPress(pressedScale = PressScale.Tile, onClick = onClick)
             .background(bg, RoundedCornerShape(Radius.md))
             .border(1.dp, border, RoundedCornerShape(Radius.md))
-            .bounceClick(pressedScale = 0.97f, onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
         Text(title, color = c.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, style = titleStyle)
@@ -315,17 +345,34 @@ fun EchoSlider(
     )
 }
 
-/** 细进度条（渐变） */
+/** 细进度条（渐变）：进度值只在 draw lambda 里读，不再用 `fillMaxWidth(fraction)` 承载动画（那是每帧重测量） */
 @Composable
 fun GradientBar(progress: Float, modifier: Modifier = Modifier, height: Dp = 3.dp, track: Color = echo.border) {
-    val p by animateFloatAsState(progress.coerceIn(0f, 1f), Motion.soft, label = "bar")
-    Box(modifier.height(height).clip(CircleShape).background(track)) {
-        Box(Modifier.fillMaxHeight().fillMaxWidth(p).background(Aurora, CircleShape))
-    }
+    val target = progress.coerceIn(0f, 1f)
+    val p = remember { Animatable(target, Thr.FRAC) }
+    LaunchedEffect(target) { p.animateTo(target, EchoMotion.Gentle.float()) }
+    val brush = rememberAurora()
+    Spacer(
+        modifier
+            .height(height)
+            .drawBehind {
+                val r = CornerRadius(size.height / 2f, size.height / 2f)
+                drawRoundRect(track, cornerRadius = r)
+                val w = size.width * p.value
+                if (w > 0.5f) drawRoundRect(brush, size = Size(w, size.height), cornerRadius = r)
+            }
+    )
 }
 
-/* ---------- 底部弹层（半模态，弹簧上浮，可拖拽关闭） ---------- */
+/* ---------- 底部弹层（半模态，整体由驱动器驱动，可拖拽关闭） ---------- */
 
+/**
+ * 打开 / 关闭 / 拖拽是**同一条呈现值**，因此：
+ * - 下拉一半松手不再「先跳回顶部再滑下去」（旧实现 `drag = 0f` 瞬时归零 + tween 出场）；
+ * - 遮罩 alpha 由同一个 `driver.value` 派生（`drawBehind`），物理上不可能与弹层脱节；
+ * - 关闭动画中再点开，从当前位置连续回到展开位；
+ * - 内容滚到顶再下拉，经 nestedScroll 交给弹层。
+ */
 @Composable
 fun BoxScope.EchoSheet(
     open: Boolean,
@@ -336,82 +383,104 @@ fun BoxScope.EchoSheet(
     content: @Composable ColumnScope.() -> Unit
 ) {
     val c = echo
-    BackHandler(enabled = open) { onDismiss() }
-    AnimatedVisibility(
-        visible = open,
-        enter = androidx.compose.animation.fadeIn(Motion.spring),
-        exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(200)),
-        modifier = Modifier.matchParentSize().zIndex(40f)
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.5f))
-                .bounceClick(pressedScale = 1f, onClick = onDismiss)
-        )
-    }
-    AnimatedVisibility(
-        visible = open,
-        enter = Motion.sheetEnter,
-        exit = Motion.sheetExit,
-        modifier = Modifier.align(Alignment.BottomCenter).zIndex(50f)
-    ) {
-        var drag by remember { mutableFloatStateOf(0f) }
-        val dragState = rememberDraggableState { delta -> drag = (drag + delta).coerceAtLeast(0f) }
-        val shape = RoundedCornerShape(topStart = Radius.xl, topEnd = Radius.xl)
-        Column(
-            Modifier
-                .offset { IntOffset(0, drag.roundToInt()) }
-                .fillMaxWidth()
-                .fillMaxHeight(maxHeightFraction)
-                .background(c.card, shape)
-                .border(1.dp, c.border, shape)
-                .imePadding()
-        ) {
-            // 拖拽把手与标题区：下拉超过阈值即关闭（ColorOS 手势）
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .draggable(
-                        state = dragState,
-                        orientation = Orientation.Vertical,
-                        onDragStopped = { velocity ->
-                            if (drag > 140f || velocity > 1800f) onDismiss()
-                            drag = 0f
-                        }
-                    )
-                    .padding(top = 8.dp)
-            ) {
-                Box(Modifier.align(Alignment.CenterHorizontally).width(36.dp).height(4.dp).background(c.text3.copy(alpha = 0.5f), CircleShape))
-                Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 12.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, color = c.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                    IconButtonEcho(EchoIcons.Close, "关闭", size = 36.dp, iconSize = 18.dp, onClick = onDismiss)
-                }
-            }
-            val scroll = rememberScrollState()
-            Column(
-                Modifier
-                    .weight(1f, fill = false)
-                    .fillMaxWidth()
-                    .let { if (scrollable) it.verticalScroll(scroll) else it }
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 20.dp)
-                    .windowInsetsPadding(WindowInsets.navigationBars),
-                content = content
-            )
+    val driver = remember { MotionDriver(0f) }
+    val scope = rememberCoroutineScope()
+    val dismissRef = rememberUpdatedState(onDismiss)
+    var mounted by remember { mutableStateOf(false) }
+
+    // open 只是「目标」，动画永远从当前呈现值出发
+    LaunchedEffect(open) {
+        if (open) {
+            mounted = true
+            driver.animateTo(1f, spec = EchoMotion.Emphasized.float())
+        } else if (mounted) {
+            driver.animateTo(0f, spec = EchoMotion.Emphasized.float())
+            mounted = false
         }
     }
-}
 
-/** 透明点击拦截层（用于遮罩） */
-@Composable
-fun Scrim(visible: Boolean, onClick: () -> Unit) {
-    AnimatedVisibility(visible, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
-        Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.5f)).bounceClick(pressedScale = 1f, onClick = onClick))
+    // 松手落点：逃逸速度 → 投影 → 阈值，与翻页共用同一套判定
+    val settle: (Float) -> Unit = remember {
+        { velocityPxPerSec: Float ->
+            val unit = if (driver.unitPx > 0f) driver.unitPx else 1f
+            val target = settleTarget(driver.value, velocityPxPerSec / unit, listOf(0f, 1f))
+            scope.launch {
+                driver.animateTo(target, velocityPxPerSec, EchoMotion.Emphasized.float())
+                if (target == 0f) dismissRef.value()
+            }
+        }
+    }
+
+    val nested = remember {
+        object : NestedScrollConnection {
+            // 弹层被下拉过：先把它推回去，再让内容滚动
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y < 0f && driver.value < 1f) {
+                    return Offset(0f, -driver.dispatchRawDeltaPx(-available.y, 0f..1f))
+                }
+                return Offset.Zero
+            }
+
+            // 内容已滚到顶仍在下拉 → 交给弹层
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (available.y > 0f) {
+                    return Offset(0f, -driver.dispatchRawDeltaPx(-available.y, 0f..1f))
+                }
+                return Offset.Zero
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                if (driver.value < 1f && available.y > 0f) {
+                    settle(-available.y)
+                    return available
+                }
+                return Velocity.Zero
+            }
+        }
+    }
+
+    if (!mounted) return
+    BackHandler(enabled = open) { onDismiss() }
+
+    val shape = RoundedCornerShape(topStart = Radius.xl, topEnd = Radius.xl)
+    Box(
+        Modifier
+            .matchParentSize()
+            .zIndex(40f)
+            .drawBehind { drawRect(Color.Black, alpha = 0.5f * driver.value.coerceIn(0f, 1f)) }
+            .echoTap(onClick = onDismiss)
+    )
+    Column(
+        Modifier
+            .align(Alignment.BottomCenter)
+            .zIndex(50f)
+            .fillMaxWidth()
+            .fillMaxHeight(maxHeightFraction)
+            .onSizeChanged { if (it.height > 0) driver.unitPx = it.height.toFloat() }
+            .graphicsLayer { translationY = (1f - driver.value.coerceIn(-0.05f, 1.3f)) * size.height }
+            .nestedScroll(nested)
+            .driveVertically(driver, enabled = { true }, bounds = { 0f..1f }, onSettle = settle)
+            .background(c.card, shape)
+            .border(1.dp, c.border, shape)
+            .imePadding()
+    ) {
+        Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            Box(Modifier.align(Alignment.CenterHorizontally).width(36.dp).height(4.dp).background(c.text3.copy(alpha = 0.5f), CircleShape))
+            Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 12.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(title, color = c.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                IconButtonEcho(EchoIcons.Close, "关闭", size = 36.dp, iconSize = 18.dp, onClick = onDismiss)
+            }
+        }
+        val scroll = rememberScrollState()
+        Column(
+            Modifier
+                .weight(1f, fill = false)
+                .fillMaxWidth()
+                .let { if (scrollable) it.verticalScroll(scroll) else it }
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 20.dp)
+                .windowInsetsPadding(WindowInsets.navigationBars),
+            content = content
+        )
     }
 }
-
-@Suppress("unused")
-private val unusedInteraction = MutableInteractionSource::class
-@Suppress("unused")
-private val unusedBrush = Brush::class

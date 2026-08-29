@@ -66,6 +66,11 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.text.Collator
 import java.util.Locale
+import app.echoread.ui.motion.EchoMotion
+import app.echoread.ui.motion.EchoTransitions
+import app.echoread.ui.motion.PressScale
+import app.echoread.ui.motion.echoPress
+import app.echoread.ui.motion.echoTap
 
 private enum class SortMode(val label: String) { RECENT("最近阅读"), ADDED("最近导入"), TITLE("书名") }
 
@@ -119,6 +124,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
     }
     val continueBook = if (query.isBlank()) books.firstOrNull { it.lastReadAt != null } else null
 
+    val bigTitleBrush = rememberAurora()
     val listState = rememberLazyListState()
     val density = LocalDensity.current
     val headerCollapsePx = with(density) { 96.dp.toPx() }
@@ -141,7 +147,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                 Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(top = 56.dp, bottom = 22.dp)) {
                     Text(
                         "EchoRead",
-                        style = TextStyle(brush = Aurora, fontSize = 36.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp),
+                        style = TextStyle(brush = bigTitleBrush, fontSize = 36.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp),
                         modifier = Modifier.graphicsLayer { alpha = 1f - collapse * 0.9f; translationY = -collapse * 12f }
                     )
                     Spacer(Modifier.height(4.dp))
@@ -163,11 +169,11 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                             .padding(bottom = 14.dp)
                             .background(c.card, RoundedCornerShape(Radius.lg))
                             .border(1.dp, c.border, RoundedCornerShape(Radius.lg))
-                            .bounceClick(pressedScale = 0.98f) { showSettings = true }
+                            .echoPress(pressedScale = PressScale.Tile) { showSettings = true }
                             .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(Modifier.size(38.dp).background(Aurora, CircleShape), contentAlignment = Alignment.Center) {
+                        Box(Modifier.size(38.dp).background(rememberAurora(), CircleShape), contentAlignment = Alignment.Center) {
                             Icon(EchoIcons.Key, null, tint = Color.White, modifier = Modifier.size(17.dp))
                         }
                         Spacer(Modifier.width(12.dp))
@@ -194,7 +200,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                         Spacer(Modifier.height(24.dp))
                         OutlineButton("没有书？先听示例 →") { openSample() }
                         Spacer(Modifier.height(12.dp))
-                        Text("怎么用？", color = c.text3, fontSize = 12.sp, modifier = Modifier.bounceClick { showHelp = true }.padding(6.dp))
+                        Text("怎么用？", color = c.text3, fontSize = 12.sp, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showHelp = true }.padding(6.dp))
                     }
                 }
             } else {
@@ -228,7 +234,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                                     }
                                 }
                             )
-                            if (query.isNotEmpty()) Text("清除", color = c.text3, fontSize = 11.sp, modifier = Modifier.bounceClick { query = "" })
+                            if (query.isNotEmpty()) Text("清除", color = c.text3, fontSize = 11.sp, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { query = "" })
                         }
                         Spacer(Modifier.height(10.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -265,7 +271,8 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
         }
 
         // 紧凑标题栏：始终承载动作按钮；收起态才显示底色与小标题
-        val barAlpha by animateFloatAsState(collapse, Motion.soft, label = "bar")
+        val compactTitleBrush = rememberAurora()
+        val barAlpha by animateFloatAsState(collapse, EchoMotion.Gentle.float(), label = "bar")
         Column(Modifier.fillMaxWidth().zIndex(10f)) {
             Box(
                 Modifier
@@ -276,7 +283,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                 Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "EchoRead",
-                        style = TextStyle(brush = Aurora, fontSize = 17.sp, fontWeight = FontWeight.Black),
+                        style = TextStyle(brush = compactTitleBrush, fontSize = 17.sp, fontWeight = FontWeight.Black),
                         modifier = Modifier.weight(1f).padding(start = 6.dp).graphicsLayer { alpha = barAlpha; translationY = (1f - barAlpha) * 10f }
                     )
                     IconButtonEcho(EchoIcons.Help, "怎么用", background = c.card.copy(alpha = 0.9f)) { showHelp = true }
@@ -295,7 +302,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
         // 导入中遮罩
         AnimatedVisibility(importing, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut(), modifier = Modifier.matchParentSize().zIndex(60f)) {
             Column(
-                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).bounceClick(pressedScale = 1f) {},
+                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).echoTap {},
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
             ) {
                 CircularProgressIndicator(color = c.accent, strokeWidth = 2.5.dp, modifier = Modifier.size(38.dp))
@@ -325,7 +332,7 @@ private fun UpdateCard(graph: AppGraph) {
     val context = LocalContext.current
     val state by graph.updater.state.collectAsState()
     val visible = state is UpdateState.Available || state is UpdateState.Downloading || state is UpdateState.Ready || (state is UpdateState.Error && (state as UpdateState.Error).info != null)
-    AnimatedVisibility(visible, enter = Motion.expandIn, exit = Motion.collapseOut) {
+    AnimatedVisibility(visible, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut) {
         val s = state
         Column(
             Modifier
@@ -371,7 +378,7 @@ private fun UpdateCard(graph: AppGraph) {
                 }
             }
             if (s is UpdateState.Available || s is UpdateState.Error) {
-                Text("稍后再说", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp).bounceClick { graph.updater.dismiss() })
+                Text("稍后再说", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp).echoPress(pressedScale = PressScale.Chip) { graph.updater.dismiss() })
             }
         }
     }
@@ -381,11 +388,12 @@ private fun UpdateCard(graph: AppGraph) {
 @Composable
 private fun BookCell(b: BookMeta, modifier: Modifier, onClick: () -> Unit, onLongClick: () -> Unit) {
     val c = echo
-    Column(modifier.bounceCombinedClick(pressedScale = 0.95f, onLongClick = onLongClick, onClick = onClick)) {
+    val brush = rememberAurora()
+    Column(modifier.echoPress(pressedScale = PressScale.Tile, onLongClick = onLongClick, onClick = onClick)) {
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).shadow(14.dp, RoundedCornerShape(14.dp), spotColor = Color.Black.copy(alpha = 0.5f))) {
             BookCover(b, Modifier.fillMaxSize())
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.35f))) {
-                Box(Modifier.fillMaxWidth(progressFraction(b)).height(4.dp).background(Aurora))
+                Box(Modifier.fillMaxWidth(progressFraction(b)).height(4.dp).background(brush))
             }
         }
         Spacer(Modifier.height(8.dp))
@@ -402,7 +410,7 @@ private fun ContinueCard(b: BookMeta, modifier: Modifier = Modifier, onClick: ()
             .fillMaxWidth()
             .background(c.card, RoundedCornerShape(Radius.xl))
             .border(1.dp, c.border, RoundedCornerShape(Radius.xl))
-            .bounceClick(pressedScale = 0.98f, onClick = onClick)
+            .echoPress(pressedScale = PressScale.Tile, onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -442,11 +450,11 @@ fun BoxScope.BookActionSheet(book: BookMeta?, onClose: () -> Unit, onOpen: (Book
             )
             Spacer(Modifier.height(12.dp))
             Box(
-                Modifier.fillMaxWidth().background(c.cardAlt, RoundedCornerShape(Radius.md)).bounceClick(pressedScale = 0.98f) { onOpen(b) }.padding(16.dp)
+                Modifier.fillMaxWidth().background(c.cardAlt, RoundedCornerShape(Radius.md)).echoPress(pressedScale = PressScale.Tile) { onOpen(b) }.padding(16.dp)
             ) { Text("继续阅读", color = c.text, fontSize = 14.sp) }
             Spacer(Modifier.height(8.dp))
             Box(
-                Modifier.fillMaxWidth().background(c.danger.copy(alpha = 0.12f), RoundedCornerShape(Radius.md)).bounceClick(pressedScale = 0.98f) { onDelete(b) }.padding(16.dp)
+                Modifier.fillMaxWidth().background(c.danger.copy(alpha = 0.12f), RoundedCornerShape(Radius.md)).echoPress(pressedScale = PressScale.Tile) { onDelete(b) }.padding(16.dp)
             ) { Text("从书架删除", color = c.danger, fontSize = 14.sp) }
         }
     }
