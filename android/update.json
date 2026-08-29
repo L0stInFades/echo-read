@@ -1,0 +1,11 @@
+{
+  "versionCode": 2,
+  "versionName": "0.1.1",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.1/EchoRead-v0.1.1.apk",
+  "mirrors": [
+    "https://ghproxy.net/https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.1/EchoRead-v0.1.1.apk"
+  ],
+  "notes": "安卓首个正式版：分页点读阅读器（左右点按/横滑翻页）、OpenRouter/OpenAI 兼容 AI 朗读与系统语音、锁屏与通知栏控制、后台连播、断网自愈、TXT/EPUB 导入、应用内更新。",
+  "sha256": "80d595c14490dcd90f5e965ac88e76cb5ad7e6c01606f391d3333590a0531e6d",
+  "minSdk": 26
+}
