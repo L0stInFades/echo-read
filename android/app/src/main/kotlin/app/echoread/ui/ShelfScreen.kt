@@ -347,7 +347,7 @@ private fun UpdateCard(graph: AppGraph) {
                     Text(
                         when (s) {
                             is UpdateState.Ready -> "新版本 v${info?.versionName} 已下载"
-                            is UpdateState.Downloading -> "正在下载 v${info?.versionName} · ${(s.progress * 100).toInt()}%"
+                            is UpdateState.Downloading -> if (s.progress <= 0f) "正在连接下载服务器…" else "正在下载 v${info?.versionName} · ${(s.progress * 100).toInt()}%"
                             is UpdateState.Error -> "更新失败"
                             else -> "发现新版本 v${info?.versionName}"
                         },
