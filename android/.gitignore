@@ -9,3 +9,8 @@ captures/
 .externalNativeBuild/
 *.keystore
 *.jks
+
+# 发布签名（私密，勿提交）
+keystore/
+keystore.properties
+dist/
