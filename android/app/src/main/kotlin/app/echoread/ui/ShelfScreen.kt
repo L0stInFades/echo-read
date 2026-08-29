@@ -136,7 +136,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
     var headerPx by remember { mutableFloatStateOf(with(density) { 148.dp.toPx() }) }
     // One UI：大标题收起是「绑定」不是「动画」。绝不再套一层 animateFloatAsState —— 那会让标题
     // 滞后手指 200ms 以上，而且把连续的滚动值读进组合期，滚动每一像素都重组整个 ShelfScreen。
-    val collapse = remember {
+    val collapse = remember(compactBarPx) {
         derivedStateOf {
             if (listState.firstVisibleItemIndex > 0) 1f
             else (listState.firstVisibleItemScrollOffset / (headerPx - compactBarPx).coerceAtLeast(1f)).coerceIn(0f, 1f)

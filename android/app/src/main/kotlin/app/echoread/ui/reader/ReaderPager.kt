@@ -56,7 +56,7 @@ class ChapterWindow {
     /** (anchor, ±1) → 实际页；跨章时查邻章的排版结果，未就绪返回 null（由橡皮筋给出物理反馈） */
     fun resolve(a: PageRef, delta: Int): PageRef? {
         val cur = laid[a.chapter] ?: return null
-        if (delta == 0) return PageRef(a.chapter, a.page.coerceIn(0, cur.pageCount - 1))
+        if (delta == 0) return PageRef(a.chapter, a.page.coerceIn(0, (cur.pageCount - 1).coerceAtLeast(0)))
         val p = a.page + delta
         return when {
             p in 0 until cur.pageCount -> PageRef(a.chapter, p)
@@ -115,21 +115,27 @@ class ReaderPager(
     }
 
     private fun commit(delta: Int) {
-        val next = window.resolve(anchor, delta) ?: return
-        driver.rebase(delta.toFloat()) { anchor = next }
+        // 目标页在动画途中消失（罕见）时也必须 rebase：否则呈现值停在 ±1、锚点没动，屏幕上就是一片空白
+        val next = window.resolve(anchor, delta)
+        driver.rebase(delta.toFloat()) { if (next != null) anchor = next }
     }
 
     /** 松手：位置 + 速度共同决定落点，到位后原子换页 */
     fun settle(velocityPxPerSec: Float) {
         scope.launch {
-            val unit = if (driver.unitPx > 0f) driver.unitPx else 1f
-            val target = settleTarget(driver.value, velocityPxPerSec / unit, candidates())
+            // 落点在互斥区内算：拿到锁之前 anchor 可能已被程序化 jumpTo 改过，
+            // 用锁外的旧值判定会让 commit 相对新锚点多翻一页
+            var chosen = 0f
             preemptable {
                 driver.animateToBy(
                     velocityPxPerSec = velocityPxPerSec,
                     spec = EchoMotion.Track.float(),
-                    onArrive = { if (target != 0f) commit(target.roundToInt()) },
-                ) { target }
+                    onArrive = { if (chosen != 0f) commit(chosen.roundToInt()) },
+                ) {
+                    val unit = if (driver.unitPx > 0f) driver.unitPx else 1f
+                    chosen = settleTarget(driver.value, velocityPxPerSec / unit, candidates())
+                    chosen
+                }
             }
         }
     }
@@ -161,20 +167,26 @@ class ReaderPager(
 
     /** 引擎跟随：相邻页走动画（手指可随时抢占），远跳/跨章交叉淡入 */
     suspend fun follow(target: PageRef) {
-        val a = anchor
-        if (target == a) return
-        val slot = when (target) {
-            window.resolve(a, 1) -> 1
-            window.resolve(a, -1) -> -1
-            else -> 0
-        }
-        if (slot != 0) {
-            preemptable {
-                driver.animateToBy(spec = EchoMotion.Standard.float(), onArrive = { commit(slot) }) { slot.toFloat() }
+        if (target == anchor) return
+        // -2 = 还没进到互斥区（被更高优先级挡下），此时什么都不该做
+        var slot = -2
+        preemptable {
+            driver.animateToBy(
+                spec = EchoMotion.Standard.float(),
+                onArrive = { if (slot != 0) commit(slot) },
+            ) {
+                val a = anchor
+                slot = when (target) {
+                    a -> 0
+                    window.resolve(a, 1) -> 1
+                    window.resolve(a, -1) -> -1
+                    else -> 0
+                }
+                if (slot == 0) null else slot.toFloat()
             }
-        } else {
-            jumpTo(target)
         }
+        // 远跳 / 跨章：不位移，交叉淡入
+        if (slot == 0 && target != anchor) jumpTo(target)
     }
 
     /**
@@ -183,23 +195,25 @@ class ReaderPager(
      */
     suspend fun jumpTo(ref: PageRef, crossFade: Boolean = true, commitModel: () -> Unit = {}) {
         val old = if (crossFade) window.pagesOf(anchor.chapter)?.let { it to anchor.page } else null
-        // 先把旧页「转录」成 outgoing 并把新页压到 alpha 0，再换 anchor —— 中间不存在露白的一帧
-        if (old != null) {
-            fade.snapTo(0f)
-            outgoing = old
-        }
-        driver.snapTo(0f) {
-            commitModel()
-            anchor = ref
-        }
         if (old == null) {
+            driver.snapTo(0f) { commitModel(); anchor = ref }
             fade.snapTo(1f)
             outgoing = null
             return
         }
+        // try 必须罩住从「转录旧页」到淡入结束的全过程：fade.snapTo / driver.snapTo 都是真的挂起点
+        // （要抢互斥锁），在中间被 collectLatest 取消会留下「新页 alpha 0 + 旧页 alpha 1」的死状态。
         try {
+            // 先把旧页转录成 outgoing 并把新页压到 alpha 0，再换 anchor —— 中间不存在露白的一帧
+            fade.snapTo(0f)
+            outgoing = old
+            driver.snapTo(0f) {
+                commitModel()
+                anchor = ref
+            }
             fade.animateTo(1f, tween(Dur.Medium, easing = Ease.Linear))
         } finally {
+            // 呈现侧用 `outgoing != null` 决定要不要读 fade，所以清空它就等于把新页拉回 alpha 1
             outgoing = null
         }
     }

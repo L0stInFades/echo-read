@@ -101,7 +101,8 @@ fun EchoApp(graph: AppGraph) {
             val nav = updateTransition(targetState = bookId, label = "nav")
             // 重入闸门：转场进行中忽略重复导航。旧代码连点两本书会让两份 ReaderScreen 同时存在、
             // 两份章节加载协程互相竞争 —— 这就是「快速连点造成状态错乱」。
-            val navigate: (String?) -> Unit = { to -> if (!nav.isRunning) bookId = to }
+            // 闸门只拦「打开」：返回必须永远生效，否则转场中按返回会 pause 播放却留在阅读器
+            val navigate: (String?) -> Unit = { to -> if (to == null || !nav.isRunning) bookId = to }
             nav.AnimatedContent(
                 transitionSpec = {
                     val forward = targetState != null
