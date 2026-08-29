@@ -7,6 +7,7 @@ import app.echoread.data.ChapterCache
 import app.echoread.data.EchoDb
 import app.echoread.data.LibraryRepo
 import app.echoread.data.SettingsStore
+import app.echoread.data.Updater
 import app.echoread.tts.AudioCache
 import app.echoread.tts.Playback
 import app.echoread.tts.PlayerController
@@ -34,6 +35,7 @@ class AppGraph(context: Context) {
     val playback = Playback(context)
     val engine = TtsEngine(mainScope, chapterCache, audioCache, systemTts, playback, File(context.cacheDir, "tts-tmp"))
     val player = PlayerController(engine, library, settings, mainScope)
+    val updater = Updater(context)
 
     /** 打开指定书籍的请求（通知栏点击 / 外部深链）：Pair(bookId, autoplay) */
     val openRequests = MutableStateFlow<Pair<String, Boolean>?>(null)
@@ -42,6 +44,11 @@ class AppGraph(context: Context) {
     val pendingImports = MutableStateFlow<List<Uri>>(emptyList())
 
     init {
+        // 启动后静默检查更新（24 小时一次，失败无提示）
+        mainScope.launch {
+            kotlinx.coroutines.delay(3000)
+            runCatching { updater.check(force = false) }
+        }
         mainScope.launch {
             pendingImports.collect { list ->
                 if (list.isEmpty()) return@collect

@@ -46,6 +46,19 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 命令行构建需在 `android/local.properties` 写 `sdk.dir=<你的 Android SDK 路径>`（已被 .gitignore 忽略）。
 
+## 发布与应用内更新
+
+应用内置无后端的更新机制：启动后每天静默检查一次仓库里的 `android/update.json`（走 jsDelivr CDN，GitHub raw 兜底），有新版本时书架顶部出卡片，点击下载（校验 SHA-256）后拉起系统安装器覆盖安装；「怎么用」面板里可手动检查。
+
+发布一个新版本：
+
+```bash
+cd android
+./release.sh 0.1.2 3 "更新说明"   # 打正式签名包 → 写 update.json → 提交推送 → gh release 上传 APK
+```
+
+正式签名读取 `android/keystore.properties`（`storeFile / storePassword / keyAlias / keyPassword`，已 gitignore）；没有该文件时回退 debug 签名，仅供本地验证。
+
 ## 使用
 
 1. 打开应用 → 右上角齿轮 → 填入 OpenRouter API Key（[在此创建](https://openrouter.ai/settings/keys)），点「获取在线模型」选择模型与音色，点「试听测试」验证；没有 Key 时切到「系统语音」。

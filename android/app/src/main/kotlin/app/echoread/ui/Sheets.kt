@@ -403,9 +403,40 @@ private fun Modifier.verticalScrollCompat(): Modifier = this.verticalScroll(reme
 /* ---------- 帮助 ---------- */
 
 @Composable
-fun BoxScope.HelpSheet(open: Boolean, onClose: () -> Unit) {
+fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Unit) {
     val c = echo
+    val scope = rememberCoroutineScope()
+    var checking by remember { mutableStateOf(false) }
     EchoSheet(open = open, onDismiss = onClose, title = "怎么用") {
+        if (graph != null) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(c.cardAlt, RoundedCornerShape(Radius.md))
+                    .bounceClick(pressedScale = 0.98f, enabled = !checking) {
+                        checking = true
+                        scope.launch {
+                            val r = runCatching { graph.updater.check(force = true) }.getOrNull()
+                            checking = false
+                            when (r) {
+                                is app.echoread.data.UpdateState.UpToDate -> Toaster.success("已是最新版本 v${graph.updater.currentVersionName}")
+                                is app.echoread.data.UpdateState.Available, is app.echoread.data.UpdateState.Ready -> { Toaster.show("发现新版本，见书架顶部"); onClose() }
+                                is app.echoread.data.UpdateState.Error -> Toaster.error(r.message)
+                                else -> Toaster.error("检查更新失败")
+                            }
+                        }
+                    }
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(if (checking) "正在检查更新…" else "检查更新", color = c.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("当前版本 v${graph.updater.currentVersionName}", color = c.text3, fontSize = 11.sp)
+                }
+                Icon(EchoIcons.ChevronRight, null, tint = c.text3, modifier = Modifier.size(16.dp))
+            }
+            Spacer(Modifier.height(18.dp))
+        }
         val sections = listOf(
             "书架" to "点底部「导入」选择 TXT / EPUB，可一次多本；也可以在文件管理器里用「打开方式」发给 EchoRead。点封面打开书籍，长按封面可继续阅读或从书架删除。最近读过的书会出现在顶部「继续阅读」。",
             "点读" to "打开书籍后，轻点正文任意位置，AI 就从那个字开始朗读。底栏可以暂停、切章、调倍速，月亮按钮是睡眠定时。锁屏与通知栏可控制播放、切章。",

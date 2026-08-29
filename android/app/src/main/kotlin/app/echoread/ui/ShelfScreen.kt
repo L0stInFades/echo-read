@@ -60,6 +60,8 @@ import androidx.compose.ui.zIndex
 import app.echoread.AppGraph
 import app.echoread.core.BookMeta
 import app.echoread.core.TtsProvider
+import app.echoread.data.UpdateState
+import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.text.Collator
@@ -150,6 +152,8 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                     )
                 }
             }
+
+            item("update") { UpdateCard(graph) }
 
             if (tts.provider == TtsProvider.OPENAI && tts.openai.apiKey.isBlank()) {
                 item("keyBanner") {
@@ -301,7 +305,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
         }
 
         TtsSettingsSheet(open = showSettings, graph = graph) { showSettings = false }
-        HelpSheet(open = showHelp) { showHelp = false }
+        HelpSheet(open = showHelp, graph = graph) { showHelp = false }
         BookActionSheet(book = actionBook, onClose = { actionBook = null }, onOpen = { b -> actionBook = null; onOpenBook(b.id) }) { b ->
             scope.launch {
                 library.remove(b.id)
@@ -309,6 +313,66 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                 Toaster.success("已从书架移除")
             }
             actionBook = null
+        }
+    }
+}
+
+/** 应用内更新卡片：发现新版本 → 下载进度 → 安装 */
+@Composable
+private fun UpdateCard(graph: AppGraph) {
+    val c = echo
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val state by graph.updater.state.collectAsState()
+    val visible = state is UpdateState.Available || state is UpdateState.Downloading || state is UpdateState.Ready || (state is UpdateState.Error && (state as UpdateState.Error).info != null)
+    AnimatedVisibility(visible, enter = Motion.expandIn, exit = Motion.collapseOut) {
+        val s = state
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(bottom = 14.dp)
+                .background(c.card, RoundedCornerShape(Radius.lg))
+                .border(1.dp, c.accent.copy(alpha = 0.35f), RoundedCornerShape(Radius.lg))
+                .padding(14.dp)
+        ) {
+            val info = when (s) {
+                is UpdateState.Available -> s.info
+                is UpdateState.Downloading -> s.info
+                is UpdateState.Ready -> s.info
+                is UpdateState.Error -> s.info
+                else -> null
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        when (s) {
+                            is UpdateState.Ready -> "新版本 v${info?.versionName} 已下载"
+                            is UpdateState.Downloading -> "正在下载 v${info?.versionName} · ${(s.progress * 100).toInt()}%"
+                            is UpdateState.Error -> "更新失败"
+                            else -> "发现新版本 v${info?.versionName}"
+                        },
+                        color = c.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+                    )
+                    val sub = when (s) {
+                        is UpdateState.Error -> s.message
+                        else -> info?.notes?.ifBlank { "当前 v${graph.updater.currentVersionName}" } ?: ""
+                    }
+                    if (sub.isNotEmpty()) Text(sub, color = c.text2, fontSize = 12.sp, lineHeight = 17.sp, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                }
+                Spacer(Modifier.width(10.dp))
+                when (s) {
+                    is UpdateState.Downloading -> CircularProgressIndicator(progress = { s.progress }, color = c.accent, trackColor = c.border, strokeWidth = 3.dp, modifier = Modifier.size(30.dp))
+                    is UpdateState.Ready -> GradientButton("安装", height = 38.dp, fontSize = 13) {
+                        if (!graph.updater.install(context, s.file)) Toaster.show("请允许 EchoRead 安装应用，然后回来点「安装」", durationMs = 4000)
+                    }
+                    is UpdateState.Available -> GradientButton("立即更新", height = 38.dp, fontSize = 13) { scope.launch { graph.updater.download(s.info) } }
+                    is UpdateState.Error -> if (info != null) GradientButton("重试", height = 38.dp, fontSize = 13) { scope.launch { graph.updater.download(info) } }
+                    else -> {}
+                }
+            }
+            if (s is UpdateState.Available || s is UpdateState.Error) {
+                Text("稍后再说", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp).bounceClick { graph.updater.dismiss() })
+            }
         }
     }
 }
