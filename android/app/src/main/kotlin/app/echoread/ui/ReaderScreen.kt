@@ -7,24 +7,13 @@ import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -52,44 +41,37 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.ParagraphStyle
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.TextLayoutResult
-import androidx.compose.ui.text.TextMeasurer
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.LineHeightStyle
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
@@ -98,20 +80,34 @@ import app.echoread.AppGraph
 import app.echoread.core.BookMeta
 import app.echoread.core.PlayerState
 import app.echoread.core.Range
-import app.echoread.core.ReaderSettings
-import app.echoread.data.DerivedChapter
 import app.echoread.tts.SleepMode
+import app.echoread.ui.motion.EchoMotion
+import app.echoread.ui.motion.EchoTransitions
+import app.echoread.ui.motion.MotionDriver
+import app.echoread.ui.motion.PressScale
+import app.echoread.ui.motion.driveHorizontally
+import app.echoread.ui.motion.echoPress
+import app.echoread.ui.motion.preemptable
+import app.echoread.ui.reader.ChapterPages
+import app.echoread.ui.reader.ChapterWindow
+import app.echoread.ui.reader.LayoutSpec
+import app.echoread.ui.reader.PageRef
+import app.echoread.ui.reader.ReaderPager
+import app.echoread.ui.reader.layoutChapter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
-import androidx.compose.ui.graphics.CompositingStrategy
-import app.echoread.ui.motion.EchoMotion
-import app.echoread.ui.motion.EchoTransitions
-import app.echoread.ui.motion.PressScale
-import app.echoread.ui.motion.echoPress
 
 private val RATE_STEPS = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
 private val SLEEP_OPTIONS: List<Pair<String, SleepMode>> = listOf(
@@ -119,104 +115,28 @@ private val SLEEP_OPTIONS: List<Pair<String, SleepMode>> = listOf(
     "90分" to SleepMode.Minutes(90), "播完本章" to SleepMode.Chapter, "关闭" to SleepMode.Off
 )
 
-/**
- * 整章分页排版结果：章节文本一次性 measure 成 TextLayoutResult，按行高切成整页；
- * 页面绘制只做 clip + translate + drawText（零重排），翻页、高亮、点读全部基于同一份布局。
- * 渲染串比章节纯文本多了「标题前缀」与每段之间的「间距空行」，两套偏移用 toRendered/toChapter 互转。
- */
-class ChapterPages(
-    val chapter: DerivedChapter,
-    val layout: TextLayoutResult,
-    private val prefixLen: Int,
-    val pages: List<IntRange> // 每页覆盖的行号区间
-) {
-    val pageCount: Int get() = pages.size
-    fun pageTop(p: Int): Float = layout.getLineTop(pages[p].first)
+/** 播放跟随：手动翻页（含暂停中）即脱离，点播放 / 点读 / 「回到朗读位置」恢复 */
+private enum class Follow { FOLLOWING, DETACHED }
 
-    /** 章节偏移 → 渲染偏移：渲染串 = 标题 + 占位符 + 段落…（段间占位符与章节文本的 \n 一一对应） */
-    fun toRendered(chapterOffset: Int): Int = prefixLen + chapterOffset
+/** 切章请求：offset < 0 表示定位到该章末页 */
+private data class ChapterRequest(val chapter: Int, val offset: Int, val seq: Int)
 
-    /** 渲染偏移 → 章节偏移（落在标题/段间占位上时钳到相邻段落的字） */
-    fun toChapter(rendered: Int): Int {
-        val text = chapter.text
-        if (text.isEmpty()) return 0
-        var o = (rendered - prefixLen).coerceIn(0, text.length - 1)
-        if (text[o] == '\n') o = if (o + 1 < text.length) o + 1 else o - 1
-        return o.coerceIn(0, text.length - 1)
-    }
-
-    fun pageOf(chapterOffset: Int): Int {
-        val line = layout.getLineForOffset(toRendered(chapterOffset).coerceIn(0, maxOf(layout.layoutInput.text.length - 1, 0)))
-        val idx = pages.indexOfFirst { line in it }
-        return if (idx < 0) pages.size - 1 else idx
-    }
-
-    /** 本页首字的章节偏移（进度保存用） */
-    fun pageStartOffset(p: Int): Int = toChapter(layout.getLineStart(pages[p].first))
-}
-
-private const val FIRST_LINE_INDENT_EM = 2f
-
-/** 构建渲染串 + 整章 measure + 分页（在 Default 线程执行） */
-private fun layoutChapter(
-    measurer: TextMeasurer,
-    chapter: DerivedChapter,
-    style: TextStyle,
-    reader: ReaderSettings,
-    theme: ReaderTheme,
-    width: Int,
-    pageHeight: Float
-): ChapterPages {
-    val lineHeightSp = reader.fontSize * reader.lineHeight
-    val gapSp = (lineHeightSp * 0.5f * reader.paraSpacing).coerceAtLeast(2f)
-    // 段落之间不用换行符（Compose 会为行尾换行再生成一个空行），改用带独立行高的单字符占位段落
-    val paraStyle = ParagraphStyle(textIndent = TextIndent(firstLine = FIRST_LINE_INDENT_EM.em), lineHeight = lineHeightSp.sp, textAlign = TextAlign.Justify)
-    val gapStyle = ParagraphStyle(lineHeight = gapSp.sp)
-    val titleStyle = ParagraphStyle(textAlign = TextAlign.Center, lineHeight = (lineHeightSp * 1.3f).sp)
-    val text = chapter.text
-    val annotated: AnnotatedString = buildAnnotatedString {
-        withStyle(titleStyle) {
-            withStyle(SpanStyle(fontWeight = FontWeight.Bold, fontSize = (reader.fontSize + 4).sp, color = theme.text)) { append(chapter.title) }
-        }
-        withStyle(gapStyle) { append(' ') }
-        chapter.paras.forEachIndexed { pi, p ->
-            withStyle(paraStyle) { append(text, p.start, p.end) }
-            if (pi < chapter.paras.size - 1) withStyle(gapStyle) { append(' ') }
-        }
-    }
-    val layout = measurer.measure(
-        text = annotated,
-        style = style,
-        constraints = Constraints(maxWidth = width),
-        skipCache = true
-    )
-    val pages = ArrayList<IntRange>()
-    var first = 0
-    val n = layout.lineCount
-    while (first < n) {
-        val top = layout.getLineTop(first)
-        var last = first
-        while (last + 1 < n && layout.getLineBottom(last + 1) - top <= pageHeight - 1f) last++
-        pages.add(first..last)
-        first = last + 1
-    }
-    if (pages.isEmpty()) pages.add(0..0)
-    return ChapterPages(chapter, layout, chapter.title.length + 1, pages)
-}
-
-private data class PageKey(val chapter: Int, val page: Int)
+private data class FollowKey(
+    val follow: Follow, val book: String, val state: PlayerState, val chapter: Int, val start: Int
+)
 
 /**
- * 分页阅读器：整章一次排版，左右两侧点按 / 横向滑动翻页，翻过章尾自动进入下一章；
- * 中间区域轻点任意字即从该字开始朗读；播放坞固定在底部，不遮挡正文。
+ * 分页阅读器：整章一次排版，三槽位画布跟手横滑翻页（可打断、可反向、书首书尾橡皮筋），
+ * 左右两侧点按翻页、中间区域轻点任意字即从该字开始朗读；邻章预排版，跨章与章内翻页在渲染上同构。
  */
-@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
 @Composable
 fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onAutoplayConsumed: () -> Unit = {}, onBack: () -> Unit) {
     val c = echo
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val view = LocalView.current
+    val density = LocalDensity.current
     val player = graph.player
     val engine = graph.engine
     val settings = graph.settings
@@ -229,78 +149,130 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
     val theme = readerThemeOf(reader.theme)
 
     var meta by remember { mutableStateOf<BookMeta?>(null) }
-    var derived by remember { mutableStateOf<DerivedChapter?>(null) }
-    var chapterIndex by remember { mutableIntStateOf(0) }
     var loadFailed by remember { mutableStateOf(false) }
     var titles by remember { mutableStateOf<List<String>>(emptyList()) }
 
-    var pages by remember { mutableStateOf<ChapterPages?>(null) }
-    var page by remember { mutableIntStateOf(0) }
-    /** 装载后要定位到的章节偏移；-1 表示最后一页（向前翻章） */
-    var pendingOffset by remember { mutableIntStateOf(0) }
-    /** 播放中视图是否跟随朗读位置翻页（手动翻页即暂停跟随，点播放/点读恢复） */
-    var follow by remember { mutableStateOf(true) }
+    val measurer = rememberTextMeasurer()
+    // 排版必须串行：measurer.measure() 是不可协作取消的阻塞调用，放任 Dispatchers.Default 并发，
+    // 字号滑块每像素回调就会在 8 个核上堆出 8 份整章 measure，把主线程彻底饿死。
+    val layoutDispatcher = remember { Dispatchers.Default.limitedParallelism(1) }
+
+    val driver = remember { MotionDriver() }
+    val window = remember { ChapterWindow() }
+    val pager = remember { ReaderPager(driver, window, scope) }
+    val shown by pager.displayed
+
     var pageSize by remember { mutableStateOf(IntSize.Zero) }
+    var spec by remember { mutableStateOf<LayoutSpec?>(null) }
+    var request by remember { mutableStateOf<ChapterRequest?>(null) }
+    var laying by remember { mutableStateOf(false) }
+    var follow by remember { mutableStateOf(Follow.FOLLOWING) }
+    val reqSeq = remember { intArrayOf(0) }
 
     var showChapters by remember { mutableStateOf(false) }
     var showStyle by remember { mutableStateOf(false) }
     var showTts by remember { mutableStateOf(false) }
     var showSleep by remember { mutableStateOf(false) }
 
-    val measurer = rememberTextMeasurer()
-    val loadSeq = remember { intArrayOf(0) }
-
     SideEffect {
         (view.context as? Activity)?.window?.let { w ->
             WindowCompat.getInsetsController(w, view).isAppearanceLightStatusBars = !theme.isDark
             WindowCompat.getInsetsController(w, view).isAppearanceLightNavigationBars = !theme.isDark
         }
+        window.chapterCount = meta?.chapterCount ?: 0
+        pager.onManual = { follow = Follow.DETACHED }
+        pager.onBlocked = { d ->
+            // 只有真到书尾才提示；首屏未就绪或邻章还在排版时静默（橡皮筋已经给了物理反馈）
+            val ready = window.chapterCount > 0 && window.pagesOf(pager.anchor.chapter) != null
+            if (d > 0 && ready && pager.anchor.chapter >= window.chapterCount - 1) Toaster.show("已经是最后一页", durationMs = 1200)
+        }
     }
 
-    /* ---------- 装载（视图侧代际守卫：快速翻章/滑块连发时后到者胜） ---------- */
+    /* ---------- 装载与排版 ---------- */
 
-    suspend fun loadChapter(index: Int, offset: Int) {
-        val my = ++loadSeq[0]
+    fun requestChapter(index: Int, offset: Int) {
+        val total = meta?.chapterCount ?: return
+        if (index < 0 || index >= total) return
+        request = ChapterRequest(index, offset, ++reqSeq[0])
+    }
+
+    suspend fun layoutOne(index: Int, sp: LayoutSpec): ChapterPages? {
         val d = try {
             graph.chapterCache.get(bookId, index, settings.tts.value.maxChunkChars)
-        } catch (e: kotlinx.coroutines.CancellationException) {
+        } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             null
+        } ?: return null
+        return withContext(layoutDispatcher) {
+            layoutChapter(measurer, d, sp.reader, readerThemeOf(sp.reader.theme), sp.width, sp.height.toFloat())
         }
-        if (my != loadSeq[0]) return
-        if (d == null) {
-            Toaster.error("章节内容缺失")
-            return
-        }
-        pendingOffset = offset
-        if (derived !== d) pages = null
-        derived = d
-        chapterIndex = index
     }
 
-    val fontFamily = if (reader.fontFamily == "serif") FontFamily.Serif else FontFamily.Default
-    val bodyStyle = TextStyle(
-        color = theme.text,
-        fontSize = reader.fontSize.sp,
-        lineHeight = (reader.fontSize * reader.lineHeight).sp,
-        fontFamily = fontFamily,
-        lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)
-    )
-
-    // 排版：章节 / 样式 / 页面尺寸任一变化即在后台重排；重排后按待定偏移（或当前页首字）定位
-    LaunchedEffect(derived, reader, pageSize, theme.id) {
-        val d = derived ?: return@LaunchedEffect
-        if (pageSize.width <= 0 || pageSize.height <= 0) return@LaunchedEffect
-        val keepOffset = pages?.let { old -> if (old.chapter === d && old.pageCount > page) old.pageStartOffset(page) else null }
-        val laid = withContext(Dispatchers.Default) { layoutChapter(measurer, d, bodyStyle, reader, theme, pageSize.width, pageSize.height.toFloat()) }
-        pages = laid
-        page = when {
-            keepOffset != null -> laid.pageOf(keepOffset)
-            pendingOffset < 0 -> laid.pageCount - 1
-            else -> laid.pageOf(pendingOffset)
+    /** 新排版就位：旧页留在屏幕上淡出、新页淡入，永不「置空 + 居中转圈」 */
+    suspend fun landOn(target: Int, laid: ChapterPages, sp: LayoutSpec, req: ChapterRequest?) {
+        val a = pager.anchor
+        val prev = window.pagesOf(a.chapter)
+        val landing = when {
+            req != null && req.offset < 0 -> laid.pageCount - 1
+            req != null -> laid.pageOf(req.offset)
+            // 重排版（换字号/主题/转屏）：保持当前页首字所在的位置
+            prev != null && a.chapter == target && prev.pageCount > a.page -> laid.pageOf(prev.pageStartOffset(a.page))
+            else -> a.page
         }
-        pendingOffset = 0
+        preemptable {
+            pager.jumpTo(PageRef(target, landing.coerceIn(0, laid.pageCount - 1))) { window.put(target, laid, sp) }
+        }
+        if (req != null) request = null
+    }
+
+    // 排版规格去抖：字号/行距滑块每像素回调不再触发整章重排；首屏不等待
+    LaunchedEffect(bookId) {
+        snapshotFlow { if (pageSize.width > 0 && pageSize.height > 0) LayoutSpec(reader, pageSize.width, pageSize.height) else null }
+            .filterNotNull()
+            .distinctUntilChanged()
+            .debounce { if (spec == null) 0L else 90L }
+            .collect { spec = it }
+    }
+
+    // 排版泵：当前章优先，随后预排邻章（翻过章尾时下一章已经就位）
+    LaunchedEffect(bookId) {
+        combine(
+            snapshotFlow { request },
+            snapshotFlow { pager.anchor.chapter },
+            snapshotFlow { spec },
+        ) { req, ch, sp -> Triple(req, ch, sp) }
+            .conflate()
+            .collectLatest { (req, anchorCh, sp) ->
+                if (sp == null) return@collectLatest
+                val total = meta?.chapterCount ?: return@collectLatest
+                val target = req?.chapter ?: anchorCh
+                val fresh = window.pagesOf(target)?.takeIf { window.specOf(target) == sp }
+                if (fresh == null) {
+                    laying = true
+                    val laid = try {
+                        layoutOne(target, sp)
+                    } finally {
+                        laying = false
+                    }
+                    if (laid == null) {
+                        Toaster.error("章节内容缺失")
+                        request = null
+                        return@collectLatest
+                    }
+                    landOn(target, laid, sp, req)
+                } else if (req != null) {
+                    landOn(target, fresh, sp, req)
+                }
+                for (n in intArrayOf(target + 1, target - 1)) {
+                    if (n < 0 || n >= total) continue
+                    if (window.pagesOf(n) != null && window.specOf(n) == sp) continue
+                    graph.chapterCache.prefetch(bookId, n, settings.tts.value.maxChunkChars)
+                    val laid = layoutOne(n, sp) ?: continue
+                    window.put(n, laid, sp)
+                }
+                window.retain(pager.anchor.chapter)
+            }
     }
 
     LaunchedEffect(bookId) {
@@ -310,45 +282,56 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
             return@LaunchedEffect
         }
         meta = m
+        window.chapterCount = m.chapterCount
         val s = engine.current
-        if (s.bookId == bookId && s.state != PlayerState.IDLE && s.chapterIndex >= 0) loadChapter(s.chapterIndex, s.segmentStart)
-        else loadChapter(m.progress.chapterIndex, m.progress.offset)
+        if (s.bookId == bookId && s.state != PlayerState.IDLE && s.chapterIndex >= 0) requestChapter(s.chapterIndex, s.segmentStart)
+        else requestChapter(m.progress.chapterIndex, m.progress.offset)
     }
 
-    /* ---------- 引擎跟随：跨章 + 翻到朗读所在页 ---------- */
+    /* ---------- 引擎跟随 ---------- */
 
-    val activeSeg: Range? = if (snap.bookId == bookId && snap.chapterIndex == chapterIndex && snap.state != PlayerState.IDLE && snap.chapterIndex >= 0) Range(snap.segmentStart, snap.segmentEnd) else null
+    val engineOnThis = snap.bookId == bookId && snap.chapterIndex >= 0 && snap.state != PlayerState.IDLE
+    val engineChapter = if (engineOnThis) snap.chapterIndex else -1
+    val activeSeg: Range? = if (engineOnThis) Range(snap.segmentStart, snap.segmentEnd) else null
     val synthesizing = snap.bookId == bookId && snap.state != PlayerState.IDLE && snap.synthesizing
     val playing = snap.state == PlayerState.PLAYING && snap.bookId == bookId
+    val curPages = window.pagesOf(pager.anchor.chapter)
 
-    LaunchedEffect(snap.chapterIndex, snap.segmentStart, snap.state, pages, follow) {
-        val s = snap
-        if (s.bookId != bookId || s.state != PlayerState.PLAYING || s.chapterIndex < 0 || !follow) return@LaunchedEffect
-        if (s.chapterIndex != chapterIndex) {
-            if (derived != null) loadChapter(s.chapterIndex, s.segmentStart)
-            return@LaunchedEffect
-        }
-        val pg = pages ?: return@LaunchedEffect
-        if (pg.chapter !== derived) return@LaunchedEffect
-        val target = pg.pageOf(s.segmentStart)
-        if (target != page) page = target
+    fun segFor(ref: PageRef): Range? = if (ref.chapter == engineChapter) activeSeg else null
+
+    // 只监听真正的语义输入（不再把 pages 当 key）：换主题/换字号不会再把页码拉回朗读位置
+    LaunchedEffect(bookId) {
+        snapshotFlow { FollowKey(follow, snap.bookId, snap.state, snap.chapterIndex, snap.segmentStart) }
+            .distinctUntilChanged()
+            .collectLatest { k ->
+                if (k.follow != Follow.FOLLOWING || k.book != bookId) return@collectLatest
+                if (k.state != PlayerState.PLAYING || k.chapter < 0) return@collectLatest
+                if (k.chapter != pager.anchor.chapter) {
+                    if (request?.chapter != k.chapter) requestChapter(k.chapter, k.start)
+                    return@collectLatest
+                }
+                val pg = window.pagesOf(k.chapter) ?: return@collectLatest
+                val target = PageRef(k.chapter, pg.pageOf(k.start).coerceIn(0, pg.pageCount - 1))
+                if (target != pager.anchor) preemptable { pager.follow(target) }
+            }
     }
 
     // 片段跨页：按播放进度估算念到的字位，越过下页首字即自动翻页（不等下一句）
-    LaunchedEffect(activeSeg, page, playing, follow, pages) {
+    LaunchedEffect(activeSeg, pager.anchor, playing, follow, curPages) {
         val seg = activeSeg ?: return@LaunchedEffect
-        val pg = pages ?: return@LaunchedEffect
-        if (!playing || !follow || pg.chapter !== derived) return@LaunchedEffect
-        val cur = page.coerceIn(0, pg.pageCount - 1)
+        val pg = curPages ?: return@LaunchedEffect
+        if (!playing || follow != Follow.FOLLOWING || engineChapter != pager.anchor.chapter) return@LaunchedEffect
+        val cur = pager.anchor.page.coerceIn(0, pg.pageCount - 1)
         if (cur >= pg.pageCount - 1) return@LaunchedEffect
         val nextStart = pg.pageStartOffset(cur + 1)
         if (seg.end <= nextStart || seg.start >= nextStart) return@LaunchedEffect
         val len = (seg.end - seg.start).coerceAtLeast(1)
         while (isActive) {
-            delay(200)
+            delay(250)
+            if (driver.isDragging) continue
             val est = seg.start + (len * engine.playbackFraction()).toInt()
             if (est + 2 >= nextStart) {
-                page = cur + 1
+                preemptable { pager.follow(PageRef(pager.anchor.chapter, cur + 1)) }
                 break
             }
         }
@@ -363,14 +346,14 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
     /* ---------- 进度：手动翻页（非播放中）也记录当前页首字 ---------- */
 
     var lastManualSave by remember { mutableStateOf(0L) }
-    LaunchedEffect(page, pages) {
-        val pg = pages ?: return@LaunchedEffect
+    LaunchedEffect(pager.anchor, curPages, playing) {
+        val pg = curPages ?: return@LaunchedEffect
         if (playing) return@LaunchedEffect
         delay(600)
         val now = System.currentTimeMillis()
         if (now - lastManualSave < 1500) return@LaunchedEffect
         lastManualSave = now
-        graph.library.saveProgress(bookId, chapterIndex, pg.pageStartOffset(page.coerceIn(0, pg.pageCount - 1)))
+        graph.library.saveProgress(bookId, pager.anchor.chapter, pg.pageStartOffset(pager.anchor.page.coerceIn(0, pg.pageCount - 1)))
     }
 
     /* ---------- 交互 ---------- */
@@ -384,12 +367,13 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
 
     fun playFrom(offset: Int) {
         ensureNotificationPermission()
-        follow = true
+        follow = Follow.FOLLOWING
         scope.launch {
             try {
+                val a = pager.anchor
                 val s = engine.current
-                if (s.bookId != bookId || s.chapterIndex != chapterIndex) {
-                    if (!player.loadBook(bookId, chapterIndex, offset)) return@launch
+                if (s.bookId != bookId || s.chapterIndex != a.chapter) {
+                    if (!player.loadBook(bookId, a.chapter, offset)) return@launch
                 } else {
                     engine.seekToOffset(offset)
                 }
@@ -402,18 +386,19 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
 
     fun togglePlay() {
         ensureNotificationPermission()
-        follow = true
+        follow = Follow.FOLLOWING
         scope.launch {
             try {
+                val a = pager.anchor
                 val s = engine.current
-                val onThisChapter = s.bookId == bookId && s.chapterIndex == chapterIndex
+                val onThisChapter = s.bookId == bookId && s.chapterIndex == a.chapter
                 if (onThisChapter && (s.state == PlayerState.PLAYING || s.state == PlayerState.PAUSED || s.state == PlayerState.ERROR)) {
                     engine.toggle()
                     return@launch
                 }
                 // 从当前页首字开始（引擎尚未装载本章时）
-                val offset = pages?.let { it.pageStartOffset(page.coerceIn(0, it.pageCount - 1)) } ?: 0
-                if (player.loadBook(bookId, chapterIndex, offset)) engine.play()
+                val offset = window.pagesOf(a.chapter)?.let { it.pageStartOffset(a.page.coerceIn(0, it.pageCount - 1)) } ?: 0
+                if (player.loadBook(bookId, a.chapter, offset)) engine.play()
             } catch (e: Exception) {
                 Toaster.error(e.message ?: "播放失败")
             }
@@ -426,9 +411,9 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
         scope.launch {
             val wasPlaying = engine.current.state == PlayerState.PLAYING && engine.current.bookId == bookId
             if (wasPlaying) engine.pause()
-            loadChapter(index, if (lastPage) -1 else 0)
+            requestChapter(index, if (lastPage) -1 else 0)
             if (wasPlaying) {
-                follow = true
+                follow = Follow.FOLLOWING
                 try {
                     if (player.loadBook(bookId, index, 0)) engine.play()
                 } catch (e: Exception) {
@@ -438,19 +423,26 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
         }
     }
 
-    /** 翻页：越过章首/章尾自动切章 */
-    fun flip(delta: Int) {
-        val pg = pages ?: return
-        val m = meta ?: return
-        if (playing) follow = false
-        val next = page + delta
+    fun handleTap(pos: Offset, sz: IntSize) {
+        val w = sz.width.toFloat()
         when {
-            next in 0 until pg.pageCount -> page = next
-            delta > 0 && chapterIndex < m.chapterCount - 1 -> scope.launch { loadChapter(chapterIndex + 1, 0) }
-            delta < 0 && chapterIndex > 0 -> scope.launch { loadChapter(chapterIndex - 1, -1) }
-            delta > 0 -> Toaster.show("已经是最后一页", durationMs = 1200)
+            pos.x < w * 0.2f -> pager.flip(-1)
+            pos.x > w * 0.8f -> pager.flip(1)
+            else -> {
+                // 滑动/回弹进行中不接受点读：此刻模型页与画面上的页可能不是同一页
+                if (driver.isDragging || driver.isSettling) return
+                val ref = pager.anchor
+                val p = window.pagesOf(ref.chapter) ?: return
+                val cur = ref.page.coerceIn(0, p.pageCount - 1)
+                val top = p.pageTop(cur)
+                val lastLine = p.pages[cur].last
+                if (pos.y + top > p.layout.getLineBottom(lastLine)) return
+                val r = p.layout.getOffsetForPosition(Offset(pos.x, pos.y + top))
+                playFrom(p.toChapter(r))
+            }
         }
     }
+    val tapRef = rememberUpdatedState<(Offset, IntSize) -> Unit>({ p, s -> handleTap(p, s) })
 
     fun cycleRate() {
         val cur = tts.rate
@@ -466,16 +458,17 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
     }
     BackHandler { leave() }
 
-    LaunchedEffect(autoplay, pages) {
-        if (autoplay && pages != null) {
+    LaunchedEffect(autoplay, curPages) {
+        if (autoplay && curPages != null) {
             onAutoplayConsumed()
             togglePlay()
         }
     }
 
-    val chapterProgress = if (snap.bookId == bookId && snap.chapterIndex == chapterIndex && snap.segmentCount > 0) (snap.segmentIndex.toFloat() / snap.segmentCount).coerceIn(0f, 1f) else 0f
+    val chapterProgress = if (snap.bookId == bookId && snap.chapterIndex == pager.anchor.chapter && snap.segmentCount > 0) (snap.segmentIndex.toFloat() / snap.segmentCount).coerceIn(0f, 1f) else 0f
     val dockBg = if (theme.isDark) Color(0xFF15171E) else Color.White
     val dockBorder = theme.text.copy(alpha = 0.12f)
+    val skeletonLine = with(density) { (reader.fontSize * reader.lineHeight).sp.toPx() }
 
     Box(Modifier.fillMaxSize().background(theme.bg)) {
         if (loadFailed) {
@@ -499,87 +492,92 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
             ) {
                 IconButtonEcho(EchoIcons.Back, "返回", tint = theme.text) { leave() }
                 Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
-                    Text(derived?.title ?: "…", color = theme.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        window.pagesOf(shown.chapter)?.chapter?.title ?: "…",
+                        color = theme.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
                     Text(meta?.title ?: "", color = theme.dim, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 IconButtonEcho(EchoIcons.Toc, "目录", tint = theme.text) { showChapters = true }
                 IconButtonEcho(EchoIcons.TextStyle, "阅读样式", tint = theme.text) { showStyle = true }
                 IconButtonEcho(EchoIcons.Waves, "朗读设置", tint = theme.text) { showTts = true }
             }
+            // 排版中的细进度线（固定占位，不改变正文高度）
+            Box(Modifier.fillMaxWidth().height(2.dp)) {
+                if (laying) ThinProgressLine(c.accent, Modifier.fillMaxWidth())
+            }
 
             // 页面区域：页面画布与页脚上下分列（页脚不与正文重叠），画布实际尺寸即分页高度
             Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 20.dp, vertical = 6.dp)) {
-                val pg = pages
                 val m = meta
+                val shownPages = window.pagesOf(shown.chapter)
                 Column(Modifier.fillMaxSize()) {
                     Box(
                         Modifier
                             .fillMaxWidth()
                             .weight(1f)
-                            .onSizeChanged { if (pageSize != it) pageSize = it }
-                            .pointerInput(pg, playing) {
-                                var drag = 0f
-                                detectHorizontalDragGestures(
-                                    onDragStart = { drag = 0f },
-                                    onHorizontalDrag = { _, dx -> drag += dx },
-                                    onDragEnd = {
-                                        val threshold = 56.dp.toPx()
-                                        if (drag <= -threshold) flip(1) else if (drag >= threshold) flip(-1)
-                                    }
-                                )
+                            .clipToBounds()
+                            .onSizeChanged {
+                                if (pageSize != it) pageSize = it
+                                if (it.width > 0) driver.unitPx = it.width.toFloat()
                             }
-                            .pointerInput(pg) {
-                                detectTapGestures { pos ->
-                                    val w = this.size.width.toFloat()
-                                    val p = pages ?: return@detectTapGestures
-                                    when {
-                                        pos.x < w * 0.2f -> flip(-1)
-                                        pos.x > w * 0.8f -> flip(1)
-                                        else -> {
-                                            // 中间区域：任意字点读（点在页内文字下方的空白则忽略）
-                                            val cur = page.coerceIn(0, p.pageCount - 1)
-                                            val top = p.pageTop(cur)
-                                            val lastLine = p.pages[cur].last
-                                            if (pos.y + top > p.layout.getLineBottom(lastLine)) return@detectTapGestures
-                                            val r = p.layout.getOffsetForPosition(Offset(pos.x, pos.y + top))
-                                            playFrom(p.toChapter(r))
-                                        }
-                                    }
-                                }
-                            }
+                            .driveHorizontally(
+                                driver = driver,
+                                enabled = { true },
+                                bounds = { pager.bounds() },
+                                onDragStart = { pager.onManual() },
+                                onTap = { pos, sz -> tapRef.value(pos, sz) },
+                                onSettle = { v -> pager.settle(v) },
+                            )
                     ) {
-                        if (pg == null) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                CircularProgressIndicator(color = c.accent, strokeWidth = 2.dp, modifier = Modifier.size(22.dp))
-                            }
+                        val anchorPages = window.pagesOf(pager.anchor.chapter)
+                        if (anchorPages == null) {
+                            PageSkeleton(theme.text, skeletonLine, Modifier.fillMaxSize())
                         } else {
-                            val cur = page.coerceIn(0, pg.pageCount - 1)
-                            AnimatedContent(
-                                targetState = PageKey(chapterIndex, cur),
-                                transitionSpec = {
-                                    val forward = targetState.chapter > initialState.chapter || (targetState.chapter == initialState.chapter && targetState.page > initialState.page)
-                                    val enter = slideInHorizontally(spring(dampingRatio = 0.9f, stiffness = 380f)) { if (forward) it else -it } + fadeIn(tween(160))
-                                    val exit = slideOutHorizontally(tween(220)) { if (forward) -it / 3 else it / 3 } + fadeOut(tween(160))
-                                    enter togetherWith exit
-                                },
-                                label = "page",
-                                modifier = Modifier.fillMaxSize()
-                            ) { key ->
-                                if (key.chapter == chapterIndex && key.page < pg.pageCount) {
-                                    PageCanvas(pg, key.page, activeSeg, synthesizing, theme, Modifier.fillMaxSize())
-                                } else {
-                                    Box(Modifier.fillMaxSize())
+                            // 三槽位：上一页 / 当前页 / 下一页，各自一个 RenderNode，位移只写 graphicsLayer。
+                            // 静止时左右两页 alpha=0，HWUI 直接跳过，正文只画一份。
+                            for (slot in -1..1) {
+                                val ref = (if (slot == 0) pager.anchor else window.resolve(pager.anchor, slot)) ?: continue
+                                val pg = window.pagesOf(ref.chapter) ?: continue
+                                if (ref.page >= pg.pageCount) continue
+                                key(ref.chapter, ref.page) {
+                                    Box(
+                                        Modifier
+                                            .fillMaxSize()
+                                            .graphicsLayer {
+                                                val v = driver.value
+                                                translationX = (slot - v) * size.width
+                                                alpha = when {
+                                                    slot == 0 -> if (pager.outgoing != null) pager.fade.value else 1f
+                                                    abs(v) > 0.0005f -> 1f
+                                                    else -> 0f
+                                                }
+                                                compositingStrategy = CompositingStrategy.ModulateAlpha
+                                            }
+                                    ) {
+                                        PageCanvas(pg, ref.page, segFor(ref), synthesizing, theme, Modifier.fillMaxSize())
+                                    }
                                 }
                             }
                         }
+                        // 跨章 / 重排版时淡出的旧页：新页排好之前屏幕上一直有内容
+                        pager.outgoing?.let { old ->
+                            Box(
+                                Modifier.fillMaxSize().graphicsLayer {
+                                    alpha = 1f - pager.fade.value
+                                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                                }
+                            ) {
+                                PageCanvas(old.first, old.second.coerceIn(0, old.first.pageCount - 1), null, false, theme, Modifier.fillMaxSize())
+                            }
+                        }
                     }
-                    // 页脚：页码 / 章节（独立占位，永不与正文重叠）
+                    // 页脚：页码/章号读「呈现页」，翻页期间与画面严格一致
                     Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (pg != null) {
-                            val cur = page.coerceIn(0, pg.pageCount - 1)
-                            Text("${cur + 1} / ${pg.pageCount} 页", color = theme.dim, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        if (shownPages != null) {
+                            Text("${shown.page + 1} / ${shownPages.pageCount} 页", color = theme.dim, fontSize = 11.sp, modifier = Modifier.weight(1f))
                         } else Spacer(Modifier.weight(1f))
-                        if (m != null) Text("第 ${chapterIndex + 1} / ${m.chapterCount} 章", color = theme.dim, fontSize = 11.sp)
+                        if (m != null) Text("第 ${shown.chapter + 1} / ${m.chapterCount} 章", color = theme.dim, fontSize = 11.sp)
                     }
                 }
 
@@ -626,29 +624,30 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
                     Column(
                         Modifier.weight(1f).height(40.dp).echoPress(pressedScale = PressScale.Tile) {
                             // 点标题：播放中回到朗读所在页（跨章则装载朗读章）并恢复跟随；否则打开目录
-                            if (playing && !follow) {
-                                follow = true
+                            if (playing && follow == Follow.DETACHED) {
+                                follow = Follow.FOLLOWING
                                 val s = engine.current
-                                if (s.chapterIndex == chapterIndex) {
-                                    pages?.let { p -> page = p.pageOf(s.segmentStart) }
-                                } else if (s.chapterIndex >= 0) {
-                                    scope.launch { loadChapter(s.chapterIndex, s.segmentStart) }
-                                }
+                                if (s.chapterIndex == pager.anchor.chapter) {
+                                    window.pagesOf(s.chapterIndex)?.let { p ->
+                                        val t = PageRef(s.chapterIndex, p.pageOf(s.segmentStart).coerceIn(0, p.pageCount - 1))
+                                        scope.launch { preemptable { pager.follow(t) } }
+                                    }
+                                } else if (s.chapterIndex >= 0) requestChapter(s.chapterIndex, s.segmentStart)
                             } else showChapters = true
                         },
                         verticalArrangement = Arrangement.Center
                     ) {
                         val statusText = when {
                             snap.retryNote.isNotEmpty() && snap.bookId == bookId -> snap.retryNote
-                            playing && !follow -> "回到朗读位置 ↩"
-                            playing || (snap.state == PlayerState.PAUSED && snap.bookId == bookId) -> snap.chapterTitle.ifEmpty { derived?.title ?: "" }
+                            playing && follow == Follow.DETACHED -> "回到朗读位置 ↩"
+                            playing || (snap.state == PlayerState.PAUSED && snap.bookId == bookId) -> snap.chapterTitle.ifEmpty { window.pagesOf(pager.anchor.chapter)?.chapter?.title ?: "" }
                             else -> "轻点正文任意字开始朗读"
                         }
                         Text(
                             statusText,
                             color = when {
                                 snap.retryNote.isNotEmpty() && snap.bookId == bookId -> Color(0xFFFBBF24)
-                                playing && !follow -> c.accent
+                                playing && follow == Follow.DETACHED -> c.accent
                                 else -> theme.text
                             },
                             fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis
@@ -657,9 +656,9 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
                         GradientBar(chapterProgress, Modifier.fillMaxWidth(), height = 2.dp, track = theme.text.copy(alpha = 0.12f))
                     }
                     Spacer(Modifier.width(6.dp))
-                    IconButtonEcho(EchoIcons.SkipPrev, "上一章", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = chapterIndex > 0) { gotoChapter(chapterIndex - 1) }
+                    IconButtonEcho(EchoIcons.SkipPrev, "上一章", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = pager.anchor.chapter > 0) { gotoChapter(pager.anchor.chapter - 1) }
                     PlayButton(playing = playing, busy = snap.state == PlayerState.LOADING && snap.bookId == bookId || synthesizing) { togglePlay() }
-                    IconButtonEcho(EchoIcons.SkipNext, "下一章", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = meta?.let { chapterIndex < it.chapterCount - 1 } ?: false) { gotoChapter(chapterIndex + 1) }
+                    IconButtonEcho(EchoIcons.SkipNext, "下一章", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = meta?.let { pager.anchor.chapter < it.chapterCount - 1 } ?: false) { gotoChapter(pager.anchor.chapter + 1) }
                     if (sleepMode === SleepMode.Off) {
                         IconButtonEcho(EchoIcons.Moon, "睡眠定时", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp) { showSleep = !showSleep }
                     } else {
@@ -678,7 +677,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
         }
 
         ChapterListSheet(
-            open = showChapters, titles = titles, current = chapterIndex,
+            open = showChapters, titles = titles, current = shown.chapter,
             onClose = { showChapters = false }, onSelect = { gotoChapter(it) }
         )
         LaunchedEffect(showChapters) { if (showChapters && titles.isEmpty()) titles = graph.library.chapterTitles(bookId) }
@@ -693,11 +692,12 @@ private fun PageCanvas(pages: ChapterPages, page: Int, active: Range?, synthesiz
     val top = pages.pageTop(page)
     val range = pages.pages[page]
     val layout = pages.layout
+    // 高亮矩形连内缩量一起算好：draw lambda 里零分配
     val hlRects = remember(pages, page, active) {
         if (active == null) emptyList() else {
             val rs = pages.toRendered(active.start)
             val re = pages.toRendered(active.end) // 章节 end 为开区间，映射后仍为开区间
-            val out = ArrayList<androidx.compose.ui.geometry.Rect>()
+            val out = ArrayList<Rect>()
             val firstLine = maxOf(layout.getLineForOffset(rs), range.first)
             val lastLine = minOf(layout.getLineForOffset(maxOf(re - 1, rs)), range.last)
             for (line in firstLine..lastLine) {
@@ -710,28 +710,70 @@ private fun PageCanvas(pages: ChapterPages, page: Int, active: Range?, synthesiz
                 // 起点用字符的真实水平位置（首行缩进不涂色）；终点到行尾时取行右边界
                 val left = layout.getHorizontalPosition(s, usePrimaryDirection = true)
                 val right = if (e >= le) layout.getLineRight(line) else layout.getHorizontalPosition(e, usePrimaryDirection = true)
-                if (right > left) out.add(androidx.compose.ui.geometry.Rect(left, layout.getLineTop(line), right, layout.getLineBottom(line)))
+                if (right > left) out.add(Rect(left - 2f, layout.getLineTop(line) + 2f, right + 2f, layout.getLineBottom(line) - 2f))
             }
             out
         }
     }
-    val pulse = if (synthesizing && hlRects.isNotEmpty()) {
-        val t = rememberInfiniteTransition(label = "pulse")
-        t.animateFloat(0.4f, 1f, infiniteRepeatable(tween(650), RepeatMode.Reverse), label = "pulseAlpha").value
-    } else 1f
-    val hlColor = theme.hl.copy(alpha = (theme.hl.alpha * 1.6f * pulse).coerceAtMost(1f))
+    // 合成中不再用 infiniteRepeatable：60fps 常驻动画在听书场景（动辄数小时）纯属耗电，
+    // 且 .value 在组合期读会让整页每帧重组、每帧重新提交整章 drawText。改为静态压暗。
+    val hlColor = theme.hl.copy(alpha = (theme.hl.alpha * if (synthesizing) 1.0f else 1.6f).coerceAtMost(1f))
     val bottom = layout.getLineBottom(range.last)
     Canvas(modifier.clipToBounds()) {
         // 整章布局只画本页：裁剪到「本页最后一行底边」，下一页的行绝不漏出（画布余量只留白）
         clipRect(left = 0f, top = 0f, right = size.width, bottom = minOf(bottom - top, size.height)) {
             translate(top = -top) {
                 for (r in hlRects) {
-                    drawRoundRect(hlColor, topLeft = Offset(r.left - 2f, r.top + 2f), size = androidx.compose.ui.geometry.Size(r.width + 4f, r.height - 4f), cornerRadius = androidx.compose.ui.geometry.CornerRadius(6f, 6f))
+                    drawRoundRect(hlColor, topLeft = r.topLeft, size = r.size, cornerRadius = CornerRadius(6f, 6f))
                 }
                 drawText(layout, color = theme.text)
             }
         }
     }
+}
+
+/** 首次进入（没有任何旧页可留）时的骨架：从「页面消失了」变成「页面正在成形」，绝不居中转圈 */
+@Composable
+private fun PageSkeleton(textColor: Color, lineHeightPx: Float, modifier: Modifier) {
+    val a = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { a.animateTo(1f, tween(300, easing = LinearEasing)) }
+    Spacer(
+        modifier.drawBehind {
+            val lh = lineHeightPx.coerceAtLeast(20f)
+            var y = lh * 0.8f
+            var i = 0
+            while (y + lh * 0.5f < size.height && i < 30) {
+                val w = size.width * (if (i % 6 == 5) 0.52f else 0.97f)
+                drawRoundRect(
+                    textColor,
+                    topLeft = Offset(0f, y),
+                    size = Size(w, lh * 0.46f),
+                    cornerRadius = CornerRadius(3f, 3f),
+                    alpha = a.value * 0.10f
+                )
+                y += lh
+                i++
+            }
+        }
+    )
+}
+
+/** 2dp 不定进度线：位置只在 draw lambda 里读，不触发重组；仅在排版进行中存在 */
+@Composable
+private fun ThinProgressLine(color: Color, modifier: Modifier) {
+    val p = remember { Animatable(0f) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            p.snapTo(0f)
+            p.animateTo(1f, tween(1100, easing = LinearEasing))
+        }
+    }
+    Spacer(
+        modifier.height(2.dp).drawBehind {
+            val w = size.width * 0.32f
+            drawRect(color, topLeft = Offset((size.width + w) * p.value - w, 0f), size = Size(w, size.height), alpha = 0.9f)
+        }
+    )
 }
 
 @Composable
@@ -767,6 +809,3 @@ private fun PlayButton(playing: Boolean, busy: Boolean, onClick: () -> Unit) {
 }
 
 private fun formatRate(r: Float): String = String.format(java.util.Locale.ROOT, "%.2f", r).trimEnd('0').trimEnd('.')
-
-@Suppress("unused")
-private fun unusedAbs(x: Float) = abs(x)

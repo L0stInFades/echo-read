@@ -15,6 +15,7 @@ import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.isActive
@@ -71,21 +72,27 @@ private fun Modifier.driveAxis(
             while (isActive) {
                 if (signals.receive() !is DriveSignal.Start) continue
                 var release: Float? = null
-                driver.drive {
-                    // 抢占正在跑的动画时残余的速度按系数并入松手速度
-                    val carried = consumeCarriedVelocityPxPerSec() * VELOCITY_CARRY_RATIO
-                    while (true) {
-                        val s = signals.receive()
-                        if (s is DriveSignal.Delta) {
-                            dragByPx(s.px, bounds())
-                        } else if (s is DriveSignal.Stop) {
-                            release = s.velocityPxPerSec + carried
-                            break
-                        } else if (s is DriveSignal.Cancel) {
-                            release = carried
-                            break
+                try {
+                    driver.drive {
+                        // 抢占正在跑的动画时残余的速度按系数并入松手速度
+                        val carried = consumeCarriedVelocityPxPerSec() * VELOCITY_CARRY_RATIO
+                        while (true) {
+                            val s = signals.receive()
+                            if (s is DriveSignal.Delta) {
+                                dragByPx(s.px, bounds())
+                            } else if (s is DriveSignal.Stop) {
+                                release = s.velocityPxPerSec + carried
+                                break
+                            } else if (s is DriveSignal.Cancel) {
+                                release = carried
+                                break
+                            }
                         }
                     }
+                } catch (e: CancellationException) {
+                    // 被更高优先级（程序化 snapTo）抢占：本次拖动作废，但手势泵必须活下来
+                    if (!isActive) throw e
+                    release = null
                 }
                 release?.let(onSettle)
             }
