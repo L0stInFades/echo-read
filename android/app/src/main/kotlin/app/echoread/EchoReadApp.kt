@@ -37,6 +37,10 @@ class AppGraph(context: Context) {
     val player = PlayerController(engine, library, settings, mainScope)
     val updater = Updater(context)
 
+    /** 外部传入的朗读配置（深链 / adb），须用户确认后才写入设置 */
+    data class PendingConfig(val apiKey: String?, val baseUrl: String?, val model: String?, val voice: String?)
+    val configRequests = MutableStateFlow<PendingConfig?>(null)
+
     /** 打开指定书籍的请求（通知栏点击 / 外部深链）：Pair(bookId, autoplay) */
     val openRequests = MutableStateFlow<Pair<String, Boolean>?>(null)
 
