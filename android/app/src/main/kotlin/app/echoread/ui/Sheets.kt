@@ -1,0 +1,422 @@
+package app.echoread.ui
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.runtime.collectAsState
+import app.echoread.AppGraph
+import app.echoread.core.TtsProvider
+import app.echoread.tts.SpeechApi
+import app.echoread.tts.Voices
+import kotlinx.coroutines.launch
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+
+/* ---------- 目录 ---------- */
+
+@Composable
+fun BoxScope.ChapterListSheet(open: Boolean, titles: List<String>, current: Int, onClose: () -> Unit, onSelect: (Int) -> Unit) {
+    val c = echo
+    val state = rememberLazyListState()
+    LaunchedEffect(open) {
+        if (open && titles.isNotEmpty()) state.scrollToItem((current - 4).coerceIn(0, maxOf(titles.size - 1, 0)))
+    }
+    EchoSheet(open = open, onDismiss = onClose, title = "目录", scrollable = false) {
+        LazyColumn(state = state, modifier = Modifier.fillMaxWidth()) {
+            itemsIndexed(titles) { i, t ->
+                val active = i == current
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(if (active) c.accentSoft else Color.Transparent, RoundedCornerShape(Radius.md))
+                        .bounceClick(pressedScale = 0.98f) { onSelect(i); onClose() }
+                        .padding(horizontal = 12.dp, vertical = 11.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("${i + 1}", color = c.text3, fontSize = 11.sp, modifier = Modifier.width(30.dp))
+                    Text(
+                        t, color = if (active) c.accent else c.text, fontSize = 14.sp,
+                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                    )
+                    if (active) Icon(EchoIcons.PlaySmall, null, tint = c.accent, modifier = Modifier.size(14.dp))
+                }
+            }
+            item { Spacer(Modifier.height(12.dp)) }
+        }
+    }
+}
+
+/* ---------- 阅读样式 ---------- */
+
+@Composable
+fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
+    val c = echo
+    val reader by graph.settings.reader.collectAsState()
+    EchoSheet(open = open, onDismiss = onClose, title = "阅读样式") {
+        SectionLabel("主题")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (t in READER_THEMES) {
+                val selected = reader.theme == t.id
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(50.dp)
+                            .background(t.bg, RoundedCornerShape(Radius.md))
+                            .border(if (selected) 2.dp else 1.dp, if (selected) c.accent else c.border, RoundedCornerShape(Radius.md))
+                            .bounceClick { graph.settings.updateReader { r -> r.copy(theme = t.id) } },
+                        contentAlignment = Alignment.Center
+                    ) { Text("文", color = t.text, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
+                    Spacer(Modifier.height(5.dp))
+                    Text(t.label, color = if (selected) c.accent else c.text2, fontSize = 11.sp)
+                }
+            }
+        }
+        Spacer(Modifier.height(20.dp))
+        SectionLabel("字号") { Text("${reader.fontSize}sp", color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+        EchoSlider(reader.fontSize.toFloat(), { v -> graph.settings.updateReader { r -> r.copy(fontSize = v.toInt()) } }, 14f..28f, steps = 13)
+        Spacer(Modifier.height(12.dp))
+        SectionLabel("行距") { Text(String.format(java.util.Locale.ROOT, "%.1f", reader.lineHeight), color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+        EchoSlider(reader.lineHeight, { v -> graph.settings.updateReader { r -> r.copy(lineHeight = (Math.round(v * 10) / 10f)) } }, 1.4f..2.6f, steps = 11)
+        Spacer(Modifier.height(12.dp))
+        SectionLabel("段距") { Text(String.format(java.util.Locale.ROOT, "%.1f", reader.paraSpacing), color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+        EchoSlider(reader.paraSpacing, { v -> graph.settings.updateReader { r -> r.copy(paraSpacing = (Math.round(v * 10) / 10f)) } }, 0.4f..2f, steps = 15)
+        Spacer(Modifier.height(16.dp))
+        SectionLabel("字体")
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OptionTile("宋体 / 衬线", null, reader.fontFamily == "serif", Modifier.weight(1f).fillMaxHeight(), TextStyle(fontFamily = FontFamily.Serif)) {
+                graph.settings.updateReader { r -> r.copy(fontFamily = "serif") }
+            }
+            OptionTile("黑体 / 无衬线", null, reader.fontFamily == "sans", Modifier.weight(1f).fillMaxHeight()) {
+                graph.settings.updateReader { r -> r.copy(fontFamily = "sans") }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/* ---------- AI 朗读设置 ---------- */
+
+@OptIn(ExperimentalFoundationApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
+    val c = echo
+    val scope = rememberCoroutineScope()
+    val settings = graph.settings
+    val tts by settings.tts.collectAsState()
+    val models by settings.models.collectAsState()
+    val uriHandler = LocalUriHandler.current
+
+    var testing by remember { mutableStateOf(false) }
+    var testResult by remember { mutableStateOf("") }
+    var fetching by remember { mutableStateOf(false) }
+    var showAdvanced by remember { mutableStateOf(false) }
+    var voiceLang by remember { mutableStateOf("") }
+    var cacheStats by remember { mutableStateOf<app.echoread.tts.AudioCache.Stats?>(null) }
+
+    LaunchedEffect(open) { if (open) cacheStats = graph.audioCache.stats() }
+
+    val model = tts.openai.model
+    val hints = remember(model) { Voices.modelHints(model) }
+    val freeVoice = hints?.freeVoice
+    val voiceCatalog = remember(model, models) { Voices.catalogVoices(model, settings.serverVoicesFor(model)) }
+    val voiceGroups = remember(voiceCatalog) { Voices.groupVoices(voiceCatalog) }
+    LaunchedEffect(voiceGroups) { if (voiceLang.isNotEmpty() && voiceGroups.none { it.lang == voiceLang }) voiceLang = "" }
+    LaunchedEffect(model) { voiceLang = "" }
+    val shownGroups = if (voiceLang.isEmpty()) voiceGroups else voiceGroups.filter { it.lang == voiceLang }
+    val modelMeta = remember(model, models) { Voices.formatModelMeta(models.firstOrNull { it.id == model }, model) }
+    val showInstructions = !SpeechApi.isOpenRouterBase(tts.openai.baseUrl)
+
+    fun fetchModels() {
+        fetching = true
+        scope.launch {
+            try {
+                val list = SpeechApi.fetchTtsModels(tts.openai)
+                settings.setModels(list)
+                if (list.isNotEmpty()) Toaster.success("发现 ${list.size} 个语音模型") else Toaster.show("该服务未列出语音模型，可手动输入模型名")
+            } catch (e: Exception) {
+                Toaster.error(e.message ?: "获取模型列表失败")
+            } finally {
+                fetching = false
+            }
+        }
+    }
+
+    fun runTest() {
+        if (tts.openai.apiKey.isBlank()) {
+            Toaster.error("请先填写 API Key")
+            return
+        }
+        testing = true
+        testResult = ""
+        scope.launch {
+            val r = SpeechApi.testConfig(tts.openai)
+            testing = false
+            testResult = r.message
+            if (r.ok) Toaster.success(r.message) else Toaster.error(r.message)
+        }
+    }
+
+    EchoSheet(open = open, onDismiss = onClose, title = "AI 朗读设置") {
+        SectionLabel("朗读引擎")
+        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OptionTile("AI TTS", "OpenRouter / OpenAI 兼容接口", tts.provider == TtsProvider.OPENAI, Modifier.weight(1f).fillMaxHeight()) {
+                settings.updateTts { it.copy(provider = TtsProvider.OPENAI) }
+            }
+            OptionTile("系统语音", "免费离线，质量取决于设备", tts.provider == TtsProvider.SYSTEM, Modifier.weight(1f).fillMaxHeight()) {
+                settings.updateTts { it.copy(provider = TtsProvider.SYSTEM) }
+            }
+        }
+        Spacer(Modifier.height(18.dp))
+
+        if (tts.provider == TtsProvider.OPENAI) {
+            SectionLabel("API 配置")
+            EchoTextField(tts.openai.baseUrl, { v -> settings.updateOpenAI { it.copy(baseUrl = v.trim()) } }, label = "Base URL", placeholder = "https://openrouter.ai/api/v1", keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri)
+            Spacer(Modifier.height(10.dp))
+            EchoTextField(tts.openai.apiKey, { v -> settings.updateOpenAI { it.copy(apiKey = v.trim()) } }, label = "API Key", placeholder = "sk-or-...", password = true)
+            Spacer(Modifier.height(18.dp))
+
+            SectionLabel("模型") {
+                Text(
+                    if (fetching) "拉取中…" else if (models.isNotEmpty()) "刷新在线列表" else "获取在线模型",
+                    color = c.accent, fontSize = 12.sp,
+                    modifier = Modifier.bounceClick(enabled = !fetching) { fetchModels() }
+                )
+            }
+            if (models.isNotEmpty()) {
+                val listState = rememberLazyListState()
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 220.dp)
+                        .background(c.cardAlt, RoundedCornerShape(Radius.md))
+                        .border(1.dp, c.border, RoundedCornerShape(Radius.md))
+                ) {
+                    itemsIndexed(models) { _, m ->
+                        val selected = m.id == model
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(if (selected) c.accentSoft else Color.Transparent)
+                                .bounceClick(pressedScale = 0.99f) { settings.setModel(m.id) }
+                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(m.name, color = if (selected) c.accent else c.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(m.id, color = c.text3, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            if (selected) Icon(EchoIcons.Check, null, tint = c.accent, modifier = Modifier.size(16.dp))
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+            EchoTextField(model, { v -> settings.setModel(v.trim()) }, placeholder = "模型 ID，如 hexgrad/kokoro-82m")
+            Spacer(Modifier.height(8.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (r in Voices.RECOMMENDED_MODELS) {
+                    Chip(r.label, selected = model == r.id, trailing = r.tag) { settings.setModel(r.id) }
+                }
+            }
+            if (modelMeta.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(modelMeta, color = c.text3, fontSize = 11.sp, lineHeight = 16.sp)
+            }
+            Spacer(Modifier.height(18.dp))
+
+            SectionLabel("音色") { if (voiceCatalog.isNotEmpty()) Text("${voiceCatalog.size} 个", color = c.text3, fontSize = 11.sp) }
+            when {
+                freeVoice != null -> {
+                    EchoTextField(tts.openai.voice, { v -> settings.setVoice(v.trim()) }, placeholder = freeVoice.placeholder)
+                    Spacer(Modifier.height(8.dp))
+                    Text(freeVoice.hint, color = c.text3, fontSize = 11.sp, lineHeight = 16.sp)
+                    if (hints.voiceOptional || freeVoice.suggestions.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            if (hints.voiceOptional) Chip("默认音色", selected = tts.openai.voice.isEmpty()) { settings.setVoice("") }
+                            for (v in freeVoice.suggestions) {
+                                Chip(v.label, selected = tts.openai.voice == v.id, trailing = genderMark(v.gender), trailingColor = genderColor(v.gender)) { settings.setVoice(v.id) }
+                            }
+                        }
+                    }
+                }
+                voiceCatalog.isNotEmpty() -> {
+                    EchoTextField(tts.openai.voice, { v -> settings.setVoice(v.trim()) }, placeholder = "音色 ID")
+                    if (voiceGroups.size > 1) {
+                        Spacer(Modifier.height(8.dp))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Chip("全部", selected = voiceLang.isEmpty()) { voiceLang = "" }
+                            for (g in voiceGroups) Chip(g.label, selected = voiceLang == g.lang, trailing = "${g.voices.size}") { voiceLang = g.lang }
+                        }
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 260.dp)
+                            .verticalScrollCompat()
+                    ) {
+                        for (g in shownGroups) {
+                            if (shownGroups.size > 1) Text(g.label, color = c.text3, fontSize = 11.sp, modifier = Modifier.padding(bottom = 4.dp, top = 4.dp))
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                for (v in g.voices) {
+                                    Chip(
+                                        if (v.note != null) "${v.label}·${v.note}" else v.label,
+                                        selected = tts.openai.voice == v.id,
+                                        trailing = genderMark(v.gender), trailingColor = genderColor(v.gender)
+                                    ) { settings.setVoice(v.id) }
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                        }
+                    }
+                }
+                else -> EchoTextField(tts.openai.voice, { v -> settings.setVoice(v.trim()) }, placeholder = "该模型未提供音色列表，可手动填写（留空试用服务默认）")
+            }
+            Spacer(Modifier.height(18.dp))
+
+            if (showInstructions) {
+                SectionLabel("语气指令（部分模型支持）")
+                EchoTextField(tts.openai.instructions, { v -> settings.updateOpenAI { it.copy(instructions = v) } }, placeholder = "如：用温暖沉静的女声朗读")
+                Spacer(Modifier.height(18.dp))
+            }
+
+            GradientButton(
+                if (testing) "正在试音…" else if (testResult.isNotEmpty()) "结果：$testResult" else "试听测试（合成「你好」）",
+                Modifier.fillMaxWidth(), enabled = !testing, height = 50.dp
+            ) { runTest() }
+            Spacer(Modifier.height(20.dp))
+        }
+
+        SectionLabel("播放倍速") { Text(String.format(java.util.Locale.ROOT, "%.2f×", tts.rate), color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+        EchoSlider(tts.rate, { v -> settings.updateTts { it.copy(rate = (Math.round(v * 20) / 20f)) } }, 0.5f..2.5f, steps = 39)
+        Spacer(Modifier.height(14.dp))
+
+        Text(
+            if (showAdvanced) "收起高级选项 ▲" else "高级选项 ▼",
+            color = c.text2, fontSize = 12.sp,
+            modifier = Modifier.bounceClick(pressedScale = 0.97f) { showAdvanced = !showAdvanced }.padding(vertical = 4.dp)
+        )
+        AnimatedVisibility(showAdvanced, enter = Motion.expandIn, exit = Motion.collapseOut) {
+            EchoCard(Modifier.padding(top = 8.dp), radius = Radius.lg, padding = androidx.compose.foundation.layout.PaddingValues(14.dp), color = c.cardAlt) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("单片段字数 ", color = c.text, fontSize = 13.sp)
+                    Text("(${tts.maxChunkChars})", color = c.text3, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                    EchoSlider(tts.maxChunkChars.toFloat(), { v -> settings.updateTts { it.copy(maxChunkChars = (Math.round(v / 10) * 10)) } }, 80f..400f, steps = 31, modifier = Modifier.width(150.dp))
+                }
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("预取片段数 ", color = c.text, fontSize = 13.sp)
+                    Text("(${tts.prefetch})", color = c.text3, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                    EchoSlider(tts.prefetch.toFloat(), { v -> settings.updateTts { it.copy(prefetch = Math.round(v)) } }, 0f..5f, steps = 4, modifier = Modifier.width(150.dp))
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth().border(0.dp, Color.Transparent), verticalAlignment = Alignment.CenterVertically) {
+                    val st = cacheStats
+                    Text(
+                        if (st == null) "音频缓存 …" else "音频缓存 ${st.count} 条 · ${formatBytes(st.bytes)}",
+                        color = c.text2, fontSize = 12.sp, modifier = Modifier.weight(1f)
+                    )
+                    Text("清空", color = c.danger, fontSize = 12.sp, modifier = Modifier.bounceClick {
+                        scope.launch {
+                            graph.audioCache.clear()
+                            cacheStats = graph.audioCache.stats()
+                            Toaster.success("音频缓存已清空")
+                        }
+                    })
+                }
+            }
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "已内置 OpenRouter 全部语音模型的音色目录（含中文音色标注），也兼容 OpenAI 官方、SiliconFlow 等 OpenAI 格式接口。在 openrouter.ai 创建 API Key 即可使用；Fish S2.1 有免费档可先试听。",
+            color = c.text3, fontSize = 11.sp, lineHeight = 17.sp
+        )
+        Text(
+            "打开 openrouter.ai/settings/keys →",
+            color = c.accent, fontSize = 11.sp, textDecoration = TextDecoration.Underline,
+            modifier = Modifier.padding(top = 4.dp).bounceClick(pressedScale = 0.98f) {
+                runCatching { uriHandler.openUri("https://openrouter.ai/settings/keys") }
+            }
+        )
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+private fun genderMark(g: String?): String? = when (g) { "f" -> "♀"; "m" -> "♂"; else -> null }
+
+@Composable
+private fun genderColor(g: String?): Color? = when (g) { "f" -> Color(0xFFF472B6); "m" -> Color(0xFF38BDF8); else -> null }
+
+fun formatBytes(n: Long): String = when {
+    n > 1024 * 1024 -> String.format(java.util.Locale.ROOT, "%.1f MB", n / 1024.0 / 1024.0)
+    n > 1024 -> "${n / 1024} KB"
+    else -> "$n B"
+}
+
+/** 弹层内部的有界滚动区（外层已是 verticalScroll，内层需要独立滚动时使用） */
+@Composable
+private fun Modifier.verticalScrollCompat(): Modifier = this.verticalScroll(rememberScrollState())
+
+/* ---------- 帮助 ---------- */
+
+@Composable
+fun BoxScope.HelpSheet(open: Boolean, onClose: () -> Unit) {
+    val c = echo
+    EchoSheet(open = open, onDismiss = onClose, title = "怎么用") {
+        val sections = listOf(
+            "书架" to "点底部「导入」选择 TXT / EPUB，可一次多本；也可以在文件管理器里用「打开方式」发给 EchoRead。点封面打开书籍，长按封面可继续阅读或从书架删除。最近读过的书会出现在顶部「继续阅读」。",
+            "点读" to "打开书籍后，轻点正文任意位置，AI 就从那个字开始朗读。底栏可以暂停、切章、调倍速，月亮按钮是睡眠定时。锁屏与通知栏可控制播放、切章。",
+            "声音" to "齿轮里填入 OpenRouter / OpenAI 兼容接口的 API Key，拉取模型后选音色即可。没有 Key 时切到「系统语音」，用手机自带的离线朗读引擎。",
+            "离线" to "书架和已经听过的片段缓存在本机（最多 300MB，自动淘汰最旧）。断网也能继续读、继续听缓存过的句子。"
+        )
+        for ((h, p) in sections) {
+            Text(h, color = c.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(4.dp))
+            Text(p, color = c.text2, fontSize = 13.sp, lineHeight = 20.sp)
+            Spacer(Modifier.height(16.dp))
+        }
+    }
+}
