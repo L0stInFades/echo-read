@@ -247,6 +247,27 @@ object SpeechApi {
         }
     }
 
+    data class Credits(val total: Double, val used: Double) {
+        val remaining: Double get() = total - used
+    }
+
+    /** OpenRouter 账户余额（GET /credits）；非 OpenRouter 端点或失败返回 null */
+    suspend fun fetchCredits(cfg: OpenAISpeechConfig): Credits? = withContext(Dispatchers.IO) {
+        if (!isOpenRouterBase(cfg.baseUrl) || cfg.apiKey.isBlank()) return@withContext null
+        try {
+            val req = Request.Builder().url("${trimBase(cfg.baseUrl)}/credits").get().apply { buildHeaders(cfg).forEach { (k, v) -> header(k, v) } }.build()
+            client.newCall(req).await().use { res ->
+                if (!res.isSuccessful) return@withContext null
+                val data = json.parseToJsonElement(res.body?.string() ?: "").jsonObject["data"]?.jsonObject ?: return@withContext null
+                val total = data["total_credits"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: return@withContext null
+                val used = data["total_usage"]?.jsonPrimitive?.content?.toDoubleOrNull() ?: 0.0
+                Credits(total, used)
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     data class TestResult(val ok: Boolean, val message: String)
 
     /** 校验配置是否可用（用极短文本试合成） */

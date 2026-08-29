@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -45,7 +46,9 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.runtime.collectAsState
 import app.echoread.AppGraph
+import app.echoread.core.TtsModelInfo
 import app.echoread.core.TtsProvider
+import kotlinx.coroutines.delay
 import app.echoread.tts.SpeechApi
 import app.echoread.tts.Voices
 import kotlinx.coroutines.launch
@@ -136,7 +139,34 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
     }
 }
 
-/* ---------- AI 朗读设置 ---------- */
+/* ---------- AI 朗读设置（贴合 OpenRouter：自动同步模型/音色、余额与连接状态） ---------- */
+
+private sealed interface SyncState {
+    data object Idle : SyncState
+    data object Syncing : SyncState
+    data class Ok(val count: Int, val credits: SpeechApi.Credits?) : SyncState
+    data class Failed(val message: String) : SyncState
+}
+
+private val VENDOR_LABELS = mapOf(
+    "hexgrad" to "Hexgrad", "qwen" to "通义", "minimax" to "MiniMax", "fish-audio" to "Fish Audio", "google" to "Google",
+    "x-ai" to "xAI", "microsoft" to "Microsoft", "deepgram" to "Deepgram", "zyphra" to "Zyphra", "canopylabs" to "Canopy",
+    "sesame" to "Sesame", "mistralai" to "Mistral", "openai" to "OpenAI"
+)
+
+private fun vendorOf(id: String): String = id.substringBefore('/', missingDelimiterValue = "")
+private fun vendorLabel(id: String): String = VENDOR_LABELS[vendorOf(id)] ?: vendorOf(id).replaceFirstChar { it.uppercase() }.ifEmpty { "自定义" }
+
+/** 单价（$/百万字符）或「按 token」/「免费」 */
+private fun priceLabel(info: TtsModelInfo?, id: String): String? = when {
+    id.contains(":free") -> "免费"
+    info?.completionPrice != null && info.completionPrice > 0 -> "按 token 计费"
+    info?.promptPrice != null && info.promptPrice > 0 -> {
+        val perM = info.promptPrice * 1e6
+        "$" + (if (perM >= 10) Math.round(perM).toString() else String.format(java.util.Locale.ROOT, "%.2f", perM).trimEnd('0').trimEnd('.')) + " / 百万字"
+    }
+    else -> null
+}
 
 @OptIn(ExperimentalFoundationApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
@@ -150,14 +180,16 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
 
     var testing by remember { mutableStateOf(false) }
     var testResult by remember { mutableStateOf("") }
-    var fetching by remember { mutableStateOf(false) }
+    var sync by remember { mutableStateOf<SyncState>(SyncState.Idle) }
     var showAdvanced by remember { mutableStateOf(false) }
     var voiceLang by remember { mutableStateOf("") }
+    var modelFilter by remember { mutableStateOf("") }
     var cacheStats by remember { mutableStateOf<app.echoread.tts.AudioCache.Stats?>(null) }
 
     LaunchedEffect(open) { if (open) cacheStats = graph.audioCache.stats() }
 
     val model = tts.openai.model
+    val isOpenRouter = SpeechApi.isOpenRouterBase(tts.openai.baseUrl)
     val hints = remember(model) { Voices.modelHints(model) }
     val freeVoice = hints?.freeVoice
     val voiceCatalog = remember(model, models) { Voices.catalogVoices(model, settings.serverVoicesFor(model)) }
@@ -166,21 +198,32 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
     LaunchedEffect(model) { voiceLang = "" }
     val shownGroups = if (voiceLang.isEmpty()) voiceGroups else voiceGroups.filter { it.lang == voiceLang }
     val modelMeta = remember(model, models) { Voices.formatModelMeta(models.firstOrNull { it.id == model }, model) }
-    val showInstructions = !SpeechApi.isOpenRouterBase(tts.openai.baseUrl)
+    val showInstructions = !isOpenRouter
 
-    fun fetchModels() {
-        fetching = true
-        scope.launch {
-            try {
-                val list = SpeechApi.fetchTtsModels(tts.openai)
-                settings.setModels(list)
-                if (list.isNotEmpty()) Toaster.success("发现 ${list.size} 个语音模型") else Toaster.show("该服务未列出语音模型，可手动输入模型名")
-            } catch (e: Exception) {
-                Toaster.error(e.message ?: "获取模型列表失败")
-            } finally {
-                fetching = false
-            }
+    /** 同步模型列表（+ OpenRouter 余额）；silent 时失败不弹 toast */
+    suspend fun syncModels(cfg: app.echoread.core.OpenAISpeechConfig, silent: Boolean) {
+        if (cfg.apiKey.isBlank()) return
+        sync = SyncState.Syncing
+        try {
+            val list = SpeechApi.fetchTtsModels(cfg)
+            settings.setModels(list, settings.fingerprintOf(cfg))
+            val credits = SpeechApi.fetchCredits(cfg)
+            sync = SyncState.Ok(list.size, credits)
+            if (!silent) Toaster.success(if (list.isNotEmpty()) "已同步 ${list.size} 个语音模型" else "该服务未列出语音模型，可手动输入模型名")
+        } catch (e: Exception) {
+            sync = SyncState.Failed(e.message ?: "获取模型列表失败")
+            if (!silent) Toaster.error(e.message ?: "获取模型列表失败")
         }
+    }
+
+    // 自动同步：面板打开且 Key/端点变化（去抖 800ms）或列表超过 6 小时未刷新
+    LaunchedEffect(open, tts.openai.apiKey, tts.openai.baseUrl) {
+        if (!open || tts.openai.apiKey.isBlank()) return@LaunchedEffect
+        delay(800)
+        val fp = settings.fingerprintOf(tts.openai)
+        val stale = models.isEmpty() || settings.modelsFingerprint != fp || System.currentTimeMillis() - settings.modelsSyncedAt > 6 * 3600_000L
+        if (stale) syncModels(tts.openai, silent = true)
+        else if (sync is SyncState.Idle) sync = SyncState.Ok(models.size, SpeechApi.fetchCredits(tts.openai))
     }
 
     fun runTest() {
@@ -211,63 +254,113 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
         Spacer(Modifier.height(18.dp))
 
         if (tts.provider == TtsProvider.OPENAI) {
-            SectionLabel("API 配置")
+            SectionLabel(if (isOpenRouter) "OpenRouter" else "API 配置") {
+                if (isOpenRouter) Text(
+                    "创建 Key →", color = c.accent, fontSize = 12.sp,
+                    modifier = Modifier.bounceClick(pressedScale = 0.97f) { runCatching { uriHandler.openUri("https://openrouter.ai/settings/keys") } }
+                )
+            }
             EchoTextField(tts.openai.baseUrl, { v -> settings.updateOpenAI { it.copy(baseUrl = v.trim()) } }, label = "Base URL", placeholder = "https://openrouter.ai/api/v1", keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri)
             Spacer(Modifier.height(10.dp))
             EchoTextField(tts.openai.apiKey, { v -> settings.updateOpenAI { it.copy(apiKey = v.trim()) } }, label = "API Key", placeholder = "sk-or-...", password = true)
+            // 连接状态行：自动同步的结果 / 余额
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val (dot, text) = when (val st = sync) {
+                    SyncState.Idle -> (if (tts.openai.apiKey.isBlank()) c.text3 else c.text3) to (if (tts.openai.apiKey.isBlank()) "填入 Key 后自动同步模型与音色" else "等待同步…")
+                    SyncState.Syncing -> c.accent to "正在同步模型列表…"
+                    is SyncState.Ok -> Color(0xFF34C759) to buildString {
+                        append(if (isOpenRouter) "已连接 OpenRouter" else "已连接")
+                        append(" · ${st.count} 个语音模型")
+                        st.credits?.let { append(" · 余额 $" + String.format(java.util.Locale.ROOT, "%.2f", it.remaining)) }
+                    }
+                    is SyncState.Failed -> c.danger to st.message
+                }
+                Box(Modifier.size(7.dp).background(dot, CircleShape))
+                Spacer(Modifier.width(7.dp))
+                Text(text, color = if (sync is SyncState.Failed) c.danger else c.text2, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                if (sync !is SyncState.Syncing && tts.openai.apiKey.isNotBlank()) {
+                    Text("刷新", color = c.accent, fontSize = 12.sp, modifier = Modifier.bounceClick(pressedScale = 0.95f) { scope.launch { syncModels(tts.openai, silent = false) } }.padding(start = 8.dp))
+                }
+            }
             Spacer(Modifier.height(18.dp))
 
-            SectionLabel("模型") {
-                Text(
-                    if (fetching) "拉取中…" else if (models.isNotEmpty()) "刷新在线列表" else "获取在线模型",
-                    color = c.accent, fontSize = 12.sp,
-                    modifier = Modifier.bounceClick(enabled = !fetching) { fetchModels() }
-                )
-            }
+            SectionLabel("模型") { if (models.isNotEmpty()) Text("${models.size} 个", color = c.text3, fontSize = 11.sp) }
             if (models.isNotEmpty()) {
+                // OpenRouter 风格模型卡片：推荐优先，可按名称/厂商筛选
+                if (models.size > 6) {
+                    EchoTextField(modelFilter, { modelFilter = it }, placeholder = "筛选模型（名称 / 厂商 / 中文 / 免费）")
+                    Spacer(Modifier.height(8.dp))
+                }
+                val recommendedIds = Voices.RECOMMENDED_MODELS.map { it.id }
+                val q = modelFilter.trim().lowercase()
+                val ordered = remember(models, q) {
+                    val list = models.sortedWith(compareBy<TtsModelInfo> { val i = recommendedIds.indexOf(it.id); if (i < 0) 99 else i }.thenBy { it.id })
+                    if (q.isEmpty()) list else list.filter { m ->
+                        val h = Voices.modelHints(m.id)
+                        m.id.lowercase().contains(q) || m.name.lowercase().contains(q) || vendorLabel(m.id).lowercase().contains(q) ||
+                            (h?.langs?.contains(q) == true) || (q == "免费" && m.id.contains(":free")) || (q == "中文" && (h?.langs?.contains("中") == true))
+                    }
+                }
                 val listState = rememberLazyListState()
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 220.dp)
-                        .background(c.cardAlt, RoundedCornerShape(Radius.md))
-                        .border(1.dp, c.border, RoundedCornerShape(Radius.md))
+                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    itemsIndexed(models) { _, m ->
+                    itemsIndexed(ordered, key = { _, m -> m.id }) { _, m ->
                         val selected = m.id == model
+                        val h = Voices.modelHints(m.id)
+                        val voicesN = Voices.catalogVoices(m.id, m.voices).size
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .background(if (selected) c.accentSoft else Color.Transparent)
-                                .bounceClick(pressedScale = 0.99f) { settings.setModel(m.id) }
-                                .padding(horizontal = 12.dp, vertical = 9.dp),
+                                .background(if (selected) c.accentSoft else c.cardAlt, RoundedCornerShape(Radius.md))
+                                .border(1.dp, if (selected) c.accent else Color.Transparent, RoundedCornerShape(Radius.md))
+                                .bounceClick(pressedScale = 0.985f) { settings.setModel(m.id) }
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(m.name, color = if (selected) c.accent else c.text, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(m.id, color = c.text3, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            // 厂商徽标：厂商名首字母，按厂商哈希配色
+                            val hue = (app.echoread.core.Hash.cyrb53(vendorOf(m.id)).take(6).toLong(16) % 360).toFloat()
+                            Box(Modifier.size(34.dp).background(Color.hsl(hue, 0.55f, if (c.isDark) 0.38f else 0.52f), RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
+                                Text(vendorLabel(m.id).take(1).uppercase(), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                             }
-                            if (selected) Icon(EchoIcons.Check, null, tint = c.accent, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(m.name.substringAfter(": ").ifEmpty { m.name }, color = if (selected) c.accent else c.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                    if (m.id.contains(":free")) Tag("免费", Color(0xFF34C759))
+                                    if (h?.langs?.contains("中") == true) Tag("中文", c.accent)
+                                    if (h?.cloning == true) Tag("克隆", Color(0xFFB47CFF))
+                                }
+                                Text(m.id, color = c.text3, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                val meta = listOfNotNull(priceLabel(m, m.id), h?.langs, if (voicesN > 0) "$voicesN 音色" else if (h?.freeVoice != null) "开放音色 ID" else null).joinToString(" · ")
+                                if (meta.isNotEmpty()) Text(meta, color = c.text2, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
+                            if (selected) {
+                                Spacer(Modifier.width(6.dp))
+                                Icon(EchoIcons.Check, null, tint = c.accent, modifier = Modifier.size(16.dp))
+                            }
                         }
                     }
+                    if (ordered.isEmpty()) item { Text("没有匹配的模型", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(8.dp)) }
+                }
+                Spacer(Modifier.height(8.dp))
+            } else {
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    for (r in Voices.RECOMMENDED_MODELS) Chip(r.label, selected = model == r.id, trailing = r.tag) { settings.setModel(r.id) }
                 }
                 Spacer(Modifier.height(8.dp))
             }
-            EchoTextField(model, { v -> settings.setModel(v.trim()) }, placeholder = "模型 ID，如 hexgrad/kokoro-82m")
-            Spacer(Modifier.height(8.dp))
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                for (r in Voices.RECOMMENDED_MODELS) {
-                    Chip(r.label, selected = model == r.id, trailing = r.tag) { settings.setModel(r.id) }
-                }
-            }
+            EchoTextField(model, { v -> settings.setModel(v.trim()) }, label = "模型 ID（可手动填写列表外的模型）", placeholder = "如 hexgrad/kokoro-82m")
             if (modelMeta.isNotEmpty()) {
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 Text(modelMeta, color = c.text3, fontSize = 11.sp, lineHeight = 16.sp)
             }
             Spacer(Modifier.height(18.dp))
 
-            SectionLabel("音色") { if (voiceCatalog.isNotEmpty()) Text("${voiceCatalog.size} 个", color = c.text3, fontSize = 11.sp) }
+            SectionLabel("音色") { if (voiceCatalog.isNotEmpty()) Text("${voiceCatalog.size} 个" + if (settings.serverVoicesFor(model) != null) " · 来自 OpenRouter" else "", color = c.text3, fontSize = 11.sp) }
             when {
                 freeVoice != null -> {
                     EchoTextField(tts.openai.voice, { v -> settings.setVoice(v.trim()) }, placeholder = freeVoice.placeholder)
@@ -353,7 +446,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                     EchoSlider(tts.prefetch.toFloat(), { v -> settings.updateTts { it.copy(prefetch = Math.round(v)) } }, 0f..5f, steps = 4, modifier = Modifier.width(150.dp))
                 }
                 Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth().border(0.dp, Color.Transparent), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     val st = cacheStats
                     Text(
                         if (st == null) "音频缓存 …" else "音频缓存 ${st.count} 条 · ${formatBytes(st.bytes)}",
@@ -371,18 +464,19 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
         }
         Spacer(Modifier.height(16.dp))
         Text(
-            "已内置 OpenRouter 全部语音模型的音色目录（含中文音色标注），也兼容 OpenAI 官方、SiliconFlow 等 OpenAI 格式接口。在 openrouter.ai 创建 API Key 即可使用；Fish S2.1 有免费档可先试听。",
+            "填入 Key 后自动从 OpenRouter 同步全部语音模型、音色与单价（每 6 小时刷新）；也兼容 OpenAI 官方、SiliconFlow 等 OpenAI 格式接口。Fish S2.1 有免费档可先试听。",
             color = c.text3, fontSize = 11.sp, lineHeight = 17.sp
-        )
-        Text(
-            "打开 openrouter.ai/settings/keys →",
-            color = c.accent, fontSize = 11.sp, textDecoration = TextDecoration.Underline,
-            modifier = Modifier.padding(top = 4.dp).bounceClick(pressedScale = 0.98f) {
-                runCatching { uriHandler.openUri("https://openrouter.ai/settings/keys") }
-            }
         )
         Spacer(Modifier.height(8.dp))
     }
+}
+
+@Composable
+private fun Tag(text: String, color: Color) {
+    Text(
+        text, color = color, fontSize = 9.sp, fontWeight = FontWeight.SemiBold,
+        modifier = Modifier.padding(start = 5.dp).background(color.copy(alpha = 0.14f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp)
+    )
 }
 
 private fun genderMark(g: String?): String? = when (g) { "f" -> "♀"; "m" -> "♂"; else -> null }

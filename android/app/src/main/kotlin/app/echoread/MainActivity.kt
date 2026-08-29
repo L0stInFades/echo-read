@@ -48,6 +48,15 @@ class MainActivity : ComponentActivity() {
             intent?.action = Intent.ACTION_MAIN
             graph.pendingImports.update { it + uris }
         }
+        // 外部配置：--es apiKey/baseUrl/model/voice → 弹确认卡片，用户点「使用」才写入
+        val apiKey = intent?.getStringExtra(EXTRA_API_KEY)
+        val baseUrl = intent?.getStringExtra(EXTRA_BASE_URL)
+        val model = intent?.getStringExtra(EXTRA_MODEL)
+        val voice = intent?.getStringExtra(EXTRA_VOICE)
+        if (!apiKey.isNullOrBlank() || !baseUrl.isNullOrBlank() || !model.isNullOrBlank() || !voice.isNullOrBlank()) {
+            listOf(EXTRA_API_KEY, EXTRA_BASE_URL, EXTRA_MODEL, EXTRA_VOICE).forEach { intent?.removeExtra(it) }
+            graph.configRequests.value = AppGraph.PendingConfig(apiKey?.trim(), baseUrl?.trim(), model?.trim(), voice?.trim())
+        }
         // 深链：通知栏点击（或 adb --es bookId）直接打开指定书籍；autoplay 供自动化测试起播
         val bookId = intent?.getStringExtra(EXTRA_BOOK_ID)
         if (!bookId.isNullOrEmpty()) {
@@ -61,6 +70,10 @@ class MainActivity : ComponentActivity() {
     companion object {
         const val EXTRA_BOOK_ID = "bookId"
         const val EXTRA_AUTOPLAY = "autoplay"
+        const val EXTRA_API_KEY = "apiKey"
+        const val EXTRA_BASE_URL = "baseUrl"
+        const val EXTRA_MODEL = "model"
+        const val EXTRA_VOICE = "voice"
     }
 
     /**

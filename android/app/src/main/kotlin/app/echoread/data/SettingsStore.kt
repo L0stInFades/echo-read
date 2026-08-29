@@ -55,10 +55,19 @@ class SettingsStore(context: Context) {
         prefs.edit().putString(KEY_READER, json.encodeToString(_reader.value)).apply()
     }
 
-    fun setModels(list: List<TtsModelInfo>) {
+    fun setModels(list: List<TtsModelInfo>, fingerprint: String = "") {
         _models.value = list
-        prefs.edit().putString(KEY_MODELS, json.encodeToString(ListSerializer(TtsModelInfo.serializer()), list)).apply()
+        prefs.edit()
+            .putString(KEY_MODELS, json.encodeToString(ListSerializer(TtsModelInfo.serializer()), list))
+            .putLong(KEY_MODELS_AT, System.currentTimeMillis())
+            .putString(KEY_MODELS_FP, fingerprint)
+            .apply()
     }
+
+    /** 模型列表的同步时间与「端点+Key」指纹：Key/端点变化或超过 6 小时即需重新同步 */
+    val modelsSyncedAt: Long get() = prefs.getLong(KEY_MODELS_AT, 0)
+    val modelsFingerprint: String get() = prefs.getString(KEY_MODELS_FP, "") ?: ""
+    fun fingerprintOf(cfg: OpenAISpeechConfig): String = app.echoread.core.Hash.cyrb53("${cfg.baseUrl.trim()}|${cfg.apiKey.trim()}")
 
     fun serverVoicesFor(modelId: String): List<String>? = _models.value.firstOrNull { it.id == modelId }?.voices
 
@@ -84,6 +93,8 @@ class SettingsStore(context: Context) {
         private const val KEY_TTS = "tts-settings"
         private const val KEY_READER = "reader-settings"
         private const val KEY_MODELS = "tts-models"
+        private const val KEY_MODELS_AT = "tts-models-at"
+        private const val KEY_MODELS_FP = "tts-models-fp"
 
         /** OpenRouter 已下架的历史 TTS 模型：存量配置迁移到现役默认模型 */
         private val REMOVED_OR_MODELS = setOf(
