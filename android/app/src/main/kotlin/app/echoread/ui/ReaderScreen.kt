@@ -103,6 +103,7 @@ import app.echoread.data.DerivedChapter
 import app.echoread.tts.SleepMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.abs
@@ -326,6 +327,26 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
         if (pg.chapter !== derived) return@LaunchedEffect
         val target = pg.pageOf(s.segmentStart)
         if (target != page) page = target
+    }
+
+    // 片段跨页：按播放进度估算念到的字位，越过下页首字即自动翻页（不等下一句）
+    LaunchedEffect(activeSeg, page, playing, follow, pages) {
+        val seg = activeSeg ?: return@LaunchedEffect
+        val pg = pages ?: return@LaunchedEffect
+        if (!playing || !follow || pg.chapter !== derived) return@LaunchedEffect
+        val cur = page.coerceIn(0, pg.pageCount - 1)
+        if (cur >= pg.pageCount - 1) return@LaunchedEffect
+        val nextStart = pg.pageStartOffset(cur + 1)
+        if (seg.end <= nextStart || seg.start >= nextStart) return@LaunchedEffect
+        val len = (seg.end - seg.start).coerceAtLeast(1)
+        while (isActive) {
+            delay(200)
+            val est = seg.start + (len * engine.playbackFraction()).toInt()
+            if (est + 2 >= nextStart) {
+                page = cur + 1
+                break
+            }
+        }
     }
 
     var lastError by remember { mutableStateOf("") }
