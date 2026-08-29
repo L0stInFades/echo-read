@@ -109,7 +109,12 @@ class Updater(private val context: Context) {
             for (url in listOf(info.apkUrl) + info.mirrors) {
                 try {
                     val req = Request.Builder().url(url).get().build()
-                    SpeechApi.client.newCall(req).execute().use { res ->
+                    // 首字节 12s 未到 / 传输中 20s 无进展即放弃当前地址换镜像（GitHub 直连在部分网络下会长时间挂起）
+                    val client = SpeechApi.client.newBuilder()
+                        .connectTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+                        .build()
+                    client.newCall(req).execute().use { res ->
                         if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
                         val body = res.body ?: throw IllegalStateException("空响应")
                         val total = body.contentLength()
