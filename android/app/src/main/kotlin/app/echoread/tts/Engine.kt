@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.io.File
-import java.util.Collections
 import kotlin.coroutines.coroutineContext
 import kotlin.math.min
 import kotlin.math.pow
@@ -39,7 +38,9 @@ data class EngineSnapshot(
     val synthesizing: Boolean = false,
     /** 自愈进行时的可见提示（退避倒计时/跳段说明） */
     val retryNote: String = "",
-    val error: String = ""
+    val error: String = "",
+    /** 当前片段之后已就绪（可零等待播放）的连续片段数 */
+    val buffered: Int = 0
 )
 
 /** 指数退避延迟（毫秒）：1s 起倍增、30s 封顶、±20% 抖动；attempt 从 0 计 */
@@ -85,10 +86,12 @@ class TtsEngine(
     private var retryNote = ""
     /** 连续合成失败的片段数，任一片段成功播出即清零 */
     private var failStreak = 0
-    private val prefetching: MutableSet<String> = Collections.synchronizedSet(HashSet())
+    private val pipeline = SynthPipeline(scope, audioCache)
+    private var lastEndedAt = 0L
 
     init {
         tempDir.mkdirs()
+        pipeline.onChanged = { ensureLookahead() }
         playback.onInterrupt = { pause() }
         playback.onResumeAfterInterrupt = { if (state == PlayerState.PAUSED) play() }
     }
@@ -110,9 +113,25 @@ class TtsEngine(
             segmentEnd = derived?.segments?.getOrNull(segmentIndex)?.end ?: 0,
             synthesizing = synthesizing,
             retryNote = retryNote,
-            error = errorMsg
+            error = errorMsg,
+            buffered = bufferedAhead()
         )
         playback.setActive(state == PlayerState.PLAYING)
+    }
+
+    /** 当前片段之后连续已就绪的片段数（最多数 8 段） */
+    private fun bufferedAhead(): Int {
+        val d = derived ?: return 0
+        if (settings.provider == TtsProvider.SYSTEM) return 0
+        val cfg = settings.openai
+        var n = 0
+        var i = segmentIndex + 1
+        while (i < d.segments.size && n < 8) {
+            if (!pipeline.isReady(cacheKey(slice(d.segments[i]), cfg))) break
+            n++
+            i++
+        }
+        return n
     }
 
     fun updateConfig(s: TtsSettings) {
@@ -162,6 +181,7 @@ class TtsEngine(
         segmentIndex = if (d.segments.isNotEmpty()) Segmenter.segmentIndexAt(d.segments, offset) else 0
         state = PlayerState.PAUSED
         emit()
+        ensureLookahead()
         return true
     }
 
@@ -180,6 +200,7 @@ class TtsEngine(
         failStreak = 0
         state = PlayerState.PLAYING
         emit()
+        ensureLookahead()
         val gen = generation
         loopJob = scope.launch { loop(gen) }
     }
@@ -222,6 +243,7 @@ class TtsEngine(
             if (state != PlayerState.IDLE) state = PlayerState.PAUSED
             emit()
         }
+        ensureLookahead()
     }
 
     /** 跳章节并从头朗读（或停在开头） */
@@ -330,8 +352,11 @@ class TtsEngine(
             handle = h
             failStreak = 0
             emit() // 句柄落地：出声期间不再显示「合成中」
-            prefetchFrom(segmentIndex + 1)
+            // 观测：段间等待（上段播完 → 本段出声）与缓冲深度，用于验证流水线效果
+            if (lastEndedAt > 0) android.util.Log.d("EchoTts", "seg=$segmentIndex gap=${System.currentTimeMillis() - lastEndedAt}ms buffered=${bufferedAhead()} synthEma=${pipeline.synthMs.toInt()}ms msPerChar=${pipeline.msPerChar.toInt()}")
+            ensureLookahead()
 
+            val playStart = System.currentTimeMillis()
             try {
                 h.awaitEnded()
             } catch (e: CancellationException) {
@@ -349,6 +374,9 @@ class TtsEngine(
             }
             if (gen != generation) return
             if (handle === h) handle = null
+            lastEndedAt = System.currentTimeMillis()
+            // 以实际播放时长校准每字时长（换算回 1× 倍速），驱动前瞻窗口自适应
+            pipeline.recordPlayback(seg.end - seg.start, ((System.currentTimeMillis() - playStart) * settings.rate).toLong())
             segmentIndex++
             emit()
         }
@@ -378,11 +406,12 @@ class TtsEngine(
         // 退避重试窗口可达分钟级，期间改音色/模型不换代：缓存键与全部重试锚定入口配置快照
         val cfg = settings.openai
         val key = cacheKey(text, cfg)
-        val cached = runCatching { audioCache.get(key) }.getOrNull()
+        // 热表 / 磁盘命中：无需 Key 也可离线回放已缓存片段
+        val hot = pipeline.readyFile(key) ?: runCatching { audioCache.get(key) }.getOrNull()
         if (gen != generation) throw AbortedException()
-        if (cached != null) {
+        if (hot != null) {
             setRetryNote("", gen)
-            return playback.play(cached, rate)
+            return playback.play(hot, rate)
         }
         if (cfg.apiKey.isBlank()) throw SpeechHttpException("请先在朗读设置中填写 API Key", 401)
 
@@ -390,10 +419,9 @@ class TtsEngine(
         for (attempt in 0 until MAX_ATTEMPTS) {
             if (gen != generation) throw AbortedException()
             try {
-                val bytes = SpeechApi.synthesize(cfg, text)
+                // 流水线去重：若预取已在途则直接等它，绝不重复请求
+                val file = pipeline.obtain(key, cfg, text)
                 if (gen != generation) throw AbortedException()
-                if (bytes.size < 10) throw SpeechHttpException("返回的音频为空", 502)
-                val file = audioCache.put(key, bytes)
                 setRetryNote("", gen)
                 return playback.play(file, rate)
             } catch (e: CancellationException) {
@@ -421,29 +449,48 @@ class TtsEngine(
         emit()
     }
 
-    /** 后台预取后续 N 个片段到缓存（换代后静默丢弃结果） */
-    private fun prefetchFrom(index: Int) {
+    /**
+     * 补满前瞻窗口：从当前片段之后开始，确保「已就绪 + 在途」覆盖足够的可播时长
+     * （窗口按合成耗时与播放速率自适应，最少 settings.prefetch 段、最多 MAX_LOOKAHEAD 段），
+     * 新请求并发不超过 MAX_PARALLEL；章尾剩余不足时提前派生下一章并预取其开头。
+     * 播放中与暂停中都维持窗口（暂停多半会继续），空闲/出错不预取。
+     */
+    private fun ensureLookahead() {
         val d = derived ?: return
         if (settings.provider == TtsProvider.SYSTEM) return
-        val gen = generation
+        if (state != PlayerState.PLAYING && state != PlayerState.PAUSED) return
         val cfg = settings.openai
         if (cfg.apiKey.isBlank()) return
+        val want = pipeline.lookaheadCount(
+            avgSegChars = settings.maxChunkChars.coerceAtLeast(40),
+            min = settings.prefetch.coerceIn(1, MAX_LOOKAHEAD),
+            max = MAX_LOOKAHEAD
+        )
         val segments = d.segments
-        val n = settings.prefetch
-        for (i in index until min(index + n, segments.size)) {
+        var covered = 0
+        var i = segmentIndex + 1
+        while (i < segments.size && covered < want) {
             val text = slice(segments[i])
             val key = cacheKey(text, cfg)
-            if (!prefetching.add(key)) continue
-            scope.launch(Dispatchers.IO) {
-                try {
-                    if (audioCache.get(key) != null) return@launch
-                    val bytes = SpeechApi.synthesize(cfg, text)
-                    if (gen != generation || bytes.size < 10) return@launch
-                    audioCache.put(key, bytes)
-                } catch (_: Throwable) {
-                    /* 预取失败静默 */
-                } finally {
-                    prefetching.remove(key)
+            if (!pipeline.isReady(key) && !pipeline.isPending(key)) {
+                if (pipeline.inflightCount >= MAX_PARALLEL) return
+                pipeline.prefetch(key, cfg, text)
+            }
+            covered++
+            i++
+        }
+        // 跨章前瞻：本章剩余不足窗口时，预取下一章开头（派生结果本身也进 ChapterCache，切章零等待）
+        if (covered < want && hasNextChapter && pipeline.inflightCount < MAX_PARALLEL) {
+            val need = want - covered
+            val nextIndex = chapterIndex + 1
+            val myGen = generation
+            scope.launch {
+                val nd = runCatching { chapters.get(bookId, nextIndex, settings.maxChunkChars) }.getOrNull() ?: return@launch
+                if (myGen != generation) return@launch
+                for (j in 0 until min(need, nd.segments.size)) {
+                    if (pipeline.inflightCount >= MAX_PARALLEL) break
+                    val text = nd.text.substring(nd.segments[j].start, nd.segments[j].end)
+                    pipeline.prefetch(cacheKey(text, cfg), cfg, text)
                 }
             }
         }
@@ -454,5 +501,9 @@ class TtsEngine(
         const val MAX_ATTEMPTS = 8
         /** 连续多少个片段合成失败（各自穷尽重试）才停播报错 */
         const val MAX_FAIL_STREAK = 3
+        /** 前瞻窗口上限（段） */
+        const val MAX_LOOKAHEAD = 6
+        /** 预取并发上限（遵守服务商限流） */
+        const val MAX_PARALLEL = 2
     }
 }

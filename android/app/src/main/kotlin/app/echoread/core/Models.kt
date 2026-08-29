@@ -33,8 +33,8 @@ data class TtsSettings(
     val rate: Float = 1f,
     /** 单个合成片段的最大字符数 */
     val maxChunkChars: Int = 120,
-    /** 预取片段数 */
-    val prefetch: Int = 2
+    /** 最少预取片段数（实际窗口按合成耗时自适应放大，最多 6 段） */
+    val prefetch: Int = 3
 )
 
 @Serializable
