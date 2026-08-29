@@ -315,7 +315,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
     val synthesizing = snap.bookId == bookId && snap.state != PlayerState.IDLE && snap.synthesizing
     val playing = snap.state == PlayerState.PLAYING && snap.bookId == bookId
 
-    LaunchedEffect(snap.chapterIndex, snap.segmentStart, snap.state, pages) {
+    LaunchedEffect(snap.chapterIndex, snap.segmentStart, snap.state, pages, follow) {
         val s = snap
         if (s.bookId != bookId || s.state != PlayerState.PLAYING || s.chapterIndex < 0 || !follow) return@LaunchedEffect
         if (s.chapterIndex != chapterIndex) {
@@ -599,10 +599,15 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
                 ) {
                     Column(
                         Modifier.weight(1f).height(40.dp).bounceClick(pressedScale = 0.99f) {
-                            // 点标题：播放中回到朗读所在页并恢复跟随；否则打开目录
+                            // 点标题：播放中回到朗读所在页（跨章则装载朗读章）并恢复跟随；否则打开目录
                             if (playing && !follow) {
                                 follow = true
-                                pages?.let { p -> if (snap.chapterIndex == chapterIndex) page = p.pageOf(snap.segmentStart) }
+                                val s = engine.current
+                                if (s.chapterIndex == chapterIndex) {
+                                    pages?.let { p -> page = p.pageOf(s.segmentStart) }
+                                } else if (s.chapterIndex >= 0) {
+                                    scope.launch { loadChapter(s.chapterIndex, s.segmentStart) }
+                                }
                             } else showChapters = true
                         },
                         verticalArrangement = Arrangement.Center
