@@ -72,6 +72,17 @@ kotlin {
     }
 }
 
+composeCompiler {
+    // 稳定性契约见 android/compose_stability.conf
+    stabilityConfigurationFiles.add(rootProject.layout.projectDirectory.file("compose_stability.conf"))
+    // 可选：`./gradlew :app:assembleRelease -PcomposeReports` 输出「哪些 composable 不可跳过」的报告，
+    // *-composables.txt 里 `restartable but not skippable` 的条目即缺陷清单。默认不开，不影响正常构建。
+    if (project.hasProperty("composeReports")) {
+        reportsDestination.set(layout.buildDirectory.dir("compose_reports"))
+        metricsDestination.set(layout.buildDirectory.dir("compose_metrics"))
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

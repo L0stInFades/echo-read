@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -40,16 +39,21 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -66,7 +70,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.text.Collator
 import java.util.Locale
-import app.echoread.ui.motion.EchoMotion
+import app.echoread.ui.motion.Dur
+import app.echoread.ui.motion.Ease
 import app.echoread.ui.motion.EchoTransitions
 import app.echoread.ui.motion.PressScale
 import app.echoread.ui.motion.echoPress
@@ -110,16 +115,15 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
     }
 
     val collator = remember { Collator.getInstance(Locale.CHINESE) }
-    val filtered by remember(books, query, sort) {
-        derivedStateOf {
-            val q = query.trim().lowercase()
-            var list = books
-            if (q.isNotEmpty()) list = list.filter { it.title.lowercase().contains(q) || it.author.lowercase().contains(q) }
-            when (sort) {
-                SortMode.ADDED -> list.sortedByDescending { it.createdAt }
-                SortMode.TITLE -> list.sortedWith { a, b -> collator.compare(a.title, b.title) }
-                SortMode.RECENT -> list
-            }
+    // remember 的 key 已经覆盖全部输入，外面再包一层 derivedStateOf 只是多一层观察开销
+    val filtered = remember(books, query, sort) {
+        val q = query.trim().lowercase()
+        var list = books
+        if (q.isNotEmpty()) list = list.filter { it.title.lowercase().contains(q) || it.author.lowercase().contains(q) }
+        when (sort) {
+            SortMode.ADDED -> list.sortedByDescending { it.createdAt }
+            SortMode.TITLE -> list.sortedWith { a, b -> collator.compare(a.title, b.title) }
+            SortMode.RECENT -> list
         }
     }
     val continueBook = if (query.isBlank()) books.firstOrNull { it.lastReadAt != null } else null
@@ -127,12 +131,15 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
     val bigTitleBrush = rememberAurora()
     val listState = rememberLazyListState()
     val density = LocalDensity.current
-    val headerCollapsePx = with(density) { 96.dp.toPx() }
-    // One UI：大标题随滚动收起，紧凑栏淡入
-    val collapse by remember {
+    val compactBarPx = with(density) { 52.dp.toPx() }
+    // 大标题实测高度：收起行程取「header 高 − 紧凑栏高」，header 刚滚出视口时 collapse 恰好到 1，无跳变
+    var headerPx by remember { mutableFloatStateOf(with(density) { 148.dp.toPx() }) }
+    // One UI：大标题收起是「绑定」不是「动画」。绝不再套一层 animateFloatAsState —— 那会让标题
+    // 滞后手指 200ms 以上，而且把连续的滚动值读进组合期，滚动每一像素都重组整个 ShelfScreen。
+    val collapse = remember {
         derivedStateOf {
             if (listState.firstVisibleItemIndex > 0) 1f
-            else (listState.firstVisibleItemScrollOffset / headerCollapsePx).coerceIn(0f, 1f)
+            else (listState.firstVisibleItemScrollOffset / (headerPx - compactBarPx).coerceAtLeast(1f)).coerceIn(0f, 1f)
         }
     }
 
@@ -144,17 +151,32 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
         ) {
             // 大标题区（One UI 下沉标题）
             item("header") {
-                Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(top = 56.dp, bottom = 22.dp)) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .onSizeChanged { if (it.height > 0) headerPx = it.height.toFloat() }
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(top = 56.dp, bottom = 22.dp)
+                ) {
                     Text(
                         "EchoRead",
                         style = TextStyle(brush = bigTitleBrush, fontSize = 36.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp),
-                        modifier = Modifier.graphicsLayer { alpha = 1f - collapse * 0.9f; translationY = -collapse * 12f }
+                        modifier = Modifier.graphicsLayer {
+                            // 大/小标题的交叉淡入只发生在行程两端，中段不会出现两个标题都半透明的「糊」
+                            val p = collapse.value
+                            alpha = 1f - (p / 0.6f).coerceIn(0f, 1f)
+                            translationY = -p * 12.dp.toPx()
+                            compositingStrategy = CompositingStrategy.ModulateAlpha
+                        }
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
                         if (books.isNotEmpty()) "书架 · ${books.size} 本" else "AI 听书 · 声临其境",
                         color = c.text3, fontSize = 12.sp, letterSpacing = 3.sp,
-                        modifier = Modifier.graphicsLayer { alpha = 1f - collapse }
+                        modifier = Modifier.graphicsLayer {
+                            alpha = 1f - (collapse.value / 0.6f).coerceIn(0f, 1f)
+                            compositingStrategy = CompositingStrategy.ModulateAlpha
+                        }
                     )
                 }
             }
@@ -248,7 +270,8 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                     // 网格逐行懒加载：每行一个 item，卡片背景按首/中/尾行分段拼出整块大圆角卡片
                     val cols = 3
                     val rows = filtered.chunked(cols)
-                    itemsIndexed(rows, key = { _, row -> row.joinToString("|") { it.id } }) { ri, row ->
+                    // 稳定且零分配的 key（旧代码每次组合为每行拼一个字符串）
+                    itemsIndexed(rows, key = { _, row -> row.first().id }, contentType = { _, _ -> "bookRow" }) { ri, row ->
                         val first = ri == 0
                         val last = ri == rows.size - 1
                         val shape = RoundedCornerShape(
@@ -272,26 +295,33 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
 
         // 紧凑标题栏：始终承载动作按钮；收起态才显示底色与小标题
         val compactTitleBrush = rememberAurora()
-        val barAlpha by animateFloatAsState(collapse, EchoMotion.Gentle.float(), label = "bar")
+        val canvasColor = c.canvas
+        val borderColor = c.border
         Column(Modifier.fillMaxWidth().zIndex(10f)) {
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .background(c.canvas.copy(alpha = barAlpha * 0.96f))
+                    // 底色在 draw 阶段读收起进度：不再每帧重组紧凑栏、也不再每帧新分配一个 Color 与 background 修饰符
+                    .drawBehind { drawRect(canvasColor, alpha = collapse.value * 0.96f) }
                     .windowInsetsPadding(WindowInsets.statusBars)
             ) {
                 Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         "EchoRead",
                         style = TextStyle(brush = compactTitleBrush, fontSize = 17.sp, fontWeight = FontWeight.Black),
-                        modifier = Modifier.weight(1f).padding(start = 6.dp).graphicsLayer { alpha = barAlpha; translationY = (1f - barAlpha) * 10f }
+                        modifier = Modifier.weight(1f).padding(start = 6.dp).graphicsLayer {
+                            val sm = ((collapse.value - 0.6f) / 0.4f).coerceIn(0f, 1f)
+                            alpha = sm
+                            translationY = (1f - sm) * 10f
+                            compositingStrategy = CompositingStrategy.ModulateAlpha
+                        }
                     )
                     IconButtonEcho(EchoIcons.Help, "怎么用", background = c.card.copy(alpha = 0.9f)) { showHelp = true }
                     Spacer(Modifier.width(8.dp))
                     IconButtonEcho(EchoIcons.Settings, "朗读设置", background = c.card.copy(alpha = 0.9f)) { showSettings = true }
                 }
             }
-            Box(Modifier.fillMaxWidth().height(1.dp).background(c.border.copy(alpha = c.border.alpha * barAlpha)))
+            Box(Modifier.fillMaxWidth().height(1.dp).drawBehind { drawRect(borderColor, alpha = collapse.value) })
         }
 
         // 底部主动作：拇指可达的「导入」
@@ -300,7 +330,12 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
         }
 
         // 导入中遮罩
-        AnimatedVisibility(importing, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut(), modifier = Modifier.matchParentSize().zIndex(60f)) {
+        AnimatedVisibility(
+            importing,
+            enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Dur.Long, easing = Ease.Linear)),
+            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(Dur.Medium, easing = Ease.Linear)),
+            modifier = Modifier.matchParentSize().zIndex(60f)
+        ) {
             Column(
                 Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).echoTap {},
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
@@ -390,7 +425,9 @@ private fun BookCell(b: BookMeta, modifier: Modifier, onClick: () -> Unit, onLon
     val c = echo
     val brush = rememberAurora()
     Column(modifier.echoPress(pressedScale = PressScale.Tile, onLongClick = onLongClick, onClick = onClick)) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).shadow(14.dp, RoundedCornerShape(14.dp), spotColor = Color.Black.copy(alpha = 0.5f))) {
+        // 去掉每格一个 elevation 阴影：3 列 × 4 行 = 12 个额外 RenderNode + outline 阴影，
+        // 是 Adreno 610 上书架滚动掉帧的主力，而封面本身对比度已足够
+        Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(14.dp))) {
             BookCover(b, Modifier.fillMaxSize())
             Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth().height(4.dp).background(Color.Black.copy(alpha = 0.35f))) {
                 Box(Modifier.fillMaxWidth(progressFraction(b)).height(4.dp).background(brush))

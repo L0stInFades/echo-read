@@ -1,8 +1,10 @@
 package app.echoread.ui
 
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -24,7 +26,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.IntOffset
 import app.echoread.AppGraph
+import app.echoread.ui.motion.Dur
+import app.echoread.ui.motion.Ease
+import app.echoread.ui.motion.EchoMotion
 
 /** 外部传入配置的确认卡片：展示脱敏 Key 与目标模型，用户确认后才写入 */
 @Composable
@@ -71,6 +77,8 @@ private fun androidx.compose.foundation.layout.BoxScope.ConfigConfirmSheet(graph
     }
 }
 
+private const val SHELF_KEY = "__shelf__"
+
 /** 根导航：书架 ⇄ 阅读器，共享轴式弹簧滑动过渡 */
 @Composable
 fun EchoApp(graph: AppGraph) {
@@ -90,18 +98,27 @@ fun EchoApp(graph: AppGraph) {
     }
     EchoTheme {
         Box(Modifier.fillMaxSize().background(echo.canvas)) {
-            AnimatedContent(
-                targetState = bookId,
+            val nav = updateTransition(targetState = bookId, label = "nav")
+            // 重入闸门：转场进行中忽略重复导航。旧代码连点两本书会让两份 ReaderScreen 同时存在、
+            // 两份章节加载协程互相竞争 —— 这就是「快速连点造成状态错乱」。
+            val navigate: (String?) -> Unit = { to -> if (!nav.isRunning) bookId = to }
+            nav.AnimatedContent(
                 transitionSpec = {
                     val forward = targetState != null
-                    val enter = slideInHorizontally(spring(dampingRatio = 0.9f, stiffness = 300f)) { if (forward) it / 3 else -it / 4 } + fadeIn(tween(220))
-                    val exit = slideOutHorizontally(tween(260)) { if (forward) -it / 4 else it / 3 } + fadeOut(tween(200))
-                    enter togetherWith exit
+                    // 两侧位移比例对称、进出场同一条弹簧：新旧屏幕不会再相对滑动造成错位
+                    val d = 0.30f
+                    val spec = EchoMotion.Emphasized.spec(IntOffset.VisibilityThreshold)
+                    val enter = slideInHorizontally(spec) { (it * if (forward) d else -d).toInt() } +
+                        fadeIn(tween(Dur.Medium, easing = Ease.Linear))
+                    val exit = slideOutHorizontally(spec) { (it * if (forward) -d else d).toInt() } +
+                        fadeOut(tween(Dur.Medium, easing = Ease.Linear))
+                    // clip = false：两屏同尺寸时不再多插一层尺寸动画容器
+                    (enter togetherWith exit) using SizeTransform(clip = false)
                 },
-                label = "nav"
+                contentKey = { it ?: SHELF_KEY }
             ) { id ->
-                if (id == null) ShelfScreen(graph) { bookId = it }
-                else ReaderScreen(id, graph, autoplay = autoplayFor == id, onAutoplayConsumed = { autoplayFor = null }) { bookId = null }
+                if (id == null) ShelfScreen(graph) { navigate(it) }
+                else ReaderScreen(id, graph, autoplay = autoplayFor == id, onAutoplayConsumed = { autoplayFor = null }) { navigate(null) }
             }
             ConfigConfirmSheet(graph)
             ToastHost()

@@ -42,6 +42,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -167,6 +168,11 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
     var request by remember { mutableStateOf<ChapterRequest?>(null) }
     var laying by remember { mutableStateOf(false) }
     var follow by remember { mutableStateOf(Follow.FOLLOWING) }
+    /**
+     * 视图主动发起播放/切章时锁定的目标章。引擎快照还停在旧章的那几十毫秒里，跟随不得把视图拽回去 ——
+     * 否则「在第 3 章点读」会看到画面先闪回第 2 章再跳回来。
+     */
+    var awaitEngineChapter by remember { mutableIntStateOf(-1) }
     val reqSeq = remember { intArrayOf(0) }
 
     var showChapters by remember { mutableStateOf(false) }
@@ -244,6 +250,8 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
         ) { req, ch, sp -> Triple(req, ch, sp) }
             .conflate()
             .collectLatest { (req, anchorCh, sp) ->
+                // combine 会带出「已被更新请求取代」的中间组合，处理它只会白白多做一次交叉淡入
+                if (req != null && req !== request) return@collectLatest
                 if (sp == null) return@collectLatest
                 val total = meta?.chapterCount ?: return@collectLatest
                 val target = req?.chapter ?: anchorCh
@@ -304,6 +312,12 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
         snapshotFlow { FollowKey(follow, snap.bookId, snap.state, snap.chapterIndex, snap.segmentStart) }
             .distinctUntilChanged()
             .collectLatest { k ->
+                if (awaitEngineChapter >= 0) {
+                    val reached = k.book == bookId && k.chapter == awaitEngineChapter
+                    // 引擎回到空闲/报错说明这次装载没成功，锁必须解开，否则跟随永久失效
+                    val aborted = k.state == PlayerState.IDLE || k.state == PlayerState.ERROR
+                    if (reached || aborted) awaitEngineChapter = -1 else return@collectLatest
+                }
                 if (k.follow != Follow.FOLLOWING || k.book != bookId) return@collectLatest
                 if (k.state != PlayerState.PLAYING || k.chapter < 0) return@collectLatest
                 if (k.chapter != pager.anchor.chapter) {
@@ -368,6 +382,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
     fun playFrom(offset: Int) {
         ensureNotificationPermission()
         follow = Follow.FOLLOWING
+        awaitEngineChapter = pager.anchor.chapter
         scope.launch {
             try {
                 val a = pager.anchor
@@ -387,6 +402,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
     fun togglePlay() {
         ensureNotificationPermission()
         follow = Follow.FOLLOWING
+        awaitEngineChapter = pager.anchor.chapter
         scope.launch {
             try {
                 val a = pager.anchor
@@ -414,6 +430,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
             requestChapter(index, if (lastPage) -1 else 0)
             if (wasPlaying) {
                 follow = Follow.FOLLOWING
+                awaitEngineChapter = index
                 try {
                     if (player.loadBook(bookId, index, 0)) engine.play()
                 } catch (e: Exception) {
