@@ -2,7 +2,10 @@ package app.echoread.ui
 
 import android.graphics.BitmapFactory
 import android.util.LruCache
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.ImageBitmap
@@ -32,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.echoread.core.BookMeta
 import app.echoread.core.Hash
+import app.echoread.ui.motion.Dur
+import app.echoread.ui.motion.Ease
+import app.echoread.ui.motion.Thr
 
 /** 已解码封面的进程级缓存：列表滚动往返不重复解码（≤360px JPEG，约 0.3MB/张） */
 private val coverCache = LruCache<String, ImageBitmap>(48)
@@ -53,8 +59,16 @@ fun BookCover(book: BookMeta, modifier: Modifier = Modifier, radius: Dp = 14.dp,
     Box(modifier.clip(shape), contentAlignment = Alignment.Center) {
         val bmp = bitmap
         if (bmp != null) {
-            val alpha by animateFloatAsState(1f, Motion.soft, label = "coverFade")
-            Image(bmp, book.title, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().graphicsLayer { this.alpha = alpha })
+            // 真实淡入：旧代码 animateFloatAsState(1f) 起点终点都是 1f，这个「淡入」从来没播过
+            val fade = remember(bmp) { Animatable(0f, Thr.ALPHA) }
+            LaunchedEffect(bmp) { fade.animateTo(1f, tween(Dur.Medium, easing = Ease.Linear)) }
+            Image(
+                bmp, book.title, contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().graphicsLayer {
+                    alpha = fade.value
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                }
+            )
         } else if (cover != null) {
             Box(Modifier.fillMaxSize().background(echo.cardAlt))
         } else {

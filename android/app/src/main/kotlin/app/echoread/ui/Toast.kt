@@ -25,6 +25,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.echoread.ui.motion.EchoTransitions
 
 enum class ToastKind { INFO, ERROR, SUCCESS }
 
@@ -54,7 +55,7 @@ fun ToastHost() {
     Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(top = 12.dp), contentAlignment = Alignment.TopCenter) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
             for (t in Toaster.items) {
-                AnimatedVisibility(visible = true, enter = Motion.riseIn, exit = Motion.sinkOut) {
+                AnimatedVisibility(visible = true, enter = EchoTransitions.riseIn, exit = EchoTransitions.sinkOut) {
                     Text(
                         t.text,
                         color = when (t.kind) {

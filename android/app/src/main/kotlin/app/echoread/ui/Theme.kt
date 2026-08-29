@@ -7,6 +7,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -60,9 +61,17 @@ val LightColors = EchoColors(
     isDark = false
 )
 
-/** 极光渐变：主按钮、进度、品牌字 */
-val Aurora: Brush = Brush.linearGradient(listOf(Color(0xFF7C9BFF), Color(0xFFB47CFF), Color(0xFFFF7CB8)))
-val AuroraVertical: Brush = Brush.verticalGradient(listOf(Color(0xFF7C9BFF), Color(0xFFB47CFF), Color(0xFFFF7CB8)))
+/** 极光渐变色标：主按钮、进度、品牌字 */
+val AuroraColors: List<Color> = listOf(Color(0xFF7C9BFF), Color(0xFFB47CFF), Color(0xFFFF7CB8))
+
+/**
+ * 每个使用点各拿一份实例 —— `ShaderBrush` 内部按「上次创建时的尺寸」缓存 shader，
+ * 全局单例被 36sp 标题 / 胶囊按钮 / 2dp 进度条轮流命中时缓存反复失效，每帧重建 LinearGradientShader。
+ */
+fun auroraBrush(): Brush = Brush.linearGradient(AuroraColors)
+
+@Composable
+fun rememberAurora(): Brush = remember { auroraBrush() }
 
 val LocalEchoColors = staticCompositionLocalOf { DarkColors }
 
