@@ -52,11 +52,15 @@ import kotlinx.coroutines.delay
 import app.echoread.tts.SpeechApi
 import app.echoread.tts.Voices
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import app.echoread.ui.motion.EchoTransitions
 import app.echoread.ui.motion.PressScale
 import app.echoread.ui.motion.echoPress
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /* ---------- 目录 ---------- */
 
@@ -188,6 +192,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
     val uriHandler = LocalUriHandler.current
 
     var testing by remember { mutableStateOf(false) }
+    val appContext = LocalContext.current.applicationContext
     var testResult by remember { mutableStateOf("") }
     var sync by remember { mutableStateOf<SyncState>(SyncState.Idle) }
     var showAdvanced by remember { mutableStateOf(false) }
@@ -244,9 +249,29 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
         testResult = ""
         scope.launch {
             val r = SpeechApi.testConfig(tts.openai)
-            testing = false
-            testResult = r.message
-            if (r.ok) Toaster.success(r.message) else Toaster.error(r.message)
+            if (!r.ok || r.audio == null) {
+                testing = false
+                testResult = r.message
+                Toaster.error(r.message)
+                return@launch
+            }
+            // 试听就得真的响：合成成功后立刻播出来（占用同一个播放器，先暂停正在朗读的引擎）
+            testResult = "试听中…"
+            try {
+                graph.engine.pause()
+                val f = withContext(Dispatchers.IO) {
+                    File(appContext.cacheDir, "preview-${System.currentTimeMillis()}.audio").also { it.writeBytes(r.audio) }
+                }
+                graph.playback.setActive(true)
+                graph.playback.play(f, 1f, deleteAfter = true).awaitEnded()
+                Toaster.success("试听完成")
+            } catch (e: Exception) {
+                Toaster.error(e.message ?: "播放失败")
+            } finally {
+                graph.playback.setActive(false)
+                testing = false
+                testResult = ""
+            }
         }
     }
 
@@ -427,7 +452,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
             }
 
             GradientButton(
-                if (testing) "正在试音…" else if (testResult.isNotEmpty()) "结果：$testResult" else "试听测试（合成「你好」）",
+                if (testing) (if (testResult.isNotEmpty()) testResult else "正在合成…") else if (testResult.isNotEmpty()) "结果：$testResult" else "试听测试（合成「你好」）",
                 Modifier.fillMaxWidth(), enabled = !testing, height = 50.dp
             ) { runTest() }
             Spacer(Modifier.height(20.dp))
