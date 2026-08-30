@@ -4,7 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
@@ -63,6 +63,10 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.GraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -72,6 +76,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
+import kotlinx.coroutines.flow.drop
+import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -86,6 +92,7 @@ import app.echoread.ui.motion.EchoMotion
 import app.echoread.ui.motion.EchoTransitions
 import app.echoread.ui.motion.MotionDriver
 import app.echoread.ui.motion.PressScale
+import app.echoread.ui.motion.Haptics
 import app.echoread.ui.motion.driveHorizontally
 import app.echoread.ui.motion.echoPress
 import app.echoread.ui.motion.preemptable
@@ -132,7 +139,7 @@ private data class FollowKey(
  */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class, ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
 @Composable
-fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onAutoplayConsumed: () -> Unit = {}, onBack: () -> Unit) {
+fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: Boolean = false, onAutoplayConsumed: () -> Unit = {}, onBack: () -> Unit) {
     val c = echo
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -190,8 +197,15 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
         pager.onBlocked = { d ->
             // 只有真到书尾才提示；首屏未就绪或邻章还在排版时静默（橡皮筋已经给了物理反馈）
             val ready = window.chapterCount > 0 && window.pagesOf(pager.anchor.chapter) != null
-            if (d > 0 && ready && pager.anchor.chapter >= window.chapterCount - 1) Toaster.show("已经是最后一页", durationMs = 1200)
+            val atEdge = ready && (if (d > 0) pager.anchor.chapter >= window.chapterCount - 1 else pager.anchor.chapter <= 0)
+            if (atEdge) Haptics.reject(view)
+            if (d > 0 && atEdge) Toaster.show("已经是最后一页", durationMs = 1200)
         }
+    }
+
+    // 触觉：呈现页越过半页的那一刻给一下，且只对手指/点按驱动的翻页（引擎自动翻页静默）
+    LaunchedEffect(Unit) {
+        snapshotFlow { pager.displayed.value }.drop(1).collect { if (pager.userDriven) Haptics.tick(view) }
     }
 
     /* ---------- 装载与排版 ---------- */
@@ -237,7 +251,8 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
 
     // 排版规格去抖：字号/行距滑块每像素回调不再触发整章重排；首屏不等待
     LaunchedEffect(bookId) {
-        snapshotFlow { if (pageSize.width > 0 && pageSize.height > 0) LayoutSpec(reader, pageSize.width, pageSize.height) else null }
+        // haptics 不影响排版：归一化掉，切换触觉开关不重排整章
+        snapshotFlow { if (pageSize.width > 0 && pageSize.height > 0) LayoutSpec(reader.copy(haptics = true), pageSize.width, pageSize.height) else null }
             .filterNotNull()
             .distinctUntilChanged()
             .debounce { if (spec == null) 0L else 90L }
@@ -476,7 +491,24 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
         engine.pause()
         onBack()
     }
-    BackHandler { leave() }
+    /**
+     * 预测性返回（API 33+ 手势导航）：系统上报的进度直接写进根导航驱动器，阅读器随手指被拉开、
+     * 书架在下面露出来；松手提交走同一条弹簧回到书架，中途放弃则弹回原位。
+     * 旧系统（无进度事件）流会立即完成，退化为普通返回 —— 视觉仍由同一驱动器的弹簧完成。
+     */
+    PredictiveBackHandler { events ->
+        var committed = false
+        try {
+            nav.drive { events.collect { e -> dragTo(1f - e.progress) } }
+            committed = true
+        } catch (_: CancellationException) {
+            scope.launch { preemptable { nav.animateTo(1f, spec = EchoMotion.Emphasized.float()) } }
+        }
+        if (committed) {
+            Haptics.gestureEnd(view)
+            leave()
+        }
+    }
 
     // 只消费一次：重排版会换出新的 ChapterPages，光靠宿主把 autoplay 置回 false 不够及时
     var autoplayDone by remember { mutableStateOf(false) }
@@ -513,7 +545,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
                     .padding(horizontal = 6.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButtonEcho(EchoIcons.Back, "返回", tint = theme.text) { leave() }
+                IconButtonEcho(EchoIcons.Back, "返回", modifier = Modifier.testTag("reader.back"), tint = theme.text) { leave() }
                 Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
                     Text(
                         window.pagesOf(shown.chapter)?.chapter?.title ?: "…",
@@ -540,6 +572,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
                             .fillMaxWidth()
                             .weight(1f)
                             .clipToBounds()
+                            .testTag("reader.page")
                             .onSizeChanged {
                                 if (pageSize != it) pageSize = it
                                 if (it.width > 0) driver.unitPx = it.width.toFloat()
@@ -548,7 +581,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
                                 driver = driver,
                                 enabled = { true },
                                 bounds = { pager.bounds() },
-                                onDragStart = { pager.onManual() },
+                                onDragStart = { pager.beginManual() },
                                 onTap = { pos, sz -> tapRef.value(pos, sz) },
                                 onSettle = { v -> pager.settle(v) },
                             )
@@ -709,7 +742,22 @@ fun ReaderScreen(bookId: String, graph: AppGraph, autoplay: Boolean = false, onA
     }
 }
 
-/** 单页绘制：clip + translate + drawText；高亮按行绘制（跳过段间空白行，行尾以可见文字为界，不重排文本） */
+/** 文字层录制指纹：只在页 / 章 / 文字色 / 画布尺寸变化时重录，draw 期比较不分配 */
+private class PageRecordKey {
+    private var pages: ChapterPages? = null
+    private var page = -1
+    private var color = Color.Unspecified
+    private var size = Size.Zero
+    fun matches(p: ChapterPages, pg: Int, c: Color, s: Size) = pages === p && page == pg && color == c && size == s
+    fun set(p: ChapterPages, pg: Int, c: Color, s: Size) { pages = p; page = pg; color = c; size = s }
+}
+
+/**
+ * 单页绘制：高亮按行绘制（跳过段间空白行，行尾以可见文字为界，不重排文本），正文文字走「Picture 缓存」——
+ * 整章 drawText 只在 (页, 章, 文字色, 尺寸) 变化时录制一次进 [GraphicsLayer]（HWUI RenderNode 显示列表），
+ * 之后每段高亮切换、每帧拖动都只是「重放显示列表 + 几个圆角矩形」，不再重新遍历整章段落生成绘制指令。
+ * 这就是 iOS CALayer 的 shouldRasterize 思路，只是保留矢量显示列表而非位图，无采样模糊、零显存。
+ */
 @Composable
 private fun PageCanvas(pages: ChapterPages, page: Int, active: Range?, synthesizing: Boolean, theme: ReaderTheme, modifier: Modifier) {
     val top = pages.pageTop(page)
@@ -742,17 +790,33 @@ private fun PageCanvas(pages: ChapterPages, page: Int, active: Range?, synthesiz
     // 且 .value 在组合期读会让整页每帧重组、每帧重新提交整章 drawText。改为静态压暗。
     val hlColor = theme.hl.copy(alpha = (theme.hl.alpha * if (synthesizing) 1.0f else 1.6f).coerceAtMost(1f))
     val bottom = layout.getLineBottom(range.last)
-    Canvas(modifier.clipToBounds()) {
-        // 整章布局只画本页：裁剪到「本页最后一行底边」，下一页的行绝不漏出（画布余量只留白）
-        clipRect(left = 0f, top = 0f, right = size.width, bottom = minOf(bottom - top, size.height)) {
-            translate(top = -top) {
-                for (r in hlRects) {
-                    drawRoundRect(hlColor, topLeft = r.topLeft, size = r.size, cornerRadius = CornerRadius(6f, 6f))
+    val textColor = theme.text
+    val textLayer = rememberGraphicsLayer()
+    val recorded = remember(textLayer) { PageRecordKey() }
+    Spacer(
+        modifier.clipToBounds().drawBehind {
+            // 整章布局只画本页：裁剪到「本页最后一行底边」，下一页的行绝不漏出（画布余量只留白）
+            val clipBottom = minOf(bottom - top, size.height)
+            if (!recorded.matches(pages, page, textColor, size)) {
+                textLayer.record(this, layoutDirection, size.toIntSize()) {
+                    clipRect(left = 0f, top = 0f, right = size.width, bottom = clipBottom) {
+                        translate(top = -top) { drawText(layout, color = textColor) }
+                    }
                 }
-                drawText(layout, color = theme.text)
+                recorded.set(pages, page, textColor, size)
             }
+            if (hlRects.isNotEmpty()) {
+                clipRect(left = 0f, top = 0f, right = size.width, bottom = clipBottom) {
+                    translate(top = -top) {
+                        for (r in hlRects) {
+                            drawRoundRect(hlColor, topLeft = r.topLeft, size = r.size, cornerRadius = CornerRadius(6f, 6f))
+                        }
+                    }
+                }
+            }
+            drawLayer(textLayer)
         }
-    }
+    )
 }
 
 /** 首次进入（没有任何旧页可留）时的骨架：从「页面消失了」变成「页面正在成形」，绝不居中转圈 */

@@ -48,6 +48,8 @@ class AppGraph(context: Context) {
     val pendingImports = MutableStateFlow<List<Uri>>(emptyList())
 
     init {
+        // 触觉开关跟随阅读设置（Haptics 是无状态单例，绘制/手势路径里不读设置流）
+        mainScope.launch { settings.reader.collect { app.echoread.ui.motion.Haptics.enabled = it.haptics } }
         // 启动后静默检查更新（24 小时一次，失败无提示）
         mainScope.launch {
             kotlinx.coroutines.delay(3000)

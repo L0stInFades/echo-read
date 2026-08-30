@@ -58,6 +58,7 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -78,6 +79,8 @@ import app.echoread.ui.motion.EchoMotion
 import app.echoread.ui.motion.MotionDriver
 import app.echoread.ui.motion.PressScale
 import app.echoread.ui.motion.Thr
+import app.echoread.ui.motion.Haptics
+import kotlin.math.abs
 import app.echoread.ui.motion.driveVertically
 import app.echoread.ui.motion.echoPress
 import app.echoread.ui.motion.echoTap
@@ -418,12 +421,15 @@ fun BoxScope.EchoSheet(
     }
 
     // 松手落点：逃逸速度 → 投影 → 阈值，与翻页共用同一套判定
+    val hostView = LocalView.current
     val settle: (Float) -> Unit = remember {
         { velocityPxPerSec: Float ->
             val unit = if (driver.unitPx > 0f) driver.unitPx else 1f
             val target = settleTarget(driver.value, velocityPxPerSec / unit, listOf(0f, 1f))
             scope.launch {
                 preemptable { driver.animateTo(target, velocityPxPerSec, EchoMotion.Emphasized.float()) }
+                // 只有手势结算走这里：吸附到位的瞬间给一次轻触感，程序化开关不震
+                if (abs(driver.value - target) < 0.01f) Haptics.tick(hostView)
                 if (target == 0f && driver.value < 0.01f) dismissRef.value()
             }
         }

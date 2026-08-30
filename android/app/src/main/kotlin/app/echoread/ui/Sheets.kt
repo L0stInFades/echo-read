@@ -138,6 +138,12 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                 graph.settings.updateReader { r -> r.copy(fontFamily = "sans") }
             }
         }
+        Spacer(Modifier.height(16.dp))
+        SectionLabel("触觉反馈")
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Chip("开", reader.haptics, Modifier.weight(1f)) { graph.settings.updateReader { r -> r.copy(haptics = true) } }
+            Chip("关", !reader.haptics, Modifier.weight(1f)) { graph.settings.updateReader { r -> r.copy(haptics = false) } }
+        }
         Spacer(Modifier.height(8.dp))
     }
 }

@@ -45,7 +45,9 @@ data class ReaderSettings(
     val lineHeight: Float = 1.9f,
     /** sans / serif */
     val fontFamily: String = "serif",
-    val paraSpacing: Float = 1f
+    val paraSpacing: Float = 1f,
+    /** 手势触觉反馈（翻页越过半页、弹层吸附、返回提交） */
+    val haptics: Boolean = true
 )
 
 /** 在线拉取到的 TTS 模型条目 */
