@@ -1,16 +1,8 @@
 package app.echoread.ui
 
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.core.VisibilityThreshold
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.updateTransition
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
@@ -23,14 +15,21 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTagsAsResourceId
 import app.echoread.AppGraph
-import app.echoread.ui.motion.Dur
-import app.echoread.ui.motion.Ease
 import app.echoread.ui.motion.EchoMotion
+import app.echoread.ui.motion.MotionDriver
+import app.echoread.ui.motion.preemptable
 
 /** 外部传入配置的确认卡片：展示脱敏 Key 与目标模型，用户确认后才写入 */
 @Composable
@@ -79,11 +78,19 @@ private fun androidx.compose.foundation.layout.BoxScope.ConfigConfirmSheet(graph
 
 private const val SHELF_KEY = "__shelf__"
 
-/** 根导航：书架 ⇄ 阅读器，共享轴式弹簧滑动过渡 */
+/**
+ * 根导航：书架 ⇄ 阅读器。两屏叠放，一个 [MotionDriver] 决定一切（0 = 书架，1 = 阅读器）：
+ * 打开 / 返回是同一条弹簧的两个方向，预测性返回把系统进度直接写进同一个值 ——
+ * 「从哪里来（右侧滑入）到哪里去（右侧滑出）」，手指随时可以接管或放弃。
+ */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun EchoApp(graph: AppGraph) {
     var bookId by rememberSaveable { mutableStateOf<String?>(null) }
     var autoplayFor by rememberSaveable { mutableStateOf<String?>(null) }
+    // 正在被组合的阅读器：返回时先滑出、到位后才卸载，永远不会在半路消失
+    var shownBook by rememberSaveable { mutableStateOf<String?>(null) }
+    val nav = remember { MotionDriver(if (bookId != null) 1f else 0f) }
     // 打开请求（通知栏/深链）：用长期收集而非按值 keyed 的效应，清空请求不会取消处理中的协程
     LaunchedEffect(Unit) {
         graph.openRequests.collect { r ->
@@ -96,30 +103,52 @@ fun EchoApp(graph: AppGraph) {
             bookId = target.id
         }
     }
+    LaunchedEffect(bookId) {
+        val id = bookId
+        if (id != null) {
+            shownBook = id
+            preemptable { nav.animateTo(1f, spec = EchoMotion.Emphasized.float()) }
+        } else if (shownBook != null) {
+            preemptable { nav.animateTo(0f, spec = EchoMotion.Emphasized.float()) }
+            if (nav.value < 0.01f) shownBook = null
+        }
+    }
     EchoTheme {
-        Box(Modifier.fillMaxSize().background(echo.canvas)) {
-            val nav = updateTransition(targetState = bookId, label = "nav")
-            // 重入闸门：转场进行中忽略重复导航。旧代码连点两本书会让两份 ReaderScreen 同时存在、
-            // 两份章节加载协程互相竞争 —— 这就是「快速连点造成状态错乱」。
-            // 闸门只拦「打开」：返回必须永远生效，否则转场中按返回会 pause 播放却留在阅读器
-            val navigate: (String?) -> Unit = { to -> if (to == null || !nav.isRunning) bookId = to }
-            nav.AnimatedContent(
-                transitionSpec = {
-                    val forward = targetState != null
-                    // 两侧位移比例对称、进出场同一条弹簧：新旧屏幕不会再相对滑动造成错位
-                    val d = 0.30f
-                    val spec = EchoMotion.Emphasized.spec(IntOffset.VisibilityThreshold)
-                    val enter = slideInHorizontally(spec) { (it * if (forward) d else -d).toInt() } +
-                        fadeIn(tween(Dur.Medium, easing = Ease.Linear))
-                    val exit = slideOutHorizontally(spec) { (it * if (forward) -d else d).toInt() } +
-                        fadeOut(tween(Dur.Medium, easing = Ease.Linear))
-                    // clip = false：两屏同尺寸时不再多插一层尺寸动画容器
-                    (enter togetherWith exit) using SizeTransform(clip = false)
-                },
-                contentKey = { it ?: SHELF_KEY }
-            ) { id ->
-                if (id == null) ShelfScreen(graph) { navigate(it) }
-                else ReaderScreen(id, graph, autoplay = autoplayFor == id, onAutoplayConsumed = { autoplayFor = null }) { navigate(null) }
+        Box(Modifier.fillMaxSize().background(echo.canvas).semantics { testTagsAsResourceId = true }) {
+            // 重入闸门：转场进行中忽略重复「打开」。返回必须永远生效，否则转场中按返回会 pause 播放却留在阅读器
+            val navigate: (String?) -> Unit = { to -> if (to == null || !nav.isSettling) bookId = to }
+            // 书架：常驻在底层，阅读器打开时向左退 30% 并压暗（视差），返回时随手指回来
+            Box(
+                Modifier.fillMaxSize().graphicsLayer {
+                    translationX = -0.30f * size.width * nav.value
+                }
+            ) {
+                ShelfScreen(graph) { navigate(it) }
+            }
+            Box(
+                Modifier.fillMaxSize().graphicsLayer {
+                    alpha = 0.45f * nav.value
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                }.background(Color.Black)
+            )
+            shownBook?.let { id ->
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer { translationX = (1f - nav.value) * size.width }
+                        // 阅读器没消费的触摸到此为止：下面的书架不可触达
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                awaitFirstDown(requireUnconsumed = false).consume()
+                                do {
+                                    val ev = awaitPointerEvent()
+                                    ev.changes.forEach { if (!it.isConsumed) it.consume() }
+                                } while (ev.changes.any { it.pressed })
+                            }
+                        }
+                ) {
+                    ReaderScreen(id, graph, nav, autoplay = autoplayFor == id, onAutoplayConsumed = { autoplayFor = null }) { navigate(null) }
+                }
             }
             ConfigConfirmSheet(graph)
             ToastHost()

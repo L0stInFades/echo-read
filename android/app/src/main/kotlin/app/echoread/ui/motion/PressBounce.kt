@@ -28,6 +28,7 @@ import androidx.compose.ui.semantics.semantics
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.LocalView
 
 /** 缩放档位：三档收敛。≤40dp 的图标按钮绝不低于 0.94，本就小的命中区不该再靠缩放找存在感。 */
 object PressScale {
@@ -76,6 +77,7 @@ fun Modifier.echoPress(
     val clickRef = rememberUpdatedState(onClick)
     val longRef = rememberUpdatedState(onLongClick)
     val hasLong = onLongClick != null
+    val hostView = LocalView.current
 
     val semanticsBlock: SemanticsPropertyReceiver.() -> Unit = remember(enabled, hasLong, onClickLabel) {
         {
@@ -116,6 +118,7 @@ fun Modifier.echoPress(
                             withTimeout(viewConfiguration.longPressTimeoutMillis) { waitForUpOrCancellation() }
                         } catch (_: PointerEventTimeoutCancellationException) {
                             longFired = true
+                            Haptics.longPress(hostView)
                             long()
                             consumeUntilUp()
                             null

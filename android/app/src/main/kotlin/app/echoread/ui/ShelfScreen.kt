@@ -46,6 +46,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
@@ -220,7 +221,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                         Spacer(Modifier.height(6.dp))
                         Text("导入 TXT 或 EPUB 书籍，轻点任意文字，\nAI 便从那里开始为你朗读", color = c.text2, fontSize = 13.sp, lineHeight = 20.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         Spacer(Modifier.height(24.dp))
-                        OutlineButton("没有书？先听示例 →") { openSample() }
+                        OutlineButton("没有书？先听示例 →", Modifier.testTag("shelf.sample")) { openSample() }
                         Spacer(Modifier.height(12.dp))
                         Text("怎么用？", color = c.text3, fontSize = 12.sp, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showHelp = true }.padding(6.dp))
                     }
@@ -424,7 +425,7 @@ private fun UpdateCard(graph: AppGraph) {
 private fun BookCell(b: BookMeta, modifier: Modifier, onClick: () -> Unit, onLongClick: () -> Unit) {
     val c = echo
     val brush = rememberAurora()
-    Column(modifier.echoPress(pressedScale = PressScale.Tile, onLongClick = onLongClick, onClick = onClick)) {
+    Column(modifier.testTag("shelf.book").echoPress(pressedScale = PressScale.Tile, onLongClick = onLongClick, onClick = onClick)) {
         // 去掉每格一个 elevation 阴影：3 列 × 4 行 = 12 个额外 RenderNode + outline 阴影，
         // 是 Adreno 610 上书架滚动掉帧的主力，而封面本身对比度已足够
         Box(Modifier.fillMaxWidth().aspectRatio(2f / 3f).clip(RoundedCornerShape(14.dp))) {

@@ -102,6 +102,19 @@ class ReaderPager(
     /** 到边界（书首/书尾，或邻章尚未排好）时的回调 */
     var onBlocked: (Int) -> Unit = {}
 
+    /**
+     * 最近一次页面变化是否由用户驱动（手指 / 点按）。触觉反馈只对用户驱动的翻页发声：
+     * 引擎跟随的自动翻页每几分钟一次，听书几小时下来不该一直震。
+     */
+    var userDriven: Boolean = false
+        private set
+
+    /** 手势开始：标记用户驱动并通知跟随状态机 */
+    fun beginManual() {
+        userDriven = true
+        onManual()
+    }
+
     fun bounds(): ClosedFloatingPointRange<Float> {
         val back = if (window.resolve(anchor, -1) != null) -1f else 0f
         val fwd = if (window.resolve(anchor, 1) != null) 1f else 0f
@@ -142,7 +155,7 @@ class ReaderPager(
 
     /** 点按翻页：与滑动走同一条通道，因此视觉完全一致，且可被下一次点按或手指打断 */
     fun flip(delta: Int) {
-        onManual()
+        beginManual()
         scope.launch {
             var blocked = 0
             preemptable {
@@ -168,6 +181,7 @@ class ReaderPager(
     /** 引擎跟随：相邻页走动画（手指可随时抢占），远跳/跨章交叉淡入 */
     suspend fun follow(target: PageRef) {
         if (target == anchor) return
+        userDriven = false
         // -2 = 还没进到互斥区（被更高优先级挡下），此时什么都不该做
         var slot = -2
         preemptable {
@@ -194,6 +208,7 @@ class ReaderPager(
      * [commitModel] 与 anchor 的写入在同一次 snapshot 内完成（例如同时把新排好的章塞进窗口）。
      */
     suspend fun jumpTo(ref: PageRef, crossFade: Boolean = true, commitModel: () -> Unit = {}) {
+        userDriven = false
         val old = if (crossFade) window.pagesOf(anchor.chapter)?.let { it to anchor.page } else null
         if (old == null) {
             driver.snapTo(0f) { commitModel(); anchor = ref }

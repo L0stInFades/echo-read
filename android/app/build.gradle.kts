@@ -13,6 +13,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.baselineprofile)
 }
 
 android {
@@ -72,6 +73,12 @@ kotlin {
     }
 }
 
+baselineProfile {
+    // 由 `:app:generateReleaseBaselineProfile` 手动生成并写入 src/release/generated/baselineProfiles/
+    automaticGenerationDuringBuild = false
+    saveInSrc = true
+}
+
 composeCompiler {
     // 稳定性契约见 android/compose_stability.conf
     stabilityConfigurationFiles.add(rootProject.layout.projectDirectory.file("compose_stability.conf"))
@@ -110,6 +117,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.guava)
     implementation(libs.jsoup)
     implementation(libs.juniversalchardet)
+    implementation(libs.androidx.profileinstaller)
+    "baselineProfile"(project(":baselineprofile"))
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

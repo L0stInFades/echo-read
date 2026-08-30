@@ -28,6 +28,9 @@ app/src/main/kotlin/app/echoread/
   tts/    SpeechApi(OpenAI 兼容) Voices(音色目录) AudioCache SystemTts Playback(ExoPlayer+焦点)
           Engine(编排：队列/预取/跨章/退避) PlayerController(设置同步/进度/睡眠) EnginePlayer(SimpleBasePlayer) PlaybackService
   ui/     Theme Motion Icons Widgets Toast BookCover ShelfScreen ReaderScreen Sheets App
+  ui/motion/  MotionTokens(弹簧/时长/阈值) MotionDriver(统一驱动器) GestureBindings PressBounce Haptics(触觉)
+  ui/reader/  ChapterLayout(整章排版/分页) ReaderPager(三槽位翻页器)
+baselineprofile/   Baseline Profile 生成器 + Macrobenchmark（启动、翻页帧耗时）
 ```
 
 模块方向严格单向：`core ← data ← tts ← ui`。任一章节在内存中只有一份规范纯文本，段落/片段/高亮皆为它的偏移区间 `Range(start, end)`，与网页版同构。
@@ -45,6 +48,19 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 命令行构建需在 `android/local.properties` 写 `sdk.dir=<你的 Android SDK 路径>`（已被 .gitignore 忽略）。
+
+### 性能：Baseline Profile 与 Macrobenchmark
+
+- `app/src/release/generated/baselineProfiles/` 是提交在库里的 Baseline/Startup Profile，随 release 包一起打进 APK（`profileinstaller` 安装即生效，冷启动与首屏免 JIT）。
+- 改了启动/阅读路径的代码后重新生成（需连一台 API 33+ 的设备或模拟器）：`ANDROID_SERIAL=<serial> ./gradlew :app:generateReleaseBaselineProfile`
+- 压测：`ANDROID_SERIAL=<serial> ./gradlew :baselineprofile:connectedBenchmarkReleaseAndroidTest`（`StartupBenchmark` 对比有无 profile 的冷启动；`ReaderScrollBenchmark` 翻页 `FrameTimingMetric`）。结果在 `baselineprofile/build/outputs/connected_android_test_additional_output/`。
+- UiAutomator 通过 testTag 定位：`shelf.sample` `shelf.book` `reader.page` `reader.back`。
+
+### 渲染与动画
+
+- 正文文字层：每页的整章 `drawText` 只录制一次进 `GraphicsLayer`（RenderNode 显示列表），换段高亮、拖动翻页只重放显示列表（`ReaderScreen.PageCanvas`）。
+- 根导航与预测性返回（API 33+）共用一个 `MotionDriver`：打开、返回、手势拖拽都是同一个值的不同驱动方式，可中途放弃。
+- 触觉反馈（`ui/motion/Haptics.kt`）只在手势跨越语义边界时触发：翻页越过半页、弹层吸附、返回提交、书首/书尾；引擎自动翻页不震。阅读样式面板可关闭。
 
 ## 发布与应用内更新
 

@@ -57,6 +57,9 @@ class MotionDriver(initialValue: Float = 0f, private val threshold: Float = Thr.
         /** 同步写入呈现值：无协程、无重组、无分配。[bounds] 非空时越界走橡皮筋。 */
         fun dragByPx(deltaPx: Float, bounds: ClosedFloatingPointRange<Float>? = null)
 
+        /** 直接写入绝对呈现值：系统上报的是「进度」而非位移（预测性返回）时使用 */
+        fun dragTo(target: Float)
+
         /** 取走并清空「被抢占时的残余速度」，用于并入 VelocityTracker 的结果 */
         fun consumeCarriedVelocityPxPerSec(): Float
     }
@@ -65,6 +68,10 @@ class MotionDriver(initialValue: Float = 0f, private val threshold: Float = Thr.
         override fun dragByPx(deltaPx: Float, bounds: ClosedFloatingPointRange<Float>?) {
             val raw = value + deltaPx / safeUnit
             value = if (bounds == null) raw else applyRubberBand(raw, bounds)
+        }
+
+        override fun dragTo(target: Float) {
+            value = target
         }
 
         override fun consumeCarriedVelocityPxPerSec(): Float = (carried * safeUnit).also { carried = 0f }
