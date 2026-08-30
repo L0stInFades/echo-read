@@ -1,11 +1,11 @@
 {
-  "versionCode": 6,
-  "versionName": "0.1.5",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.5/EchoRead-v0.1.5.apk",
+  "versionCode": 7,
+  "versionName": "0.1.6",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.6/EchoRead-v0.1.6.apk",
   "mirrors": [
-    "https://ghproxy.net/https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.5/EchoRead-v0.1.5.apk"
+    "https://ghproxy.net/https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.6/EchoRead-v0.1.6.apk"
   ],
-  "notes": "修复 v0.1.4 回归：书架完全无法点击（阅读器遮挡层在未打开阅读器时也在吞触摸）",
-  "sha256": "4af2a7b16f1ecc7bb037b8e58f627007b2329907a07bf92c0fcb27bbf1150dca",
+  "notes": "修复：「试听测试（合成你好）」之前只测连接不出声，现在合成后真的播放出来",
+  "sha256": "358f129fcd4edcbd6a48f7347c195b0f5afc7ddfeafc215dd91e40073e6b0623",
   "minSdk": 26
 }
