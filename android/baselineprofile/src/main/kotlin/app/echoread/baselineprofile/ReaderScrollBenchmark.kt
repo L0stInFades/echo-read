@@ -2,7 +2,6 @@ package app.echoread.baselineprofile
 
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.FrameTimingMetric
-import androidx.benchmark.macro.StartupMode
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
@@ -20,13 +19,15 @@ class ReaderScrollBenchmark {
         packageName = PACKAGE_NAME,
         metrics = listOf(FrameTimingMetric()),
         compilationMode = CompilationMode.Partial(),
-        startupMode = StartupMode.COLD,
+        // 不设 startupMode：设了会在 setupBlock 之后再杀进程，measureBlock 里就没有阅读页了
+        startupMode = null,
         iterations = 5,
         setupBlock = {
             pressHome()
             startActivityAndWait()
             ensureSampleBook()
-            openFirstBook()
+            // 上一轮结束时仍停在阅读页：直接翻，不再点书架
+            if (device.findObject(device.tag("reader.page")) == null) openFirstBook()
         },
     ) {
         flipPages(8)
