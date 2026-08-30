@@ -1,11 +1,11 @@
 {
-  "versionCode": 4,
-  "versionName": "0.1.3",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.3/EchoRead-v0.1.3.apk",
+  "versionCode": 5,
+  "versionName": "0.1.4",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.4/EchoRead-v0.1.4.apk",
   "mirrors": [
-    "https://ghproxy.net/https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.3/EchoRead-v0.1.3.apk"
+    "https://ghproxy.net/https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.4/EchoRead-v0.1.4.apk"
   ],
-  "notes": "统一动画管线：翻页 1:1 跟手、可打断可反向，弹层拖拽/甩动关闭，按压零延迟\n合成流水线：在途去重、内存热表、自适应前瞻，段间等待降到毫秒级\n页面文字层 GraphicsLayer 缓存：换段高亮与拖动翻页不再重绘整章\n预测性返回（Android 13+ 手势导航）：阅读器随手指拉开、可中途放弃\n触觉反馈：翻页过半、弹层吸附、返回提交、书首书尾（阅读样式面板可关）\nBaseline Profile 内置：冷启动与首屏免 JIT\n修复：Kokoro 82M 等拼接式 MP3 只读开头就跳段\n修复：弹层刚打开即关闭、内容区下滑后卡在半空",
-  "sha256": "aa97afe13896709cba4af3bca635f9ea031edcc106aa913f48fa49eda8013b5f",
+  "notes": "修复：阅读器内「阅读样式」的字号/行距/段距滑条只能点不能拖\n修复：阅读器内「AI 朗读设置」弹层内容滚不到底、与首页行为不一致",
+  "sha256": "c826575c4a20ef4e67293ddfb0f2c3f125a19e505597d83dbcdcc9a2c6163022",
   "minSdk": 26
 }
