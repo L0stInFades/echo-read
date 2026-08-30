@@ -190,6 +190,9 @@ object SpeechApi {
             if (Regex("audio/(x-)?pcm|audio/l16", RegexOption.IGNORE_CASE).containsMatchIn(ctype)) {
                 val (rate, channels) = parsePcmParams(ctype)
                 pcmToWav(bytes, rate, channels)
+            } else if (Mp3Fix.looksLikeMp3(bytes)) {
+                // 拼接式 MP3（Kokoro 等）：剥掉分段自带的 Xing 头，否则解码器只播第一段
+                Mp3Fix.stripXing(bytes)
             } else {
                 bytes
             }

@@ -383,7 +383,7 @@ class TtsEngine(
     }
 
     private fun cacheKey(text: String, c: OpenAISpeechConfig): String =
-        Hash.cyrb53("${settings.provider}|${c.model}|${c.voice}|${c.format}|${c.instructions}|$text")
+        Hash.cyrb53("v2|${settings.provider}|${c.model}|${c.voice}|${c.format}|${c.instructions}|$text") // v2：MP3 清洗后落盘，旧缓存作废
 
     /** 合成一个片段并返回可播放句柄（带缓存、指数退避重试；协程取消即中止） */
     private suspend fun createHandle(text: String, gen: Int): PlayHandle {
