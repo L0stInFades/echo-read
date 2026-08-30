@@ -271,12 +271,12 @@ object SpeechApi {
         }
     }
 
-    data class TestResult(val ok: Boolean, val message: String)
+    data class TestResult(val ok: Boolean, val message: String, val audio: ByteArray? = null)
 
-    /** 校验配置是否可用（用极短文本试合成） */
+    /** 试听：合成「你好」，成功时把音频一并返回（调用方负责播放） */
     suspend fun testConfig(cfg: OpenAISpeechConfig): TestResult = try {
         val bytes = synthesize(cfg, "你好")
-        if (bytes.size < 10) TestResult(false, "返回的音频为空") else TestResult(true, "连接成功")
+        if (bytes.size < 10) TestResult(false, "返回的音频为空") else TestResult(true, "连接成功", bytes)
     } catch (e: Exception) {
         TestResult(false, e.message ?: e.toString())
     }
