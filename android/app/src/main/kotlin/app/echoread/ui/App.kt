@@ -130,22 +130,24 @@ fun EchoApp(graph: AppGraph) {
                     alpha = 0.45f * nav.value
                     compositingStrategy = CompositingStrategy.ModulateAlpha
                 }.background(Color.Black)
+                    // 遮挡层：阅读器没有指针节点的位置（纯文本等）命中到这里就被吞掉，下面的书架不可触达。
+                    // 它在 z 序上位于阅读器之下，命中测试永远先选阅读器，因此绝不干扰阅读器内的任何手势
+                    // （放在阅读器的祖先节点上会在 Main 阶段之后消费事件，Slider / 弹层拖动会被判为「被别人消费」）。
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false).consume()
+                            do {
+                                val ev = awaitPointerEvent()
+                                ev.changes.forEach { if (!it.isConsumed) it.consume() }
+                            } while (ev.changes.any { it.pressed })
+                        }
+                    }
             )
             shownBook?.let { id ->
                 Box(
                     Modifier
                         .fillMaxSize()
                         .graphicsLayer { translationX = (1f - nav.value) * size.width }
-                        // 阅读器没消费的触摸到此为止：下面的书架不可触达
-                        .pointerInput(Unit) {
-                            awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false).consume()
-                                do {
-                                    val ev = awaitPointerEvent()
-                                    ev.changes.forEach { if (!it.isConsumed) it.consume() }
-                                } while (ev.changes.any { it.pressed })
-                            }
-                        }
                 ) {
                     ReaderScreen(id, graph, nav, autoplay = autoplayFor == id, onAutoplayConsumed = { autoplayFor = null }) { navigate(null) }
                 }
