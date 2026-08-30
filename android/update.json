@@ -1,11 +1,11 @@
 {
-  "versionCode": 5,
-  "versionName": "0.1.4",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.4/EchoRead-v0.1.4.apk",
+  "versionCode": 6,
+  "versionName": "0.1.5",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.5/EchoRead-v0.1.5.apk",
   "mirrors": [
-    "https://ghproxy.net/https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.4/EchoRead-v0.1.4.apk"
+    "https://ghproxy.net/https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.5/EchoRead-v0.1.5.apk"
   ],
-  "notes": "修复：阅读器内「阅读样式」的字号/行距/段距滑条只能点不能拖\n修复：阅读器内「AI 朗读设置」弹层内容滚不到底、与首页行为不一致",
-  "sha256": "c826575c4a20ef4e67293ddfb0f2c3f125a19e505597d83dbcdcc9a2c6163022",
+  "notes": "修复 v0.1.4 回归：书架完全无法点击（阅读器遮挡层在未打开阅读器时也在吞触摸）",
+  "sha256": "4af2a7b16f1ecc7bb037b8e58f627007b2329907a07bf92c0fcb27bbf1150dca",
   "minSdk": 26
 }
