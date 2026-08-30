@@ -129,7 +129,6 @@ fun Modifier.echoPress(
                         if (held < MIN_PRESS_MS) delay(MIN_PRESS_MS - held)
                         if (state.gen == gen) state.progress.animateTo(0f, EchoMotion.Instant.spec(Thr.SCALE))
                     }
-
                     if (!longFired && up != null && enabledRef.value) {
                         up.consume()
                         clickRef.value()

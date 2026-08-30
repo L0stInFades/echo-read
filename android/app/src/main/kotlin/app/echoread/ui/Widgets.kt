@@ -388,6 +388,8 @@ fun BoxScope.EchoSheet(
     val driver = remember { MotionDriver(0f) }
     val scope = rememberCoroutineScope()
     val dismissRef = rememberUpdatedState(onDismiss)
+    // open 是普通参数：长期存活的 snapshotFlow 闭包必须通过 State 读它，否则永远看到首次组合的值
+    val openRef = rememberUpdatedState(open)
     var mounted by remember { mutableStateOf(false) }
 
     // open 只是「目标」，动画永远从当前呈现值出发。
@@ -407,7 +409,7 @@ fun BoxScope.EchoSheet(
     // 没有它的话，「关闭动画播到一半被手指抓住」会让 LaunchedEffect(open) 随之取消，
     // 而 open 已经是 false、不会再触发一次 —— 弹层就永远卡在挂载态（一层看不见却拦点击的遮罩）。
     LaunchedEffect(Unit) {
-        snapshotFlow { Triple(open, driver.isDragging, driver.isSettling) }
+        snapshotFlow { Triple(openRef.value, driver.isDragging, driver.isSettling) }
             .collect { (want, dragging, settling) ->
                 if (want || dragging || settling) return@collect
                 if (driver.value > 0.001f) preemptable { driver.animateTo(0f, spec = EchoMotion.Emphasized.float()) }
@@ -421,18 +423,49 @@ fun BoxScope.EchoSheet(
             val unit = if (driver.unitPx > 0f) driver.unitPx else 1f
             val target = settleTarget(driver.value, velocityPxPerSec / unit, listOf(0f, 1f))
             scope.launch {
-                driver.animateTo(target, velocityPxPerSec, EchoMotion.Emphasized.float())
-                if (target == 0f) dismissRef.value()
+                preemptable { driver.animateTo(target, velocityPxPerSec, EchoMotion.Emphasized.float()) }
+                if (target == 0f && driver.value < 0.01f) dismissRef.value()
             }
         }
     }
 
     val nested = remember {
         object : NestedScrollConnection {
+            // 内容区拖动走这条通道时，子滚动容器松手上报的速度常为 0（内容本身没滚动），
+            // 自己用位移累积估计速度，松手结算才有「甩一下就关」的手感
+            // 自估速度：最近 120ms 内的位移/时间（Compose 的 VelocityTracker 对手工喂入的样本不可靠）
+            private val samples = ArrayDeque<Pair<Long, Float>>()
+            private var travel = 0f
+            private var tracking = false
+
+            private fun feed(deltaPx: Float) {
+                val now = System.currentTimeMillis()
+                if (!tracking) {
+                    samples.clear()
+                    travel = 0f
+                    tracking = true
+                }
+                travel += deltaPx
+                samples.addLast(now to travel)
+                while (samples.size > 1 && now - samples.first().first > 120) samples.removeFirst()
+            }
+
+            private fun ownVelocity(): Float {
+                if (samples.size < 2) return 0f
+                val now = System.currentTimeMillis()
+                val (t1, x1) = samples.last()
+                if (now - t1 > 150) return 0f // 松手前手指已停住
+                val (t0, x0) = samples.first()
+                val dt = (t1 - t0).coerceAtLeast(1)
+                return (x1 - x0) * 1000f / dt
+            }
+
             // 弹层被下拉过：先把它推回去，再让内容滚动
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (available.y < 0f && driver.value < 1f) {
-                    return Offset(0f, -driver.dispatchRawDeltaPx(-available.y, 0f..1f))
+                    val consumed = -driver.dispatchRawDeltaPx(-available.y, 0f..1f)
+                    feed(consumed)
+                    return Offset(0f, consumed)
                 }
                 return Offset.Zero
             }
@@ -440,18 +473,29 @@ fun BoxScope.EchoSheet(
             // 内容已滚到顶仍在下拉 → 交给弹层
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (available.y > 0f) {
-                    return Offset(0f, -driver.dispatchRawDeltaPx(-available.y, 0f..1f))
+                    val took = -driver.dispatchRawDeltaPx(-available.y, 0f..1f)
+                    feed(took)
+                    return Offset(0f, took)
                 }
                 return Offset.Zero
             }
 
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                if (driver.value < 1f && available.y > 0f) {
-                    settle(-available.y)
+            // onPreFling 与 onPostFling 会各来一次：一次手势只结算一次，否则第二次（速度 0）会抢占掉第一次的关闭动画
+            private fun release(available: Velocity): Velocity {
+                if (!tracking) return Velocity.Zero
+                val ownV = ownVelocity()
+                tracking = false
+                if (driver.value < 1f && !driver.isDragging && !driver.isSettling) {
+                    // 优先用子容器上报的速度，为 0 时退回自估
+                    val v = if (available.y != 0f) available.y else ownV
+                    settle(-v)
                     return available
                 }
                 return Velocity.Zero
             }
+
+            override suspend fun onPreFling(available: Velocity): Velocity = release(available)
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity = release(available)
         }
     }
 
