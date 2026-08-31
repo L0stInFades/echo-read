@@ -1,14 +1,14 @@
 {
-  "versionCode": 10,
-  "versionName": "0.2.2-exp",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.2-exp/EchoRead-v0.2.2-exp.apk",
+  "versionCode": 11,
+  "versionName": "0.2.3-exp",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.3-exp/EchoRead-v0.2.3-exp.apk",
   "mirrors": [
-    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.2-exp/EchoRead-v0.2.2-exp.apk",
-    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.2-exp/EchoRead-v0.2.2-exp.apk",
-    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.2-exp/EchoRead-v0.2.2-exp.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.3-exp/EchoRead-v0.2.3-exp.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.3-exp/EchoRead-v0.2.3-exp.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.3-exp/EchoRead-v0.2.3-exp.apk"
   ],
-  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n· 全新「应用配色」：可切换的谷歌标准配色系列 —— 8 种主色 × 7 种风格 × 3 档对比度，也可跟随壁纸取色。整套配色由谷歌自己的色彩算法实时生成，不是几套写死的方案；选「淡雅」整个应用变淡，选「单色」变灰，连书封都跟着走\n· AI 朗读设置重做：每一行直接显示当前值（用的哪个模型、哪个音色），不用点开逐个看；API Key 等一次性配置折叠进连接状态行；「试听」挪到连接状态旁边；模型与音色改为独立选择器，不再把其余设置挤到看不见\n· 阅读样式面板同样按分组重排\n· 播放卡片重做：播放键改用 Material 3 自带的组件，播放时按钮从圆形变成方圆角来表示状态，去掉了原来那圈发虚的光晕；进度条从波浪改为直条（波浪在「全书进度」这种活动段很短的场景下只能画出一条歪线）；合成中不再让按钮图标变成一团黑块\n· 界面对齐统一：全应用页边距统一为 16dp，设置项左缘对齐差 3.3dp 的问题已修，分组卡片现在能看清边界\n· 书封不再是一排互不相干的高饱和色块，改为与当前配色同一色系\n· 修复 Kokoro 82M 等「多段音频拼接返回」的模型只播出第一段就跳过后续内容的问题",
-  "sha256": "b2a102eace353d0b0800be40e87835be366d370834a4a9890c20ee91db621f54",
+  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n· 播放栏不再拥挤：去掉了那块横贯整屏的实心卡片，播放控件现在直接浮在书页上（和顶栏一致），屏幕底部不再是三层叠着的壳\n· 底栏的状态文字改为按需出现 —— 只有出错、重试、正在合成、翻离朗读位置时才显示；播放时它原本显示的章节标题在顶栏已经有了\n· 「轻点正文任意字开始朗读」改为打开新书时提示一次，不再永久占一行\n· 播放键与两侧按钮等高，不再撑高整行、把上下留白挤掉\n· 底栏整体高度 79dp → 64dp，元素之间从贴在一起变成 6dp 间距",
+  "sha256": "27e71863a97be2ee020f5573865a57e54982360c7e510f53fea0bceb0b1cb6f7",
   "minSdk": 26,
   "experimental": true
 }
