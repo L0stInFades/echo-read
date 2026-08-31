@@ -95,6 +95,7 @@ import androidx.core.view.WindowCompat
 import app.echoread.AppGraph
 import app.echoread.core.BookMeta
 import app.echoread.core.bookFraction
+import app.echoread.core.started
 import app.echoread.core.GestureSettings
 import app.echoread.core.PageAxis
 import app.echoread.core.PlayerState
@@ -404,6 +405,16 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                 preemptable { pager.follow(PageRef(pager.anchor.chapter, cur + 1)) }
                 break
             }
+        }
+    }
+
+    // 「轻点正文任意字开始朗读」是一次性教学，放进底栏会永久占掉一整条带。
+    // 改成开一本没读过的书时提示一次：说完就走，不占版面。
+    LaunchedEffect(bookId, meta) {
+        val m = meta ?: return@LaunchedEffect
+        if (!m.started()) {
+            delay(700)
+            Toaster.show("轻点正文任意字，从那里开始朗读", ToastKind.INFO, 3800)
         }
     }
 
@@ -794,23 +805,53 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
+                /*
+                 * 播放坞**不画容器**：没有填充底、没有描边、没有投影。
+                 *
+                 * 原来它是一块横贯整屏的实心圆角卡，加上页脚与系统导航条，屏幕底部有三层「壳」，
+                 * 观感就是一堵墙。实测原坞高 79dp（占 800dp 屏幕的 10%），而内部三条带之间的
+                 * 间隙只有 3.0 / 1.7 / 0.3dp —— 元素直接贴在一起，这才是「拥挤」的来源。
+                 *
+                 * 现在：控件直接浮在书页底色上，与阅读器顶栏一致（顶栏本来就没有容器）。
+                 * 坞下方就是空白页面，控件的对比度不依赖容器；五套阅读主题（含纸墨、护眼两种
+                 * 浅底）都逐一截图核对过。
+                 *
+                 * 配合另外两处：状态行改为按需出现（见下），播放键 52→48dp 与其余槽位等高，
+                 * 常态坞高 79 → 64dp，且带间距变成真实的 6dp。
+                 */
                 Column(
                     Modifier
                         .widthIn(max = 520.dp)
                         .fillMaxWidth()
-                        .shadow(14.dp, RoundedCornerShape(Radius.xl), spotColor = Color.Black.copy(alpha = 0.35f))
-                        .background(dockBg, RoundedCornerShape(Radius.xl))
-                        .border(1.dp, dockBorder, RoundedCornerShape(Radius.xl))
-                        .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp)
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
+                    // 显式行距。实测原来三条内容带之间只有 3.0 / 1.7 / 0.3dp，
+                    // 也就是元素直接贴在一起 —— M3 的最小内容间距是 8dp。
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     val failure = snap.failure?.takeIf { snap.bookId == bookId }
                     val retryNote = snap.retryNote.takeIf { it.isNotEmpty() && snap.bookId == bookId }
-                    // 状态行独占一整行。它是错误信息的常驻通道 ——
-                    // 「连续 2 段失败 · 服务商故障（503）」这类文案挤在三分之一宽的栏里必然被截断，
-                    // 而截断掉的恰好是状态码本身。控件行下面只放动作，符合 M3「工具栏是动作容器」的定位。
-                    // 状态行与控件行同轴居中：控件行是对称的五槽，状态行若左对齐会在右上角
-                    // 留下一块 L 形空白，整个坞看上去像没排完
-                    Row(
+                    val busySynth = (snap.synthesizing || snap.state == PlayerState.LOADING) && snap.bookId == bookId
+                    val detached = playing && follow == Follow.DETACHED
+                    /*
+                     * 状态行**按需出现**，不再常驻。
+                     *
+                     * 它原本一直占着一整条带（约 26dp，含间距），而播放时它显示的是章节标题 ——
+                     * 顶栏已经写着「第1章 灯塔 / 长夜航路」，这是重复信息。
+                     * 只有这几种情况它才带来顶栏没有的东西：出错、正在重试、正在合成、
+                     * 已翻离朗读位置，以及第一次进书时的操作提示。
+                     * 其余时候整条带消失，坞矮一截。
+                     */
+                    /*
+                     * 状态行**只在有话可说时出现**。
+                     *
+                     * 它原本常驻一整条带（连间距约 26dp）。播放时它显示章节标题 ——
+                     * 顶栏已经写着「第1章 灯塔 / 长夜航路」，是重复信息；空闲时它显示
+                     * 「轻点正文任意字开始朗读」，那是一次性教学，不该占常驻空间
+                     * （已改为开新书时的一次轻提示，见下方 LaunchedEffect）。
+                     * 只有出错、正在重试、正在合成、已翻离朗读位置这四种情况带来顶栏没有的信息。
+                     */
+                    val showStatus = failure != null || retryNote != null || busySynth || detached
+                    if (showStatus) Row(
                         Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
@@ -831,16 +872,14 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                             },
                             verticalArrangement = Arrangement.Center
                         ) {
-                            val busyNow = (snap.synthesizing || snap.state == PlayerState.LOADING) && snap.bookId == bookId
                             val statusText = when {
                                 // 失败最优先：它是用户此刻唯一需要知道的事，且必定带状态码
                                 failure != null -> failure.headline()
                                 retryNote != null -> retryNote
                                 // 合成中：按钮不再换图标，改由这里说明，避免每段都闪一次
-                                busyNow -> "正在合成…"
+                                busySynth -> "正在合成…"
                                 playing && follow == Follow.DETACHED -> "回到朗读位置 ↩"
-                                playing || (snap.state == PlayerState.PAUSED && snap.bookId == bookId) -> snap.chapterTitle.ifEmpty { window.pagesOf(pager.anchor.chapter)?.chapter?.title ?: "" }
-                                else -> "轻点正文任意字开始朗读"
+                                else -> snap.chapterTitle.ifEmpty { window.pagesOf(pager.anchor.chapter)?.chapter?.title ?: "" }
                             }
                             Row(
                                 horizontalArrangement = Arrangement.Center,
@@ -1101,7 +1140,9 @@ private fun PlayButton(playing: Boolean, accent: Color, onAccent: Color, onClick
         checked = playing,
         onCheckedChange = { onClick() },
         shapes = IconButtonDefaults.toggleableShapes(),
-        modifier = Modifier.size(52.dp).semantics {
+        // 48dp：与其余槽位的触控区等高。原来 52dp 比同行的 36dp 图标高出一截，
+        // 撑爆行高并把上下的留白吃掉（实测上下间隙只剩 1.7dp 与 0.3dp）
+        modifier = Modifier.size(48.dp).semantics {
             contentDescription = if (playing) "暂停" else "播放"
         },
         colors = IconButtonDefaults.filledIconToggleButtonColors(
