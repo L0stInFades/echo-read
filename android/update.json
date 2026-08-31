@@ -1,12 +1,14 @@
 {
-  "versionCode": 8,
-  "versionName": "0.2.0-exp",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.0-exp/EchoRead-v0.2.0-exp.apk",
+  "versionCode": 9,
+  "versionName": "0.2.1-exp",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.1-exp/EchoRead-v0.2.1-exp.apk",
   "mirrors": [
-    "https://ghproxy.net/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.0-exp/EchoRead-v0.2.0-exp.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.1-exp/EchoRead-v0.2.1-exp.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.1-exp/EchoRead-v0.2.1-exp.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.1-exp/EchoRead-v0.2.1-exp.apk"
   ],
-  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片右上角的 ✕，之后不会再提醒这一版。\n\n· Material 3 Expressive 全新界面：配色改用 Google 的色彩算法生成，动效与自研动画管线融合\n· 新增「翻页手势」设置：左右 / 上下滑动、点击翻页热区的位置与范围可调，带实时预览\n· 导入改为应用内界面：自动扫描本机全部 TXT / EPUB，搜索筛选后多选批量入库\n· 启动器图标按自适应图标规范重做\n· 修复：更新提示现在可以永久叉掉；五套阅读主题的次要文字与「纸墨」高亮对比度不足",
-  "sha256": "e0db9059572b1f04c3c4b9c3ceca09942c00f5dc2fd03cf2ee757302b8d331ba",
+  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n· 修复播放进度条：原来测的是「合成了几段」而不是读到哪 —— 没按过播放时一直显示 0%、每次换章会倒退、连调「单片段字数」滑块都能让它自己乱走。现在按全书字数计算，和书架上的百分比一致\n· 朗读出错终于看得见：以前服务端报错时界面完全没有提示（实测连打 49 次请求也一声不吭），现在会明确写出是「API Key 被拒绝（401）」还是「服务商故障（503）」，点「详情」能看到服务商原话、端点与响应内容，可一键复制\n· 无效 Key 不再偷偷刷请求：原本会以每秒约 10 次的频率反复失败，连暂停时也在跑\n· 网关返回的网页或乱码不再被当成音频存进缓存（原本要等三十秒后变成解码失败，且之后永不恢复）\n· 界面继续向 Material 3 Expressive 靠拢：排序、翻页方向、字体等单选改成相连的分段按钮；底栏重排，错误信息不再被截断，进度条横贯整条；按钮按下会形变\n· 小按钮的可点范围补到 48dp；弹层在平板与折叠屏上限制宽度\n· 修复应用内更新的下载镜像失效",
+  "sha256": "e67caff65506439286405baa22e8445bb4635ef59561a6e6b8c14c09b4ad7226",
   "minSdk": 26,
   "experimental": true
 }
