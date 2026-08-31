@@ -1,14 +1,14 @@
 {
-  "versionCode": 11,
-  "versionName": "0.2.3-exp",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.3-exp/EchoRead-v0.2.3-exp.apk",
+  "versionCode": 12,
+  "versionName": "0.2.4-exp",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.4-exp/EchoRead-v0.2.4-exp.apk",
   "mirrors": [
-    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.3-exp/EchoRead-v0.2.3-exp.apk",
-    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.3-exp/EchoRead-v0.2.3-exp.apk",
-    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.3-exp/EchoRead-v0.2.3-exp.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.4-exp/EchoRead-v0.2.4-exp.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.4-exp/EchoRead-v0.2.4-exp.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.4-exp/EchoRead-v0.2.4-exp.apk"
   ],
-  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n· 播放栏不再拥挤：去掉了那块横贯整屏的实心卡片，播放控件现在直接浮在书页上（和顶栏一致），屏幕底部不再是三层叠着的壳\n· 底栏的状态文字改为按需出现 —— 只有出错、重试、正在合成、翻离朗读位置时才显示；播放时它原本显示的章节标题在顶栏已经有了\n· 「轻点正文任意字开始朗读」改为打开新书时提示一次，不再永久占一行\n· 播放键与两侧按钮等高，不再撑高整行、把上下留白挤掉\n· 底栏整体高度 79dp → 64dp，元素之间从贴在一起变成 6dp 间距",
-  "sha256": "27e71863a97be2ee020f5573865a57e54982360c7e510f53fea0bceb0b1cb6f7",
+  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n· 深度重修「回到朗读位置」：点击后不再出现页面自己洗牌、标签闪回的问题（根因是状态提示每次闪现都在触发整章重新排版，已彻底解耦）\n· 翻页不再被系统抢回：松手瞬间的一个时序窗口会让刚翻到的页被自动拉回去，看起来像翻页失灵，已封死\n· 手动翻回朗读位置后，自动翻页现在会自己恢复 —— 以前摸过一下屏幕之后自动翻页就悄悄死掉，只有点标签才能救回\n· 暂停时翻走也能一键回到朗读位置（以前暂停后没有任何入口）\n· 按播放不再吞掉听书位置：以前暂停后翻到别的章再按播放，会从你正看的页开始念、原来的听书进度被覆盖；现在永远恢复原位置，「从正看的页开始念」交给轻点正文\n· 「回到朗读位置」不再被「正在合成…」顶掉，随时可点",
+  "sha256": "708c95dfc6803dffab873220d760a807824b7d92364c89d6fd2d5564e8f04eca",
   "minSdk": 26,
   "experimental": true
 }
