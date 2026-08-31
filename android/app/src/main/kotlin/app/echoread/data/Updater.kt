@@ -269,9 +269,15 @@ class Updater(private val context: Context) {
         /** 被用户叉掉的最高 versionCode（含），静默检查跳过它及更低版本 */
         private const val KEY_DISMISSED = "dismissed-version"
         private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
+        /**
+         * 更新清单地址，按顺序尝试，第一个成功即用。
+         * 第三条是国内兜底：前两个域名同时不可达时（部分网络两者都被拦），
+         * 走 GitHub 反代仍能取到清单。三条均已实测可达。
+         */
         val MANIFEST_URLS = listOf(
             "https://cdn.jsdelivr.net/gh/L0stInFades/echo-read@main/android/update.json",
-            "https://raw.githubusercontent.com/L0stInFades/echo-read/main/android/update.json"
+            "https://raw.githubusercontent.com/L0stInFades/echo-read/main/android/update.json",
+            "https://gh-proxy.com/https://raw.githubusercontent.com/L0stInFades/echo-read/main/android/update.json"
         )
     }
 }

@@ -26,7 +26,10 @@ if experimental and "实验版" not in notes:
 manifest = {
   "versionCode": int(code), "versionName": ver,
   "apkUrl": f"https://github.com/{repo}/releases/download/{tag}/{name}",
-  "mirrors": [f"https://ghproxy.net/https://github.com/{repo}/releases/download/{tag}/{name}"],
+  # 镜像按实测可达性排序（ghproxy.net 与 mirror.ghproxy.com 已失效，直接连接被拒）。
+  # 客户端会按顺序逐个尝试，首字节 12s 未到就换下一个。
+  "mirrors": [f"https://{h}/https://github.com/{repo}/releases/download/{tag}/{name}"
+              for h in ("gh-proxy.com", "ghfast.top", "gh.llkk.cc")],
   "notes": notes, "sha256": sha, "minSdk": 26,
 }
 if experimental:
