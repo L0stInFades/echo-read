@@ -7,6 +7,11 @@ import app.echoread.core.Range
 import app.echoread.core.Segmenter
 import app.echoread.core.TtsProvider
 import app.echoread.core.TtsSettings
+import app.echoread.core.net.Disposition
+import app.echoread.core.net.NetCategory
+import app.echoread.core.net.NetError
+import app.echoread.core.net.NetErrors
+import app.echoread.core.net.NetworkStatus
 import app.echoread.data.ChapterCache
 import app.echoread.data.DerivedChapter
 import kotlinx.coroutines.CancellationException
@@ -25,6 +30,53 @@ import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.roundToInt
 
+/** 一次自愈重试的完整状态。以前这里只有一句「网络异常，N 秒后重试」，说的是它并不知道的原因 */
+data class RetryStatus(
+    val error: NetError,
+    val nextInMs: Long,
+    val attempt: Int,
+    val maxAttempts: Int
+) {
+    /** dock 状态行：**必定**带上状态码或「无响应」 */
+    fun note(): String {
+        val secs = (nextInMs / 1000.0).roundToInt().coerceAtLeast(1)
+        val why = if (error.retryAfterSec != null) "，服务商要求等 ${error.retryAfterSec}s" else ""
+        return "${error.headline()} · $secs 秒后重试（$attempt/$maxAttempts）$why"
+    }
+}
+
+/** 引擎级失败。四种成因分开建模，因为它们的处置和文案完全不同 */
+sealed interface EngineFailure {
+    /** 可展开详情的网络错误；章节/播放类失败为 null */
+    val net: NetError?
+
+    fun headline(): String
+
+    /** 连续多段失败，或配置类错误：整个会话停下 */
+    data class Session(val error: NetError, val segmentsFailed: Int) : EngineFailure {
+        override val net: NetError get() = error
+        override fun headline(): String =
+            if (segmentsFailed <= 1) error.headline()
+            else "连续 $segmentsFailed 段失败 · ${error.headline()}"
+    }
+
+    /** 已跳过若干段但仍在读。这条状态必须活过下一段的成功，否则用户永远不知道书缺了内容 */
+    data class SkippedSegments(val last: NetError, val count: Int, val firstSegmentIndex: Int) : EngineFailure {
+        override val net: NetError get() = last
+        override fun headline(): String = "已跳过 $count 段（${last.badge()}）"
+    }
+
+    data class Chapter(val reason: String) : EngineFailure {
+        override val net: NetError? get() = null
+        override fun headline(): String = reason
+    }
+
+    data class Playback(val codecMessage: String) : EngineFailure {
+        override val net: NetError? get() = null
+        override fun headline(): String = codecMessage
+    }
+}
+
 data class EngineSnapshot(
     val state: PlayerState = PlayerState.IDLE,
     val bookId: String = "",
@@ -36,12 +88,22 @@ data class EngineSnapshot(
     val segmentEnd: Int = 0,
     /** 正在调用 TTS 接口合成（尚未开始出声） */
     val synthesizing: Boolean = false,
-    /** 自愈进行时的可见提示（退避倒计时/跳段说明） */
-    val retryNote: String = "",
-    val error: String = "",
+    /** 自愈进行时：正在退避等待下一次尝试 */
+    val retry: RetryStatus? = null,
+    /** 当前失败（可为「仍在读，但已跳过 N 段」） */
+    val failure: EngineFailure? = null,
     /** 当前片段之后已就绪（可零等待播放）的连续片段数 */
     val buffered: Int = 0
-)
+) {
+    /** 便捷派生：dock 的自愈提示行 */
+    val retryNote: String get() = retry?.note() ?: ""
+
+    /** 便捷派生：一行错误标题 */
+    val error: String get() = failure?.headline() ?: ""
+
+    /** 可展开「详情」的网络错误（失败优先，其次是正在重试的那个） */
+    val netError: NetError? get() = failure?.net ?: retry?.error
+}
 
 /** 指数退避延迟（毫秒）：1s 起倍增、30s 封顶、±20% 抖动；attempt 从 0 计 */
 fun backoffDelay(attempt: Int, rand: () -> Double = { Math.random() }): Long {
@@ -60,7 +122,8 @@ class TtsEngine(
     private val audioCache: AudioCache,
     private val systemTts: SystemTts,
     private val playback: Playback,
-    private val tempDir: File
+    private val tempDir: File,
+    private val network: NetworkStatus = object : NetworkStatus {}
 ) {
     @Volatile
     var settings: TtsSettings = TtsSettings()
@@ -82,16 +145,32 @@ class TtsEngine(
     @Volatile
     private var generation = 0
     private var synthesizing = false
-    private var errorMsg = ""
-    private var retryNote = ""
+    private var failure: EngineFailure? = null
+    private var retry: RetryStatus? = null
     /** 连续合成失败的片段数，任一片段成功播出即清零 */
     private var failStreak = 0
+    /** 本章已跳过的段数与首个被跳过的下标；换章 / 跳转时清零 */
+    private var skippedCount = 0
+    private var skippedFirst = -1
     private val pipeline = SynthPipeline(scope, audioCache)
     private var lastEndedAt = 0L
 
     init {
         tempDir.mkdirs()
         pipeline.onChanged = { ensureLookahead() }
+        // 预取失败：只有「配置坏了」这一类才上报，且暂停中也报 ——
+        // 这是应用最早能发现无效 Key 的时刻（打开书的瞬间，用户还没按播放）。
+        // 429/5xx/超时属于投机性工作的正常噪声，绝不因此打断用户。
+        pipeline.onFailure = { _, err ->
+            if (err.disposition(network.online()) == Disposition.STOP_SESSION &&
+                state != PlayerState.IDLE && failure == null
+            ) {
+                state = PlayerState.ERROR
+                failure = EngineFailure.Session(err, 0)
+                retry = null
+                emit()
+            }
+        }
         playback.onInterrupt = { pause() }
         playback.onResumeAfterInterrupt = { if (state == PlayerState.PAUSED) play() }
     }
@@ -100,6 +179,15 @@ class TtsEngine(
 
     /** 当前片段已朗读的比例（0..1，按音频进度）；无在播句柄时为 0 */
     fun playbackFraction(): Float = if (handle != null) playback.progressFraction() else 0f
+
+    /** 用户主动清除错误提示（跳过段计数一并归零） */
+    fun dismissFailure() {
+        if (failure == null) return
+        failure = null
+        skippedCount = 0
+        skippedFirst = -1
+        emit()
+    }
 
     private fun emit() {
         _snapshot.value = EngineSnapshot(
@@ -112,8 +200,8 @@ class TtsEngine(
             segmentStart = derived?.segments?.getOrNull(segmentIndex)?.start ?: 0,
             segmentEnd = derived?.segments?.getOrNull(segmentIndex)?.end ?: 0,
             synthesizing = synthesizing,
-            retryNote = retryNote,
-            error = errorMsg,
+            retry = retry,
+            failure = failure,
             buffered = bufferedAhead()
         )
         playback.setActive(state == PlayerState.PLAYING)
@@ -155,7 +243,9 @@ class TtsEngine(
         val gen = generation
         stopHandle(keep = coroutineContext[Job])
         state = PlayerState.LOADING
-        errorMsg = ""
+        failure = null
+        skippedCount = 0
+        skippedFirst = -1
         this.bookId = bookId
         this.chapterCount = chapterCount
         // 装载期间快照归零，避免新旧章节混杂
@@ -172,7 +262,7 @@ class TtsEngine(
         if (gen != generation) return false
         if (d == null) {
             state = PlayerState.ERROR
-            errorMsg = "章节内容缺失"
+            failure = EngineFailure.Chapter("章节内容缺失")
             emit()
             return false
         }
@@ -196,7 +286,7 @@ class TtsEngine(
             emit()
             return
         }
-        errorMsg = ""
+        failure = null
         failStreak = 0
         state = PlayerState.PLAYING
         emit()
@@ -232,7 +322,9 @@ class TtsEngine(
         val wasPlaying = state == PlayerState.PLAYING
         stopHandle(keep = null)
         segmentIndex = Segmenter.segmentIndexAt(segments, offset)
-        errorMsg = ""
+        failure = null
+        skippedCount = 0
+        skippedFirst = -1
         failStreak = 0
         if (wasPlaying) {
             state = PlayerState.PLAYING
@@ -271,7 +363,7 @@ class TtsEngine(
     /** 停掉在途合成与播放；keep 为当前协程自身的 Job 时不取消它（装载来自循环内部的自动跨章） */
     private fun stopHandle(keep: Job?) {
         synthesizing = false
-        retryNote = ""
+        retry = null
         val job = loopJob
         if (job != null && job !== keep) {
             job.cancel()
@@ -320,28 +412,34 @@ class TtsEngine(
                 // 僵尸 loop（已换代）不得回写共享合成状态
                 if (gen != generation) return
                 synthesizing = false
-                if (SpeechApi.isFatalSpeechError(e)) {
-                    // 配置类错误（无效 Key 等）：跳段无意义，立即停播暴露给用户
-                    state = PlayerState.ERROR
-                    errorMsg = e.message ?: e.toString()
-                    retryNote = ""
-                    emit()
-                    return
+                val err = classify(e)
+                retry = null
+                when (err.disposition(network.online())) {
+                    Disposition.STOP_SESSION -> {
+                        // 配置类错误（无效 Key / 余额耗尽 / 模型不存在）：跳段无意义，立即停播
+                        state = PlayerState.ERROR
+                        failure = EngineFailure.Session(err, failStreak + 1)
+                        emit()
+                        return
+                    }
+                    else -> {
+                        // 单段失败：跳过本段续播，连续多段失败才认定环境不可用
+                        failStreak++
+                        if (failStreak >= MAX_FAIL_STREAK) {
+                            state = PlayerState.ERROR
+                            failure = EngineFailure.Session(err, failStreak)
+                            emit()
+                            return
+                        }
+                        // 跳段记录必须活过下一段的成功：静默丢内容是正确性问题，不是观感问题
+                        if (skippedFirst < 0) skippedFirst = segmentIndex
+                        skippedCount++
+                        failure = EngineFailure.SkippedSegments(err, skippedCount, skippedFirst)
+                        segmentIndex++
+                        emit()
+                        continue
+                    }
                 }
-                // 单段重试穷尽：跳过本段续播，连续多段失败才认定环境不可用
-                failStreak++
-                if (failStreak >= MAX_FAIL_STREAK) {
-                    state = PlayerState.ERROR
-                    errorMsg = if (settings.provider == TtsProvider.SYSTEM) (e.message ?: "系统语音合成失败")
-                    else "连续多段合成失败，请检查网络或 TTS 配置"
-                    retryNote = ""
-                    emit()
-                    return
-                }
-                retryNote = "本段合成失败，已跳过"
-                segmentIndex++
-                emit()
-                continue
             }
             if (gen == generation) synthesizing = false
             // 合成窗口期被 pause/seek/换章：句柄不落地，直接停掉（防孤儿音频）
@@ -361,13 +459,14 @@ class TtsEngine(
                 h.awaitEnded()
             } catch (e: CancellationException) {
                 throw e
-            } catch (_: Exception) {
+            } catch (e: Exception) {
                 // 被打断（seek/pause 内部 stop）或播放错误；死句柄必须摘除
                 if (handle === h) handle = null
                 if (gen != generation) return
                 if (state == PlayerState.PLAYING) {
                     state = PlayerState.ERROR
-                    errorMsg = "播放中断"
+                    // Playback 已经把 Media3 的 errorCodeName 编进 message，别再压成「播放中断」
+                    failure = EngineFailure.Playback(e.message?.takeIf { it.isNotBlank() } ?: "播放中断")
                     emit()
                 }
                 return
@@ -380,6 +479,27 @@ class TtsEngine(
             segmentIndex++
             emit()
         }
+    }
+
+    /** 把任意异常归一成 NetError；系统 TTS 走本地引擎，没有 HTTP 语义 */
+    private fun classify(e: Throwable): NetError {
+        if (settings.provider == TtsProvider.SYSTEM) {
+            return NetError(
+                category = NetCategory.UNKNOWN,
+                providerMessage = e.message ?: "系统语音合成失败",
+                endpoint = "system-tts",
+                method = "LOCAL",
+                transport = e.javaClass.simpleName
+            )
+        }
+        return NetErrors.fromThrowable(
+            e,
+            endpoint = settings.openai.baseUrl,
+            model = settings.openai.model,
+            maxAttempts = MAX_ATTEMPTS
+            // fromThrowable 遇到 NetException 时原样保留它自带的 NetError，
+            // 而本地前置校验（缺 Key / 缺 Base URL）构造时并不知道模型名 —— 这里补上
+        ).let { if (it.model == null) it.copy(model = settings.openai.model) else it }
     }
 
     private fun cacheKey(text: String, c: OpenAISpeechConfig): String =
@@ -410,10 +530,9 @@ class TtsEngine(
         val hot = pipeline.readyFile(key) ?: runCatching { audioCache.get(key) }.getOrNull()
         if (gen != generation) throw AbortedException()
         if (hot != null) {
-            setRetryNote("", gen)
+            setRetry(null, gen)
             return playback.play(hot, rate)
         }
-        if (cfg.apiKey.isBlank()) throw SpeechHttpException("请先在朗读设置中填写 API Key", 401)
 
         var lastErr: Exception? = null
         for (attempt in 0 until MAX_ATTEMPTS) {
@@ -422,30 +541,47 @@ class TtsEngine(
                 // 流水线去重：若预取已在途则直接等它，绝不重复请求
                 val file = pipeline.obtain(key, cfg, text)
                 if (gen != generation) throw AbortedException()
-                setRetryNote("", gen)
+                setRetry(null, gen)
+                pipeline.clearCooldown(key)
                 return playback.play(file, rate)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: AbortedException) {
                 throw e
             } catch (e: Exception) {
-                // 配置类错误（401/404 等）重试救不了：立即上抛，保证无 Key 场景快速报错
-                if (SpeechApi.isFatalSpeechError(e)) throw e
+                val err = NetErrors.fromThrowable(
+                    e,
+                    endpoint = cfg.baseUrl,
+                    model = cfg.model,
+                    attempt = attempt + 1,
+                    maxAttempts = MAX_ATTEMPTS
+                )
+                // 重试救不了的（无效 Key / 余额 / 模型不存在 / 本段不被接受）：立即上抛
+                if (err.disposition(network.online()) != Disposition.RETRY) throw e
                 lastErr = e
             }
             if (attempt < MAX_ATTEMPTS - 1) {
-                val d = backoffDelay(attempt)
-                setRetryNote("网络异常，${(d / 1000.0).roundToInt()} 秒后重试（第 ${attempt + 2}/$MAX_ATTEMPTS 次）", gen)
+                val err = NetErrors.fromThrowable(
+                    lastErr ?: IllegalStateException("合成失败"),
+                    endpoint = cfg.baseUrl,
+                    model = cfg.model,
+                    attempt = attempt + 1,
+                    maxAttempts = MAX_ATTEMPTS
+                )
+                // 服务商明确要求等多久就等多久，别用我们盲猜的曲线覆盖它
+                val d = err.retryAfterSec?.times(1000L)?.coerceAtMost(MAX_BACKOFF_MS)
+                    ?: min(backoffDelay(attempt), MAX_BACKOFF_MS)
+                setRetry(RetryStatus(err, d, attempt + 2, MAX_ATTEMPTS), gen)
                 delay(d)
             }
         }
         throw lastErr ?: IllegalStateException("合成失败")
     }
 
-    /** 更新自愈提示并广播；换代后（暂停/跳转）静默忽略，防僵尸 loop 污染新状态 */
-    private fun setRetryNote(note: String, gen: Int) {
-        if (gen != generation || retryNote == note) return
-        retryNote = note
+    /** 更新自愈状态并广播；换代后（暂停/跳转）静默忽略，防僵尸 loop 污染新状态 */
+    private fun setRetry(r: RetryStatus?, gen: Int) {
+        if (gen != generation || retry == r) return
+        retry = r
         emit()
     }
 
@@ -472,7 +608,7 @@ class TtsEngine(
         while (i < segments.size && covered < want) {
             val text = slice(segments[i])
             val key = cacheKey(text, cfg)
-            if (!pipeline.isReady(key) && !pipeline.isPending(key)) {
+            if (!pipeline.isReady(key) && !pipeline.isPending(key) && !pipeline.isCoolingDown(key)) {
                 if (pipeline.inflightCount >= MAX_PARALLEL) return
                 pipeline.prefetch(key, cfg, text)
             }
@@ -497,10 +633,16 @@ class TtsEngine(
     }
 
     companion object {
-        /** 单个片段的合成尝试总数上限（含首次） */
-        const val MAX_ATTEMPTS = 8
+        /**
+         * 单个片段的合成尝试总数上限（含首次）。
+         * 8 → 4：配合 75s 的 callTimeout，最坏 4×75s + 退避 ≈ 5 分钟，而旧值在没有 callTimeout 时
+         * 最坏可以让用户对着同一行提示等 15 分钟。真正的弱网恢复窗口远小于这个预算。
+         */
+        const val MAX_ATTEMPTS = 4
+        /** 单次退避上限（毫秒）：曲线本身封顶 30s，但合成路径 8s 就够了 */
+        const val MAX_BACKOFF_MS = 8_000L
         /** 连续多少个片段合成失败（各自穷尽重试）才停播报错 */
-        const val MAX_FAIL_STREAK = 3
+        const val MAX_FAIL_STREAK = 2
         /** 前瞻窗口上限（段） */
         const val MAX_LOOKAHEAD = 6
         /** 预取并发上限（遵守服务商限流） */

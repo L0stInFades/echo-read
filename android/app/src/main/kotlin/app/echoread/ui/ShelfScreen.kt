@@ -1,5 +1,9 @@
 package app.echoread.ui
 
+import app.echoread.ui.motion.EchoMotion
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.material3.animateFloatingActionButton
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -31,6 +35,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Icon
@@ -65,6 +70,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import app.echoread.AppGraph
 import app.echoread.core.BookMeta
+import app.echoread.core.readFraction
+import app.echoread.core.started
 import app.echoread.core.TtsProvider
 import app.echoread.data.UpdateState
 import androidx.compose.ui.platform.LocalContext
@@ -170,7 +177,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         if (books.isNotEmpty()) "书架 · ${books.size} 本" else "AI 听书 · 声临其境",
-                        color = c.text3, fontSize = 12.sp, letterSpacing = 3.sp,
+                        color = c.text3, style = MaterialTheme.typography.bodySmall, letterSpacing = 3.sp,
                         modifier = Modifier.graphicsLayer {
                             alpha = 1f - (collapse.value / 0.6f).coerceIn(0f, 1f)
                             compositingStrategy = CompositingStrategy.ModulateAlpha
@@ -198,8 +205,8 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("配置 API Key，开启 AI 朗读", color = c.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            Text("支持 OpenRouter / OpenAI 兼容语音接口", color = c.text2, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("配置 API Key，开启 AI 朗读", color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text("支持 OpenRouter / OpenAI 兼容语音接口", color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         }
                         Icon(EchoIcons.ChevronRight, null, tint = c.text3, modifier = Modifier.size(16.dp))
                     }
@@ -214,15 +221,15 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                             contentAlignment = Alignment.Center
                         ) { Icon(EchoIcons.Book, null, tint = c.accent, modifier = Modifier.size(40.dp)) }
                         Spacer(Modifier.height(20.dp))
-                        Text("书架还是空的", color = c.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text("书架还是空的", color = c.text, style = MaterialTheme.typography.titleLargeEmphasized)
                         Spacer(Modifier.height(6.dp))
-                        Text("导入 TXT 或 EPUB 书籍，轻点任意文字，\nAI 便从那里开始为你朗读", color = c.text2, fontSize = 13.sp, lineHeight = 20.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Text("导入 TXT 或 EPUB 书籍，轻点任意文字，\nAI 便从那里开始为你朗读", color = c.text2, style = MaterialTheme.typography.bodyMedium, lineHeight = 20.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         Spacer(Modifier.height(24.dp))
                         GradientButton("导入第一本书", height = 46.dp) { showImport = true }
                         Spacer(Modifier.height(10.dp))
                         OutlineButton("没有书？先听示例 →", Modifier.testTag("shelf.sample")) { openSample() }
                         Spacer(Modifier.height(12.dp))
-                        Text("怎么用？", color = c.text3, fontSize = 12.sp, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showHelp = true }.padding(6.dp))
+                        Text("怎么用？", color = c.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showHelp = true }.padding(6.dp))
                     }
                 }
             } else {
@@ -256,16 +263,19 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                                     }
                                 }
                             )
-                            if (query.isNotEmpty()) Text("清除", color = c.text3, fontSize = 11.sp, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { query = "" })
+                            if (query.isNotEmpty()) Text("清除", color = c.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { query = "" })
                         }
                         Spacer(Modifier.height(10.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            for (s in SortMode.entries) Chip(s.label, selected = sort == s) { sort = s }
-                        }
+                        // 排序在语义上是单选，不是筛选标签 —— 用 M3 Expressive 的连接式按钮组，
+                        // 相连的圆角把「三选一」这件事直接画出来，读屏也会正确读成单选组。
+                        EchoSegmented(
+                            items = SortMode.entries.map { SegmentItem(it.label) },
+                            selectedIndex = SortMode.entries.indexOf(sort)
+                        ) { sort = SortMode.entries[it] }
                     }
                 }
                 if (filtered.isEmpty()) {
-                    item("nores") { Text("没有找到「$query」", color = c.text3, fontSize = 13.sp, modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+                    item("nores") { Text("没有找到「$query」", color = c.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
                 } else {
                     // 网格逐行懒加载：每行一个 item，卡片背景按首/中/尾行分段拼出整块大圆角卡片
                     val cols = 3
@@ -281,6 +291,9 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                         Row(
                             Modifier
                                 .fillMaxWidth()
+                                // 删书、搜索过滤会让整列重排：没有它，行是瞬移的。
+                                // 位移用和转场同一条弹簧，全应用的运动语汇保持一致。
+                                .animateItem(placementSpec = EchoMotion.Standard.spec(IntOffset.VisibilityThreshold))
                                 .background(c.card, shape)
                                 .padding(start = 14.dp, end = 14.dp, top = if (first) 14.dp else 0.dp, bottom = if (last) 14.dp else 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -325,8 +338,22 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
         }
 
         // 底部主动作：拇指可达的「导入」
+        // 底部主动作：拇指可达的「导入」。
+        // 用 M3 的 FAB 出入场动画（缩放 + 淡出，锚点在按钮自身），由已有的 collapse 驱动 ——
+        // 往下翻书时它让出屏幕，回到顶部再弹回来。这条动画本身走主题里的 Expressive 弹簧。
         Box(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 22.dp).zIndex(10f)) {
-            GradientButton("导入书籍", icon = EchoIcons.Plus, height = 52.dp, modifier = Modifier.testTag("shelf.import").shadow(20.dp, CircleShape, spotColor = c.accent.copy(alpha = 0.55f))) { showImport = true }
+            GradientButton(
+                "导入书籍",
+                icon = EchoIcons.Plus,
+                height = 52.dp,
+                modifier = Modifier
+                    .testTag("shelf.import")
+                    .animateFloatingActionButton(
+                        visible = collapse.value < 0.85f,
+                        alignment = Alignment.BottomCenter
+                    )
+                    .shadow(20.dp, CircleShape, spotColor = c.accent.copy(alpha = 0.55f))
+            ) { showImport = true }
         }
 
         // 导入中遮罩
@@ -342,7 +369,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
             ) {
                 ContainedLoadingIndicator(modifier = Modifier.size(56.dp))
                 Spacer(Modifier.height(14.dp))
-                Text("正在解析书籍…", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
+                Text("正在解析书籍…", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
             }
         }
 
@@ -402,13 +429,13 @@ private fun UpdateCard(graph: AppGraph) {
                             is UpdateState.Error -> "更新失败"
                             else -> "发现新版本 v${info?.versionName}"
                         },
-                        color = c.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+                        color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold
                     )
                     val sub = when (s) {
                         is UpdateState.Error -> s.message
                         else -> info?.notes?.ifBlank { "当前 v${graph.updater.currentVersionName}" } ?: ""
                     }
-                    if (sub.isNotEmpty()) Text(sub, color = c.text2, fontSize = 12.sp, lineHeight = 17.sp, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
+                    if (sub.isNotEmpty()) Text(sub, color = c.text2, style = MaterialTheme.typography.bodySmall, lineHeight = 17.sp, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                 }
                 Spacer(Modifier.width(10.dp))
                 when (s) {
@@ -432,7 +459,7 @@ private fun UpdateCard(graph: AppGraph) {
                     Spacer(Modifier.width(6.dp))
                     Text(
                         "实验版：界面与手势改动较大，可能有未发现的问题。不想升级就点右上角的 ✕，之后不会再提醒这一版。",
-                        color = c.text3, fontSize = 11.sp, lineHeight = 16.sp
+                        color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp
                     )
                 }
             }
@@ -455,19 +482,23 @@ private fun BookCell(b: BookMeta, modifier: Modifier, onClick: () -> Unit, onLon
             }
         }
         Spacer(Modifier.height(8.dp))
-        Text(b.title, color = c.text, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text("${progressText(b)} · ${formatChars(b.totalChars)}", color = c.text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(b.title, color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text("${progressText(b)} · ${formatChars(b.totalChars)}", color = c.text3, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
 }
 
 @Composable
 private fun ContinueCard(b: BookMeta, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = echo
+    // 层级用「容器色阶」表达，这正是 M3 色调容器阶梯的用途：
+    // 继续阅读卡 = surfaceContainerHigh + 最大圆角（书架的主角），
+    // 书格卡 = surfaceContainer（同级并列），横幅 = surfaceContainer（附属通知）。
+    // 之前四个同级容器全用 surfaceContainer —— 有「围合」，但没有「层级」。
     Row(
         modifier
             .fillMaxWidth()
-            .background(c.card, RoundedCornerShape(Radius.xl))
-            .border(1.dp, c.border, RoundedCornerShape(Radius.xl))
+            .background(c.cardAlt, RoundedCornerShape(Radius.xl))
+            .border(1.dp, c.accent.copy(alpha = 0.18f), RoundedCornerShape(Radius.xl))
             .echoPress(pressedScale = PressScale.Tile, onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -475,16 +506,16 @@ private fun ContinueCard(b: BookMeta, modifier: Modifier = Modifier, onClick: ()
         Box(Modifier.width(52.dp).height(76.dp).shadow(12.dp, RoundedCornerShape(10.dp))) { BookCover(b, Modifier.fillMaxSize(), radius = 10.dp, titleSize = 11) }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text("继续阅读", color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 2.sp)
+            Text("继续阅读", color = c.accent, style = MaterialTheme.typography.labelSmallEmphasized, letterSpacing = 2.sp)
             Spacer(Modifier.height(2.dp))
-            Text(b.title, color = c.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(b.title, color = c.text, style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(2.dp))
             Text(
                 buildString {
                     append(b.author); append(" · "); append(progressText(b))
                     b.lastReadAt?.let { append(" · "); append(relativeTime(it)) }
                 },
-                color = c.text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                color = c.text3, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis
             )
             Spacer(Modifier.height(10.dp))
             GradientBar(progressFraction(b), Modifier.fillMaxWidth(), height = 4.dp)
@@ -504,33 +535,31 @@ fun BoxScope.BookActionSheet(book: BookMeta?, onClose: () -> Unit, onOpen: (Book
         if (b != null) {
             Text(
                 "${b.author} · ${b.format.label.uppercase()} · ${b.chapterCount} 章 · ${formatChars(b.totalChars)}" + (b.intro?.let { "\n$it" } ?: ""),
-                color = c.text3, fontSize = 12.sp, lineHeight = 18.sp, maxLines = 6, overflow = TextOverflow.Ellipsis
+                color = c.text3, style = MaterialTheme.typography.bodySmall, lineHeight = 18.sp, maxLines = 6, overflow = TextOverflow.Ellipsis
             )
             Spacer(Modifier.height(12.dp))
             Box(
                 Modifier.fillMaxWidth().background(c.cardAlt, RoundedCornerShape(Radius.md)).echoPress(pressedScale = PressScale.Tile) { onOpen(b) }.padding(16.dp)
-            ) { Text("继续阅读", color = c.text, fontSize = 14.sp) }
+            ) { Text("继续阅读", color = c.text, style = MaterialTheme.typography.bodyMedium) }
             Spacer(Modifier.height(8.dp))
             Box(
                 Modifier.fillMaxWidth().background(c.danger.copy(alpha = 0.12f), RoundedCornerShape(Radius.md)).echoPress(pressedScale = PressScale.Tile) { onDelete(b) }.padding(16.dp)
-            ) { Text("从书架删除", color = c.danger, fontSize = 14.sp) }
+            ) { Text("从书架删除", color = c.danger, style = MaterialTheme.typography.bodyMedium) }
         }
     }
 }
 
-private fun progressFraction(b: BookMeta): Float {
-    if (b.chapterCount <= 1) {
-        if (b.progress.offset == 0) return 0f
-        return (b.progress.offset.toFloat() / maxOf(b.totalChars, 1)).coerceIn(0f, 1f)
-    }
-    if (b.progress.chapterIndex == 0 && b.progress.offset == 0) return 0f
-    return (b.progress.chapterIndex.toFloat() / maxOf(b.chapterCount - 1, 1)).coerceIn(0f, 1f)
-}
+/**
+ * 书架进度：直接用 core 里那一个书级函数，和阅读器底栏完全一致。
+ *
+ * 旧实现是 `chapterIndex / (chapterCount - 1)`：它无视章内偏移，且在**到达**最后一章的
+ * 瞬间就报 100%。12 章的书刚翻到第 12 章时，书架显示「已读 100%」，阅读器显示 0%，
+ * 真值是 91.7% —— 同一本书、同一时刻、两个数字差了 100 个百分点。
+ */
+private fun progressFraction(b: BookMeta): Float = b.readFraction()
 
-private fun progressText(b: BookMeta): String {
-    val started = if (b.chapterCount <= 1) b.progress.offset != 0 else !(b.progress.chapterIndex == 0 && b.progress.offset == 0)
-    return if (!started) "未开始" else "已读 ${(progressFraction(b) * 100).toInt()}%"
-}
+private fun progressText(b: BookMeta): String =
+    if (!b.started()) "未开始" else "已读 ${(progressFraction(b) * 100).toInt()}%"
 
 fun formatChars(n: Int): String = if (n >= 10000) String.format(java.util.Locale.ROOT, "%.1f 万字", n / 10000.0) else "$n 字"
 

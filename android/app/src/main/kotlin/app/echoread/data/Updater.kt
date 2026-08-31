@@ -43,7 +43,7 @@ sealed interface UpdateState {
     data class Available(val info: UpdateInfo) : UpdateState
     data class Downloading(val info: UpdateInfo, val progress: Float) : UpdateState
     data class Ready(val info: UpdateInfo, val file: File) : UpdateState
-    data class Error(val message: String, val info: UpdateInfo? = null) : UpdateState
+    data class Error(val message: String, val info: UpdateInfo? = null, val error: app.echoread.core.net.NetError? = null) : UpdateState
 }
 
 /**
@@ -80,8 +80,17 @@ class Updater(private val context: Context) {
                     for (url in MANIFEST_URLS) {
                         try {
                             val req = Request.Builder().url(url).header("Cache-Control", "no-cache").get().build()
-                            SpeechApi.client.newCall(req).execute().use { res ->
-                                if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
+                            SpeechApi.clientFor(app.echoread.core.net.CallKind.UPDATE_MANIFEST).newCall(req).execute().use { res ->
+                                if (!res.isSuccessful) {
+                                    throw app.echoread.core.net.NetException(
+                                        app.echoread.core.net.NetErrors.fromHttp(
+                                            status = res.code,
+                                            bodyRaw = try { res.peekBody(512).string() } catch (_: Throwable) { null },
+                                            endpoint = url, method = "GET",
+                                            kind = app.echoread.core.net.CallKind.UPDATE_MANIFEST
+                                        )
+                                    )
+                                }
                                 val info = json.decodeFromString(UpdateInfo.serializer(), res.body?.string() ?: "")
                                 return@withContext info
                             }
@@ -100,7 +109,15 @@ class Updater(private val context: Context) {
         prefs.edit().putLong(KEY_LAST_CHECK, now).apply()
         val info = result.getOrNull()
         val next = when {
-            info == null -> UpdateState.Error("检查更新失败：${result.exceptionOrNull()?.message ?: "网络异常"}")
+            info == null -> {
+                val err = result.exceptionOrNull()?.let {
+                    app.echoread.core.net.NetErrors.fromThrowable(
+                        it, endpoint = MANIFEST_URLS.firstOrNull() ?: "", method = "GET",
+                        kind = app.echoread.core.net.CallKind.UPDATE_MANIFEST
+                    )
+                }
+                UpdateState.Error("检查更新失败：${err?.headline() ?: "网络异常"}", null, err)
+            }
             info.versionCode > currentVersionCode && Build.VERSION.SDK_INT >= info.minSdk -> {
                 // 用户已把这一版「叉掉」：静默检查不再打扰（手动检查 force=true 仍然照常提示）
                 if (!force && isDismissed(info.versionCode)) UpdateState.UpToDate
@@ -132,13 +149,21 @@ class Updater(private val context: Context) {
             for (url in listOf(info.apkUrl) + info.mirrors) {
                 try {
                     val req = Request.Builder().url(url).get().build()
-                    // 首字节 12s 未到 / 传输中 20s 无进展即放弃当前地址换镜像（GitHub 直连在部分网络下会长时间挂起）
-                    val client = SpeechApi.client.newBuilder()
+                    // 首字节 12s 未到 / 传输中 20s 无进展即放弃当前地址换镜像（GitHub 直连在部分网络下会长时间挂起）。
+                    // 刻意不设 callTimeout：APK 有十几 MB，慢网下整包耗时本就可能超过任何合理的总时限。
+                    val client = SpeechApi.clientFor(app.echoread.core.net.CallKind.UPDATE_APK).newBuilder()
                         .connectTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
                         .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
                         .build()
                     client.newCall(req).execute().use { res ->
-                        if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
+                        if (!res.isSuccessful) {
+                            throw app.echoread.core.net.NetException(
+                                app.echoread.core.net.NetErrors.fromHttp(
+                                    status = res.code, bodyRaw = null, endpoint = url, method = "GET",
+                                    kind = app.echoread.core.net.CallKind.UPDATE_APK
+                                )
+                            )
+                        }
                         val body = res.body ?: throw IllegalStateException("空响应")
                         val total = body.contentLength()
                         val tmp = File(target.path + ".part")
@@ -179,7 +204,15 @@ class Updater(private val context: Context) {
             Result.failure(e)
         }
         val next = result.getOrNull()?.let { UpdateState.Ready(info, it) }
-            ?: UpdateState.Error("下载失败：${result.exceptionOrNull()?.message ?: "网络异常"}", info)
+            ?: run {
+                val err = result.exceptionOrNull()?.let {
+                    app.echoread.core.net.NetErrors.fromThrowable(
+                        it, endpoint = info.apkUrl, method = "GET",
+                        kind = app.echoread.core.net.CallKind.UPDATE_APK
+                    )
+                }
+                UpdateState.Error("下载失败：${err?.headline() ?: "网络异常"}", info, err)
+            }
         _state.value = next
         return next
     }

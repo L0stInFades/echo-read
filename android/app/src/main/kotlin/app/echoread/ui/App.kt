@@ -161,6 +161,8 @@ fun EchoApp(graph: AppGraph) {
                 }
             }
             ConfigConfirmSheet(graph)
+            // 错误详情：全局单宿主，任何界面都能唤起（网络错误可能来自设置、阅读器或书架）
+            ErrorDetailHost()
             ToastHost()
         }
     }

@@ -14,6 +14,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.lerp
 import androidx.compose.ui.input.pointer.AwaitPointerEventScope
 import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
 import androidx.compose.ui.input.pointer.PointerInputChange
@@ -62,6 +66,11 @@ class EchoPressState internal constructor() {
  * 3. **动画值只在 lambda 里读**：`progress` 只出现在 graphicsLayer 块里，按压全程零重组。
  *
  * 无障碍语义（role / onClick / onLongClick / disabled）显式提供，不依赖 `clickable`。
+ *
+ * @param pressedCorner 按下时把圆角从「胶囊」形变到这个半径。这是 M3 Expressive 的核心手法之一
+ *   （它自己的 `ButtonShapes` / `ToggleButtonShapes` 就带 `pressedShape`），
+ *   而且**复用同一条 [EchoPressState.progress] 弹簧** —— 缩放与形变严格同相，不会各跑各的。
+ *   传 null（默认）则完全不启用裁剪，行为与之前逐位一致。
  */
 @Composable
 fun Modifier.echoPress(
@@ -70,6 +79,7 @@ fun Modifier.echoPress(
     pressedAlpha: Float = 1f,
     onClickLabel: String? = null,
     onLongClick: (() -> Unit)? = null,
+    pressedCorner: Dp? = null,
     onClick: () -> Unit,
 ): Modifier {
     val state = remember { EchoPressState() }
@@ -87,7 +97,7 @@ fun Modifier.echoPress(
             if (!enabled) disabled()
         }
     }
-    val layerBlock: GraphicsLayerScope.() -> Unit = remember(pressedScale, pressedAlpha) {
+    val layerBlock: GraphicsLayerScope.() -> Unit = remember(pressedScale, pressedAlpha, pressedCorner) {
         {
             val p = state.progress.value
             val s = 1f + (pressedScale - 1f) * p
@@ -97,6 +107,12 @@ fun Modifier.echoPress(
                 alpha = 1f + (pressedAlpha - 1f) * p
                 // 按钮内容互不重叠，用 ModulateAlpha 把 alpha 下推到每个 draw op，不建离屏缓冲
                 compositingStrategy = CompositingStrategy.ModulateAlpha
+            }
+            if (pressedCorner != null) {
+                // 起点用「足够大的半径」代表胶囊：RoundedCornerShape 会自动收敛到半高，
+                // 因此这一档在任何高度上都等价于 CircleShape，无需知道实际尺寸。
+                shape = RoundedCornerShape(lerp(PILL_CORNER, pressedCorner, p))
+                clip = true
             }
         }
     }
@@ -142,6 +158,9 @@ fun Modifier.echoPress(
         .semantics(mergeDescendants = true, properties = semanticsBlock)
         .graphicsLayer(layerBlock)
 }
+
+/** 代表「胶囊」的半径起点：任何按钮都不会高于这个值的两倍，RoundedCornerShape 自会收敛到半高 */
+private val PILL_CORNER = 999.dp
 
 /** 纯点击拦截（遮罩层）：不做缩放、不建 InteractionSource、不加无障碍点击语义 */
 @Composable
