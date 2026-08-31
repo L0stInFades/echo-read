@@ -136,14 +136,11 @@ private val SLEEP_OPTIONS: List<Pair<String, SleepMode>> = listOf(
     "90分" to SleepMode.Minutes(90), "播完本章" to SleepMode.Chapter, "关闭" to SleepMode.Off
 )
 
-/** 播放跟随：手动翻页（含暂停中）即脱离，点播放 / 点读 / 「回到朗读位置」恢复 */
-private enum class Follow { FOLLOWING, DETACHED }
-
 /** 切章请求：offset < 0 表示定位到该章末页 */
 private data class ChapterRequest(val chapter: Int, val offset: Int, val seq: Int)
 
 private data class FollowKey(
-    val follow: Follow, val book: String, val state: PlayerState, val chapter: Int, val start: Int
+    val follow: Boolean, val book: String, val state: PlayerState, val chapter: Int, val start: Int
 )
 
 /**
@@ -193,7 +190,19 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
     var spec by remember { mutableStateOf<LayoutSpec?>(null) }
     var request by remember { mutableStateOf<ChapterRequest?>(null) }
     var laying by remember { mutableStateOf(false) }
-    var follow by remember { mutableStateOf(Follow.FOLLOWING) }
+    /**
+     * 自动跟随开关：true = 视图粘在朗读位置上。
+     *
+     * 0.2.x 的一个结构性错误在这里修掉：原来它是一个叫 DETACHED 的**手势闩** ——
+     * 任何超过 slop 的拖动都会闩上（哪怕被橡皮筋弹回原页），而且没有任何路径自动解闩。
+     * 于是「手动翻回朗读页」之后闩仍然闩着，跟随效应和自动翻页全部被它挡住，
+     * 表现为「摸过一下屏幕之后自动翻页随机失灵」。
+     *
+     * 现在：这个开关只回答「要不要自动跟」；「现在偏没偏」是另一个**派生事实**（divergent，
+     * 由视图页与朗读页逐帧比较得出），标签与返回入口由后者驱动；用户手动翻回朗读页时
+     * 开关自动合上（见下方复挂效应）。
+     */
+    var followSpeech by remember { mutableStateOf(true) }
     /**
      * 视图主动发起播放/切章时锁定的目标章。引擎快照还停在旧章的那几十毫秒里，跟随不得把视图拽回去 ——
      * 否则「在第 3 章点读」会看到画面先闪回第 2 章再跳回来。
@@ -213,7 +222,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
             WindowCompat.getInsetsController(w, view).isAppearanceLightNavigationBars = !theme.isDark
         }
         window.chapterCount = meta?.chapterCount ?: 0
-        pager.onManual = { follow = Follow.DETACHED }
+        pager.onManual = { followSpeech = false }
         pager.onBlocked = { d ->
             // 只有真到书尾才提示；首屏未就绪或邻章还在排版时静默（橡皮筋已经给了物理反馈）
             val ready = window.chapterCount > 0 && window.pagesOf(pager.anchor.chapter) != null
@@ -364,9 +373,82 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
 
     fun segFor(ref: PageRef): Range? = if (ref.chapter == engineChapter) activeSeg else null
 
-    // 只监听真正的语义输入（不再把 pages 当 key）：换主题/换字号不会再把页码拉回朗读位置
+    /* ---------- 位置分歧：派生事实，不是闩 ---------- */
+
+    /** 引擎在本书上有一个有意义的朗读位置（播放中或暂停挂起） */
+    val speechLoaded = engineOnThis && (snap.state == PlayerState.PLAYING || snap.state == PlayerState.PAUSED)
+
+    /**
+     * 视图页是否偏离了**正在念的那一页**（可听页 = segmentStart + 片段长 × 播放进度所在的页）。
+     *
+     * 为什么是效应维护的状态而不是组合期直接算：可听页要读 playbackFraction()——
+     * 它不是快照状态，组合期读了既不纯也不会触发重组。效应在锚点/片段/播放态变化时重估一次。
+     *
+     * 为什么容差是**单页**而不是「片段覆盖的页范围」（第一版实现，实测被否）：
+     * 测试书里一段能横跨三页，「范围内都算在位」意味着用户从朗读页翻走两页都不出标签。
+     * 跟随中锚点本就是自动翻页按可听进度放置的，恒等于可听页；分歧对齐同一把尺，
+     * 「跨页片段暂停时倒判一页」的老问题也不存在 —— 暂停时 playbackFraction 保持原值。
+     *
+     * 已知且接受的迟滞：用户停在可听页、语音跨段移走时，没有状态发射把这里叫醒，
+     * 分歧要等下一个段边界（≤ 一段）才亮标签。为这几秒开常驻轮询不值得。
+     */
+    var divergent by remember { mutableStateOf(false) }
+    LaunchedEffect(pager.anchor, activeSeg, snap.state, speechLoaded, followSpeech, curPages, driver.isDragging, driver.isSettling) {
+        if (!speechLoaded) {
+            divergent = false
+            return@LaunchedEffect
+        }
+        val div = if (pager.anchor.chapter != snap.chapterIndex) true
+        else {
+            val pg = curPages
+            val seg = activeSeg
+            if (pg == null || seg == null || seg.end <= seg.start) false
+            else {
+                // 暂停不特判：playbackFraction 在暂停时保持原值（句柄还在），
+                // 取段首反而会把跨页片段的暂停判成偏离一页；无句柄时它为 0，自然退化到段首
+                val audible = (seg.start + ((seg.end - seg.start) * engine.playbackFraction()).toInt())
+                    .coerceIn(seg.start, seg.end - 1)
+                pager.anchor.page != pg.pageOf(audible)
+            }
+        }
+        divergent = div
+        /*
+         * 自动复挂：用户**自己翻回**可听页时，跟随开关自动合上。
+         * 没有这一条，手动翻回去之后自动翻页依然是死的（旧版正是如此 ——
+         * 闩只有点标签或点读才解，看起来就是「自动翻页随机失灵」）。
+         * 翻到语音尚未念到的页（跨页片段的尾页）：divergent=true → 不复挂 → 跟随不会把
+         * 刚翻到的页拽回去（实测复现过被拽回），标签如实提示「语音还没到这页」。
+         * 手指还按着时不复挂，松手落定后生效。
+         */
+        /*
+         * 复挂必须等**结算落地**（!isSettling），不只是手指抬起（!isDragging）。
+         * 松手到动画到达之间有约 300ms 的窗口：anchor 还停在旧页（commit 在到达时才发生），
+         * 「人在可听页」在这个窗口里恒成立 —— 在此复挂，落地后 divergent 变真，
+         * 跟随效应会立刻把用户刚翻到的页**拉回去**，翻页看起来就像失灵。
+         * （EchoAnchor 日志钉死过这条时序：settle→re-attach→commit→divergent→拉回。）
+         */
+        if (!followSpeech && !div && !driver.isDragging && !driver.isSettling) followSpeech = true
+    }
+
+    /**
+     * 跟随效应 —— 视图定位的**唯一写者**。
+     *
+     * 「回到朗读位置」的点击处理器原来还有一套自己的手工跳转（读一次 engine.current、
+     * 查一次 window、自己 launch pager.follow），与这里双写同一目标。它有两个死分支：
+     * 引擎恰在换章（chapterIndex = -1）或章面尚未排版时**静默什么都不做**，而 follow 闩
+     * 已被清掉 —— 标签消失、画面不动，最长要等下一个片段边界（约 20 秒）才被这里救回。
+     * 现在点击只翻 followSpeech 开关；开关一变这里必然收到发射，收不到条件就等下一次
+     * 状态变化再收 —— 流驱动天然自愈，死分支不存在了。
+     *
+     * 与旧版的三处语义差异：
+     * ① 允许 PAUSED：暂停时点「回到朗读位置」也要能定位（旧版只在 PLAYING 生效）；
+     * ② 跨页片段（一段话横跨两页）期间，视图停在片段覆盖的任何一页都算「在位」，
+     *    不再把视图拽回片段首页 —— 否则暂停瞬间会倒翻一页（自动翻页已按可听进度翻过去了）；
+     * ③ 定位目标取**正在念的字**（segmentStart + 片段长 × 播放进度），不是片段首字 ——
+     *    「回到朗读位置」应该落在声音所在的页。
+     */
     LaunchedEffect(bookId) {
-        snapshotFlow { FollowKey(follow, snap.bookId, snap.state, snap.chapterIndex, snap.segmentStart) }
+        snapshotFlow { FollowKey(followSpeech, snap.bookId, snap.state, snap.chapterIndex, snap.segmentStart) }
             .distinctUntilChanged()
             .collectLatest { k ->
                 if (awaitEngineChapter >= 0) {
@@ -375,23 +457,28 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     val aborted = k.state == PlayerState.IDLE || k.state == PlayerState.ERROR
                     if (reached || aborted) awaitEngineChapter = -1 else return@collectLatest
                 }
-                if (k.follow != Follow.FOLLOWING || k.book != bookId) return@collectLatest
-                if (k.state != PlayerState.PLAYING || k.chapter < 0) return@collectLatest
-                if (k.chapter != pager.anchor.chapter) {
+                if (!k.follow || k.book != bookId) return@collectLatest
+                if ((k.state != PlayerState.PLAYING && k.state != PlayerState.PAUSED) || k.chapter < 0) return@collectLatest
+                val pg = window.pagesOf(k.chapter)
+                if (k.chapter != pager.anchor.chapter || pg == null) {
                     if (request?.chapter != k.chapter) requestChapter(k.chapter, k.start)
                     return@collectLatest
                 }
-                val pg = window.pagesOf(k.chapter) ?: return@collectLatest
-                val target = PageRef(k.chapter, pg.pageOf(k.start).coerceIn(0, pg.pageCount - 1))
+                val segEnd = snap.segmentEnd
+                // 同 divergence：暂停时 playbackFraction 保持原值，不特判（取段首会倒定位一页）
+                val audible = if (segEnd > k.start) {
+                    (k.start + ((segEnd - k.start) * engine.playbackFraction()).toInt()).coerceIn(k.start, segEnd - 1)
+                } else k.start
+                val target = PageRef(k.chapter, pg.pageOf(audible).coerceIn(0, pg.pageCount - 1))
                 if (target != pager.anchor) preemptable { pager.follow(target) }
             }
     }
 
     // 片段跨页：按播放进度估算念到的字位，越过下页首字即自动翻页（不等下一句）
-    LaunchedEffect(activeSeg, pager.anchor, playing, follow, curPages) {
+    LaunchedEffect(activeSeg, pager.anchor, playing, followSpeech, curPages) {
         val seg = activeSeg ?: return@LaunchedEffect
         val pg = curPages ?: return@LaunchedEffect
-        if (!playing || follow != Follow.FOLLOWING || engineChapter != pager.anchor.chapter) return@LaunchedEffect
+        if (!playing || !followSpeech || engineChapter != pager.anchor.chapter) return@LaunchedEffect
         val cur = pager.anchor.page.coerceIn(0, pg.pageCount - 1)
         if (cur >= pg.pageCount - 1) return@LaunchedEffect
         val nextStart = pg.pageStartOffset(cur + 1)
@@ -458,7 +545,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
 
     fun playFrom(offset: Int) {
         ensureNotificationPermission()
-        follow = Follow.FOLLOWING
+        followSpeech = true
         awaitEngineChapter = pager.anchor.chapter
         scope.launch {
             try {
@@ -476,22 +563,42 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
         }
     }
 
+    /**
+     * 播放/暂停。规则一句话：**这颗键永远作用于「听」的位置，绝不搬动它**。
+     *
+     * 旧实现按「引擎是否在当前章」分叉：同章 → 恢复引擎位置；异章 → 把引擎重装到
+     * 正看的页再播。后者正是丢进度的路径 —— 听到第 2 章中间，暂停，随手翻到第 5 章
+     * 看了一眼，按播放：从第 5 章开始念，第 2 章的听书位置被覆盖（进度库也跟着被写掉）。
+     * 同一颗键在两种情况下语义相反，用户无从预期。
+     *
+     * 现在：引擎只要在本书上装着（任何章），播放 = 恢复它的位置，视图由跟随效应拉回；
+     * 「从正看的页开始念」的语义完整保留给点读与热区（handleTap → playFrom）。
+     * 暂停则**不**动跟随开关 —— 用户按暂停可能正是为了停在当前看的页。
+     */
     fun togglePlay() {
         ensureNotificationPermission()
-        follow = Follow.FOLLOWING
-        awaitEngineChapter = pager.anchor.chapter
         scope.launch {
             try {
                 val a = pager.anchor
                 val s = engine.current
-                val onThisChapter = s.bookId == bookId && s.chapterIndex == a.chapter
-                if (onThisChapter && (s.state == PlayerState.PLAYING || s.state == PlayerState.PAUSED || s.state == PlayerState.ERROR)) {
-                    engine.toggle()
-                    return@launch
+                val engineOnBook = s.bookId == bookId && s.chapterIndex >= 0 &&
+                    (s.state == PlayerState.PLAYING || s.state == PlayerState.PAUSED || s.state == PlayerState.ERROR)
+                when {
+                    // 换章装载的瞬间（LOADING）：这一下点击没有明确语义，忽略比误装载安全
+                    s.bookId == bookId && s.state == PlayerState.LOADING -> return@launch
+                    engineOnBook && s.state == PlayerState.PLAYING -> engine.pause()
+                    engineOnBook -> {
+                        followSpeech = true
+                        engine.play()
+                    }
+                    else -> {
+                        // 引擎不在本书上：从当前页首字开始
+                        followSpeech = true
+                        awaitEngineChapter = a.chapter
+                        val offset = window.pagesOf(a.chapter)?.let { it.pageStartOffset(a.page.coerceIn(0, it.pageCount - 1)) } ?: 0
+                        if (player.loadBook(bookId, a.chapter, offset)) engine.play()
+                    }
                 }
-                // 从当前页首字开始（引擎尚未装载本章时）
-                val offset = window.pagesOf(a.chapter)?.let { it.pageStartOffset(a.page.coerceIn(0, it.pageCount - 1)) } ?: 0
-                if (player.loadBook(bookId, a.chapter, offset)) engine.play()
             } catch (e: Exception) {
                 Toaster.error(e.message ?: "播放失败")
             }
@@ -506,7 +613,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
             if (wasPlaying) engine.pause()
             requestChapter(index, if (lastPage) -1 else 0)
             if (wasPlaying) {
-                follow = Follow.FOLLOWING
+                followSpeech = true
                 awaitEngineChapter = index
                 try {
                     if (player.loadBook(bookId, index, 0)) engine.play()
@@ -762,6 +869,72 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     }
                 }
 
+                // 状态悬浮层：错误 / 重试 / 合成中 / 回到朗读位置。
+                // 与睡眠面板同款 —— 悬浮在页面区底部、不参与布局，绝不改变正文 pageSize
+                //（否则状态一闪一闪就是一章一章地重排版，见坞注释里的反馈环记录）。
+                run {
+                    val failure = snap.failure?.takeIf { snap.bookId == bookId }
+                    val retryNote = snap.retryNote.takeIf { it.isNotEmpty() && snap.bookId == bookId }
+                    val busySynth = (snap.synthesizing || snap.state == PlayerState.LOADING) && snap.bookId == bookId
+                    val returnable = divergent && !followSpeech
+                    val showStatus = failure != null || retryNote != null || busySynth || returnable
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = showStatus,
+                        enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut,
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp).zIndex(5f)
+                    ) {
+                        Row(
+                            Modifier
+                                .shadow(10.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.3f))
+                                .background(dockBg, CircleShape)
+                                .border(1.dp, dockBorder, CircleShape)
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val statusText = when {
+                                // 失败最优先：它是用户此刻唯一需要知道的事，且必定带状态码
+                                failure != null -> failure.headline()
+                                retryNote != null -> retryNote
+                                // 「回到朗读位置」压过「正在合成…」：后者是环境噪声，前者是用户的待办动作。
+                                // 反过来排的话（实测踩过）：系统 TTS 每段要合成 1~2 秒，播放中约一半时间
+                                // 状态行被合成提示占着且不可点 —— 返回入口一闪一闪、时点时不点。
+                                returnable -> "回到朗读位置 ↩"
+                                busySynth -> "正在合成…"
+                                else -> ""
+                            }
+                            Text(
+                                statusText,
+                                color = when {
+                                    failure != null -> if (failure is app.echoread.tts.EngineFailure.SkippedSegments) warningColor(theme.isDark) else dangerColor(theme.isDark)
+                                    retryNote != null -> warningColor(theme.isDark)
+                                    returnable -> theme.accent
+                                    else -> theme.text
+                                },
+                                style = MaterialTheme.typography.labelMedium,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .widthIn(max = 300.dp)
+                                    .then(
+                                        if (returnable && failure == null && retryNote == null)
+                                            Modifier.echoPress(pressedScale = PressScale.Chip, onClickLabel = "回到朗读位置") { followSpeech = true }
+                                        else Modifier
+                                    )
+                            )
+                            val detail = failure?.net ?: snap.retry?.error?.takeIf { snap.bookId == bookId }
+                            if (detail != null) {
+                                Text(
+                                    "详情",
+                                    color = theme.accent,
+                                    style = MaterialTheme.typography.labelMediumEmphasized,
+                                    modifier = Modifier
+                                        .padding(start = 10.dp)
+                                        .echoPress(pressedScale = PressScale.Chip) { ErrorDetails.show(detail) }
+                                )
+                            }
+                        }
+                    }
+                }
+
                 // 睡眠定时选项：悬浮在页面区底部（临时弹出，不改变页面尺寸）
                 androidx.compose.animation.AnimatedVisibility(visible = showSleep, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp).zIndex(5f)) {
                     Column(
@@ -816,8 +989,9 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                  * 坞下方就是空白页面，控件的对比度不依赖容器；五套阅读主题（含纸墨、护眼两种
                  * 浅底）都逐一截图核对过。
                  *
-                 * 配合另外两处：状态行改为按需出现（见下），播放键 52→48dp 与其余槽位等高，
-                 * 常态坞高 79 → 64dp，且带间距变成真实的 6dp。
+                 * 配合另外两处：状态行改为**悬浮层**（挂在正文画布底部，见上方 run{} 块 ——
+                 * 它绝不参与布局，否则每次闪现都会改变 pageSize 触发整章重排版），
+                 * 播放键 52→48dp 与其余槽位等高。常态坞高 79 → 64dp，带间距 6dp。
                  */
                 Column(
                     Modifier
@@ -828,90 +1002,15 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     // 也就是元素直接贴在一起 —— M3 的最小内容间距是 8dp。
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    val failure = snap.failure?.takeIf { snap.bookId == bookId }
-                    val retryNote = snap.retryNote.takeIf { it.isNotEmpty() && snap.bookId == bookId }
-                    val busySynth = (snap.synthesizing || snap.state == PlayerState.LOADING) && snap.bookId == bookId
-                    val detached = playing && follow == Follow.DETACHED
                     /*
-                     * 状态行**按需出现**，不再常驻。
+                     * 状态行不在这里 —— 它是**悬浮层**，挂在正文画布的底部（与睡眠面板同款）。
                      *
-                     * 它原本一直占着一整条带（约 26dp，含间距），而播放时它显示的是章节标题 ——
-                     * 顶栏已经写着「第1章 灯塔 / 长夜航路」，这是重复信息。
-                     * 只有这几种情况它才带来顶栏没有的东西：出错、正在重试、正在合成、
-                     * 已翻离朗读位置，以及第一次进书时的操作提示。
-                     * 其余时候整条带消失，坞矮一截。
+                     * 曾经它是坞 Column 的第一行，实测出一条深层反馈环（EchoFollow 日志钉死）：
+                     * 「正在合成…」每段闪现/消失 → 坞高变化 → 正文画布 pageSize 变化 →
+                     * LayoutSpec 变化 → **整章重排版**（每段一次！）；「回到朗读位置」点击后
+                     * 标签消失 → 重排版 → 分页移位 → 锚点掉页 → 又偏离 → 标签复现 → 再排版
+                     * （11 秒内三次 landOn）。状态行改为悬浮后坞高恒定，pageSize 与状态彻底解耦。
                      */
-                    /*
-                     * 状态行**只在有话可说时出现**。
-                     *
-                     * 它原本常驻一整条带（连间距约 26dp）。播放时它显示章节标题 ——
-                     * 顶栏已经写着「第1章 灯塔 / 长夜航路」，是重复信息；空闲时它显示
-                     * 「轻点正文任意字开始朗读」，那是一次性教学，不该占常驻空间
-                     * （已改为开新书时的一次轻提示，见下方 LaunchedEffect）。
-                     * 只有出错、正在重试、正在合成、已翻离朗读位置这四种情况带来顶栏没有的信息。
-                     */
-                    val showStatus = failure != null || retryNote != null || busySynth || detached
-                    if (showStatus) Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.Center,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(
-                            Modifier.weight(1f, fill = false).echoPress(pressedScale = PressScale.Tile) {
-                                // 点标题：播放中回到朗读所在页（跨章则装载朗读章）并恢复跟随；否则打开目录
-                                if (playing && follow == Follow.DETACHED) {
-                                    follow = Follow.FOLLOWING
-                                    val s = engine.current
-                                    if (s.chapterIndex == pager.anchor.chapter) {
-                                        window.pagesOf(s.chapterIndex)?.let { p ->
-                                            val t = PageRef(s.chapterIndex, p.pageOf(s.segmentStart).coerceIn(0, p.pageCount - 1))
-                                            scope.launch { preemptable { pager.follow(t) } }
-                                        }
-                                    } else if (s.chapterIndex >= 0) requestChapter(s.chapterIndex, s.segmentStart)
-                                } else showChapters = true
-                            },
-                            verticalArrangement = Arrangement.Center
-                        ) {
-                            val statusText = when {
-                                // 失败最优先：它是用户此刻唯一需要知道的事，且必定带状态码
-                                failure != null -> failure.headline()
-                                retryNote != null -> retryNote
-                                // 合成中：按钮不再换图标，改由这里说明，避免每段都闪一次
-                                busySynth -> "正在合成…"
-                                playing && follow == Follow.DETACHED -> "回到朗读位置 ↩"
-                                else -> snap.chapterTitle.ifEmpty { window.pagesOf(pager.anchor.chapter)?.chapter?.title ?: "" }
-                            }
-                            Row(
-                                horizontalArrangement = Arrangement.Center,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    statusText,
-                                    color = when {
-                                        failure != null -> if (failure is app.echoread.tts.EngineFailure.SkippedSegments) warningColor(theme.isDark) else dangerColor(theme.isDark)
-                                        retryNote != null -> warningColor(theme.isDark)
-                                        playing && follow == Follow.DETACHED -> theme.accent
-                                        else -> theme.text
-                                    },
-                                    style = MaterialTheme.typography.labelMedium,
-                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                )
-                                // 「详情」：状态行放不下服务商原话、端点和响应体，这里是唯一稳定的入口
-                                val detail = failure?.net ?: snap.retry?.error?.takeIf { snap.bookId == bookId }
-                                if (detail != null) {
-                                    Text(
-                                        "详情",
-                                        color = theme.accent,
-                                        style = MaterialTheme.typography.labelMediumEmphasized,
-                                        modifier = Modifier
-                                            .padding(start = 8.dp)
-                                            .echoPress(pressedScale = PressScale.Chip) { ErrorDetails.show(detail) }
-                                    )
-                                }
-                            }
-                        }
-                    }
                     // 五个等权重槽位：播放键在第三格，因此**数学上**落在坞的正中。
                     // 旧写法是 spacedBy(CenterHorizontally) 把五个控件当一组居中，
                     // 而睡眠与倍速挂在右侧，实测把播放键推得偏左 99px（33dp）—— 最重要的控件不在中心。
@@ -967,7 +1066,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     LinearProgressIndicator(
                         progress = { chapterProgress },
                         modifier = Modifier.fillMaxWidth(),
-                        color = if (failure != null) dangerColor(theme.isDark) else theme.accent,
+                        color = if (snap.failure != null && snap.bookId == bookId) dangerColor(theme.isDark) else theme.accent,
                         trackColor = theme.text.copy(alpha = 0.12f)
                     )
                 }
