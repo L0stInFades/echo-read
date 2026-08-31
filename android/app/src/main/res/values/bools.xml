@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 浅色模式：系统栏图标用深色。深色模式由 values-night 覆盖为 false。
+         做成资源而不是写死，是为了不必给 values-v27 / values-v31 再各配一份 night 变体。 -->
+    <bool name="light_system_bars">true</bool>
+</resources>

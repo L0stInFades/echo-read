@@ -70,6 +70,13 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
+        // Material 3 Expressive 的组件（FloatingToolbar / ButtonGroup / SplitButton / ToggleButton 等）
+        // 带真正的 @RequiresOptIn 标记。注意 Material3ExpressiveApi 不是 opt-in 标记，不能写进来。
+        // 用 addAll 而不是赋值：直接赋值会把 Compose / serialization 插件贡献的参数一起冲掉。
+        freeCompilerArgs.addAll(
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3ExpressiveApi",
+            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
+        )
     }
 }
 
@@ -103,6 +110,7 @@ dependencies {
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
+    implementation(libs.androidx.graphics.shapes)
     debugImplementation(libs.compose.ui.tooling)
 
     implementation(libs.room.runtime)

@@ -49,6 +49,12 @@ class LibraryRepo(
         try {
             val name = displayName(uri) ?: uri.lastPathSegment?.substringAfterLast('/') ?: "未命名.txt"
             val ext = name.substringAfterLast('.', "").lowercase()
+            // 体积闸门：解析要把整个文件读进内存，上百 MB 的「.txt」（厂商 bugreport、聊天记录导出、
+            // 数据库 dump）会直接 OOM。宁可明确拒绝，也不要让进程崩掉。
+            val bytes = fileSize(uri)
+            if (bytes > MAX_IMPORT_BYTES) {
+                throw IllegalArgumentException("文件过大（${bytes / 1024 / 1024} MB），无法导入；单本上限 ${MAX_IMPORT_BYTES / 1024 / 1024} MB")
+            }
             val parsed: ParsedBook = withContext(Dispatchers.IO) {
                 when (ext) {
                     "txt", "text" -> {
@@ -122,6 +128,18 @@ class LibraryRepo(
         }
     }
 
+    /** 文件大小；取不到时返回 0（不阻断导入） */
+    private fun fileSize(uri: Uri): Long {
+        if (uri.scheme == "file") return uri.path?.let { File(it).length() } ?: 0L
+        return try {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { c ->
+                if (c.moveToFirst() && !c.isNull(0)) c.getLong(0) else 0L
+            } ?: 0L
+        } catch (_: Throwable) {
+            0L
+        }
+    }
+
     private fun displayName(uri: Uri): String? {
         if (uri.scheme == "file") return uri.lastPathSegment
         return try {
@@ -131,6 +149,11 @@ class LibraryRepo(
         } catch (_: Throwable) {
             null
         }
+    }
+
+    companion object {
+        /** 单本导入体积上限，与 BookScanner.MAX_BOOK_BYTES 保持一致 */
+        const val MAX_IMPORT_BYTES = 64L * 1024 * 1024
     }
 
     /** 封面图缩放到 ≤360px 宽的 JPEG，避免数据库存大图 */

@@ -1,27 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标前景层（Material 3 Expressive 造型语言）。
+  构图：下方一本实心开卷，上方两道声弧 —— 「会说话的书」，一眼即读。
+
+  为什么不是 0.1.x 那种细描边书本 + 竖条声波：
+  · Expressive 要求单一焦点形状 + 大胆块面；1.8pt 的描边在 48dp 启动器与 24dp 通知栏会糊成灰团。
+  · 声波原本挖在书里，小尺寸下会被读成「书上有洞」而不是「声音」。挪到书的上方、做成弧线，
+    语义立刻清楚，弧线也是 Android 生态里最通用的「发声」符号。
+
+  画布 108dp / 视口 512。**安全区按圆形遮罩算，不是按方框**：
+  启动器可以把图标裁成圆形，其内切圆在 512 视口下半径仅约 170，
+  第一版按矩形安全区排的构图在真机圆形遮罩下书的下缘被切掉了（模拟器实测）。
+  现在所有着墨点距中心最远 153.5 < 158，圆形 / 方圆 / 圆角方三种遮罩下均无裁切。
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
-    <!-- 书本（与网页版 logo.svg 同源，极光渐变描边） -->
+    <!-- 开卷 -->
     <path
-        android:pathData="M128 168c40-18 82-18 128 6 46-24 88-24 128-6v176c-40-18-82-18-128 6-46-24-88-24-128-6z"
-        android:strokeWidth="16"
-        android:strokeLineJoin="round">
-        <aapt:attr name="android:strokeColor">
-            <gradient android:type="linear" android:startX="128" android:startY="168" android:endX="384" android:endY="350">
-                <item android:offset="0" android:color="#FF7C9BFF" />
-                <item android:offset="0.55" android:color="#FFB47CFF" />
-                <item android:offset="1" android:color="#FFFF7CB8" />
-            </gradient>
-        </aapt:attr>
-    </path>
-    <path android:pathData="M256 174v176" android:strokeWidth="12" android:strokeColor="#B47CFF" />
-    <!-- 声波 -->
-    <path android:pathData="M186 238v36" android:strokeWidth="14" android:strokeColor="#7C9BFF" android:strokeLineCap="round" />
-    <path android:pathData="M226 226v60" android:strokeWidth="14" android:strokeColor="#9C8BFF" android:strokeLineCap="round" />
-    <path android:pathData="M286 226v60" android:strokeWidth="14" android:strokeColor="#C97FE8" android:strokeLineCap="round" />
-    <path android:pathData="M326 238v36" android:strokeWidth="14" android:strokeColor="#FF7CB8" android:strokeLineCap="round" />
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M145,272 C179,252 214,253 256,275 C298,253 333,252 367,272 L367,362 C333,342 298,341 256,363 C214,341 179,342 145,362 Z" />
+    <!-- 内侧声弧 -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="26"
+        android:strokeLineCap="round"
+        android:pathData="M204,212 A72,72 0 0 1 308,212" />
+    <!-- 外侧声弧 -->
+    <path
+        android:strokeColor="#FFFFFFFF"
+        android:strokeWidth="26"
+        android:strokeLineCap="round"
+        android:pathData="M176,168 A115,115 0 0 1 336,168" />
 </vector>

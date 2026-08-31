@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -8,6 +9,18 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- 应用内更新：拉起系统安装器覆盖安装 -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <!--
+      全盘扫描 TXT / EPUB（0.2.0 的「扫描本机书籍」）。
+      API ≤ 28：READ_EXTERNAL_STORAGE 即可遍历文件系统。29 起它对文档「一个字节都不给」
+      （AOSP AccessChecker 的 WHERE 子句里根本没有 MEDIA_TYPE_DOCUMENT 分支），
+      却仍会弹出「允许访问照片和媒体」——所以 maxSdkVersion 卡在 28，不做无谓打扰。
+      API ≥ 30：只有「所有文件访问权限」才能遍历到用户放在任意目录的 txt/epub，
+      用户不授权时应用退回 SAF 目录授权（系统目录选择器），功能不残废。
+      本应用经 GitHub Releases 分发、不上架 Google Play，因此不受 Play 对该权限的分发政策限制。
+    -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
     <application
         android:name=".EchoReadApp"
@@ -37,6 +50,30 @@
                 <data android:scheme="file" />
                 <data android:mimeType="text/plain" />
                 <data android:mimeType="application/epub+zip" />
+            </intent-filter>
+            <!-- 很多文件管理器把 txt/epub 发成 application/octet-stream；
+                 单独一条按扩展名限定的过滤器，避免用 */* 把自己塞进所有文件的「打开方式」 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/octet-stream" />
+                <data android:host="*" />
+                <!--
+                  Android 的 PATTERN_SIMPLE_GLOB 里 `.*` 不回溯：匹配时它扫到下一个字面量
+                  （这里是 `.`）的**第一次**出现就停，因此单独一条 `.*\.txt` 匹配不了
+                  「我的书.第一卷.txt」这种名字里本来就带点的文件。惯例做法是按点的个数铺几条。
+                -->
+                <data android:pathPattern=".*\\.txt" />
+                <data android:pathPattern=".*\\..*\\.txt" />
+                <data android:pathPattern=".*\\..*\\..*\\.txt" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.txt" />
+                <data android:pathPattern=".*\\.epub" />
+                <data android:pathPattern=".*\\..*\\.epub" />
+                <data android:pathPattern=".*\\..*\\..*\\.epub" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.epub" />
             </intent-filter>
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />

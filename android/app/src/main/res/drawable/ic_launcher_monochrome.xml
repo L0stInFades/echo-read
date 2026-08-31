@@ -1,17 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- themed icon（API 33+）：与前景层同一套几何，系统会用壁纸取色重新着色 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
-    <path
-        android:pathData="M128 168c40-18 82-18 128 6 46-24 88-24 128-6v176c-40-18-82-18-128 6-46-24-88-24-128-6z"
-        android:strokeWidth="16"
-        android:strokeColor="#FFFFFFFF"
-        android:strokeLineJoin="round" />
-    <path android:pathData="M256 174v176" android:strokeWidth="12" android:strokeColor="#FFFFFFFF" />
-    <path android:pathData="M186 238v36" android:strokeWidth="14" android:strokeColor="#FFFFFFFF" android:strokeLineCap="round" />
-    <path android:pathData="M226 226v60" android:strokeWidth="14" android:strokeColor="#FFFFFFFF" android:strokeLineCap="round" />
-    <path android:pathData="M286 226v60" android:strokeWidth="14" android:strokeColor="#FFFFFFFF" android:strokeLineCap="round" />
-    <path android:pathData="M326 238v36" android:strokeWidth="14" android:strokeColor="#FFFFFFFF" android:strokeLineCap="round" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M145,272 C179,252 214,253 256,275 C298,253 333,252 367,272 L367,362 C333,342 298,341 256,363 C214,341 179,342 145,362 Z" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="26" android:strokeLineCap="round" android:pathData="M204,212 A72,72 0 0 1 308,212" />
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="26" android:strokeLineCap="round" android:pathData="M176,168 A115,115 0 0 1 336,168" />
 </vector>

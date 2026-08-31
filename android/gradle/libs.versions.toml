@@ -4,7 +4,16 @@ kotlin = "2.2.21"
 ksp = "2.2.21-2.0.5"
 coreKtx = "1.17.0"
 activityCompose = "1.11.0"
-composeBom = "2025.10.01"
+composeBom = "2026.06.01"
+# material3 刻意固定在 BOM 之外：直到 2026.08.00，每一个 compose-bom 都仍把 material3 锁在 1.4.0，
+# 而 1.4.0 里 Material 3 Expressive 的入口全是 internal（MaterialExpressiveTheme / MotionScheme 工厂 /
+# emphasized 字体样式都不可调用，MaterialShapes 与全部 expressive 组件干脆不存在）。
+# 1.5.0-alpha18 是仍能在 AGP 8.x 上构建的最后一个 alpha：
+#   alpha18  -> minCompileSdk=35, minAndroidGradlePluginVersion=8.6.0   可用
+#   alpha19+ -> minCompileSdk=37, minAndroidGradlePluginVersion=9.1.0   会强制升 AGP 9
+# 同理 compose-bom 不能升到 2026.08.00（compose ui 1.12.0 同样要求 AGP 9.1 / compileSdk 37）。
+material3 = "1.5.0-alpha18"
+graphicsShapes = "1.1.0"
 lifecycle = "2.9.4"
 room = "2.8.2"
 media3 = "1.8.0"
@@ -32,7 +41,8 @@ compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
-compose-material3 = { group = "androidx.compose.material3", name = "material3" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+androidx-graphics-shapes = { group = "androidx.graphics", name = "graphics-shapes", version.ref = "graphicsShapes" }
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
 room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
 media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3" }
