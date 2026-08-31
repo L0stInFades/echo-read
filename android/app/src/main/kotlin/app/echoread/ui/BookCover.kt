@@ -1,5 +1,9 @@
 package app.echoread.ui
 
+import com.materialkolor.hct.Hct
+import com.materialkolor.blend.Blend
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.material3.MaterialTheme
 import android.graphics.BitmapFactory
 import android.util.LruCache
 import androidx.compose.animation.core.Animatable
@@ -72,10 +76,32 @@ fun BookCover(book: BookMeta, modifier: Modifier = Modifier, radius: Dp = 14.dp,
         } else if (cover != null) {
             Box(Modifier.fillMaxSize().background(echo.cardAlt))
         } else {
-            val h = Hash.cyrb53(book.title).take(8).toLong(16)
-            val hue1 = (h % 360).toFloat()
-            val hue2 = ((hue1 + 48) % 360)
-            val brush = Brush.linearGradient(listOf(Color.hsl(hue1, 0.62f, 0.52f), Color.hsl(hue2, 0.7f, 0.34f)))
+            // 生成封面：书名哈希决定色相，但**必须落回当前配色的体系里**。
+            //
+            // 旧写法是 Color.hsl(hash % 360, 0.62f, 0.52f) —— 一排书就是一排互不相干的
+            // 高饱和色块，和应用配色没有任何关系；换成单色风格后它们依然五颜六色。
+            //
+            // 现在：① 色相仍由书名决定（书与书之间要能区分）；
+            // ② 用 Google 的 Blend.harmonize 把它朝主色色相旋转（最多 15°），这正是这个函数的用途；
+            // ③ 彩度直接取当前主色的彩度 —— 于是选「淡雅」时封面自动变淡，选「单色」时自动变灰；
+            // ④ 明度用固定的两档 HCT 色调，保证书名文字在任何色相上都读得出来。
+            val scheme = MaterialTheme.colorScheme
+            val isDark = echo.isDark
+            val brush = remember(book.title, scheme.primary, isDark) {
+                val primaryHct = Hct.fromInt(scheme.primary.toArgb())
+                val seedHue = (Hash.cyrb53(book.title).take(8).toLong(16) % 360).toDouble()
+                val raw = Hct.from(seedHue, primaryHct.chroma.coerceAtLeast(8.0), 50.0)
+                val harmonized = Blend.harmonize(raw, primaryHct)
+                val chroma = harmonized.chroma
+                val hue = harmonized.hue
+                val (t1, t2) = if (isDark) 46.0 to 30.0 else 62.0 to 46.0
+                Brush.linearGradient(
+                    listOf(
+                        Color(Hct.from(hue, chroma, t1).toInt()),
+                        Color(Hct.from((hue + 22.0) % 360.0, chroma * 0.9, t2).toInt())
+                    )
+                )
+            }
             Box(Modifier.fillMaxSize().background(brush))
             Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.1f), Color.Transparent, Color.Black.copy(alpha = 0.35f)))))
             Text(

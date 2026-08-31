@@ -1,5 +1,7 @@
 package app.echoread.ui
 
+import androidx.compose.ui.graphics.toArgb
+import app.echoread.core.ColorStyle
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.Role
@@ -109,91 +111,151 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: ()
     val c = echo
     val reader by graph.settings.reader.collectAsState()
     EchoSheet(open = open, onDismiss = onClose, title = "阅读样式") {
-        // 翻页手势单独开一层：内容多且带实时预览，塞进本表会把主题/字号挤到看不见
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .background(c.cardAlt, RoundedCornerShape(Radius.md))
-                .echoPress(pressedScale = PressScale.Tile) { onOpenGestures() }
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(EchoIcons.SwipeH, null, tint = c.accent, modifier = Modifier.size(18.dp))
-            Spacer(Modifier.width(10.dp))
-            Column(Modifier.weight(1f)) {
-                Text("翻页手势", color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                Text(gestureSummary(reader.gestures), color = c.text3, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // 翻页手势单独开一层：内容多且带实时预览，塞进本表会把主题/字号挤到看不见。
+        // 与其余各行同构：副标题就是当前设置的摘要，不点进去也知道现在是什么配置。
+        SettingsSection {
+            row(
+                "翻页手势",
+                value = gestureSummary(reader.gestures),
+                icon = EchoIcons.SwipeH,
+                trailing = { ChevronEnd() },
+                onClick = onOpenGestures
+            )
+        }
+        Spacer(Modifier.height(20.dp))
+
+        /* ---- 应用配色：与原生「壁纸与个性化」同构 ----
+         * 整套 48 个角色由 Google 的 material-color-utilities 按「种子色 × 风格」现算，
+         * 不是几套写死的常量。跟随壁纸时直接用系统算好的那份。 */
+        val dynAvailable = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
+        SettingsSection("应用配色") {
+            switch(
+                "跟随壁纸取色",
+                value = if (dynAvailable) "用系统从壁纸提取的颜色" else "需要 Android 12 及以上",
+                checked = reader.dynamicColor && dynAvailable,
+                enabled = dynAvailable
+            ) { on -> graph.settings.updateReader { r -> r.copy(dynamicColor = on) } }
+            if (!(reader.dynamicColor && dynAvailable)) {
+                customFullBleed {
+                    Text("主色", color = c.text, style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp))
+                    Spacer(Modifier.height(10.dp))
+                    LabeledSwatchRow {
+                        for ((name, seed) in SEED_COLORS) {
+                            val sel = reader.seedColor == seed.toArgb()
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                SeedDot(seed, sel) {
+                                    graph.settings.updateReader { r -> r.copy(seedColor = seed.toArgb()) }
+                                }
+                                SwatchLabel(name, sel)
+                            }
+                        }
+                    }
+                }
+                customFullBleed {
+                    Text("风格", color = c.text, style = MaterialTheme.typography.bodyLarge,
+                        modifier = Modifier.padding(horizontal = 16.dp))
+                    Spacer(Modifier.height(10.dp))
+                    LabeledSwatchRow {
+                        for (st in ColorStyle.PICKABLE) {
+                            val sel = reader.colorStyle == st
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                PaletteSwatch(Color(reader.seedColor), st, sel) {
+                                    graph.settings.updateReader { r -> r.copy(colorStyle = st) }
+                                }
+                                SwatchLabel(st.label, sel)
+                            }
+                        }
+                    }
+                }
             }
-            Icon(EchoIcons.ChevronRight, null, tint = c.text3, modifier = Modifier.size(16.dp))
+            custom {
+                Text("对比度", color = c.text, style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(10.dp))
+                val levels = listOf(0f to "标准", 0.5f to "中", 1f to "高")
+                EchoSegmented(
+                    items = levels.map { SegmentItem(it.second) },
+                    selectedIndex = levels.indexOfFirst { kotlin.math.abs(it.first - reader.contrast) < 0.01f }.coerceAtLeast(0)
+                ) { i -> graph.settings.updateReader { r -> r.copy(contrast = levels[i].first) } }
+            }
         }
-        Spacer(Modifier.height(18.dp))
+        Spacer(Modifier.height(20.dp))
 
-        // 标签右侧不再重复当前值：分段控件本身就把「选中的是哪一个」画出来了
-        SectionLabel("外观")
-        EchoSegmented("品牌配色", "动态取色", firstSelected = !reader.dynamicColor) { brand ->
-            graph.settings.updateReader { r -> r.copy(dynamicColor = !brand) }
-        }
-        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
-            Spacer(Modifier.height(6.dp))
-            Text("动态取色需要 Android 12 及以上", color = c.text3, style = MaterialTheme.typography.labelSmall)
-        }
-        Spacer(Modifier.height(18.dp))
-
-        SectionLabel("主题")
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            for (t in READER_THEMES) {
-                val selected = reader.theme == t.id
-                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .height(50.dp)
-                            .background(t.bg, RoundedCornerShape(Radius.md))
-                            .border(if (selected) 2.dp else 1.dp, if (selected) c.accent else c.border, RoundedCornerShape(Radius.md))
-                            .echoPress(pressedScale = PressScale.Chip) { graph.settings.updateReader { r -> r.copy(theme = t.id) } },
-                        contentAlignment = Alignment.Center
-                    ) { Text("文", color = t.text, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
-                    Spacer(Modifier.height(5.dp))
-                    Text(t.label, color = if (selected) c.accent else c.text2, style = MaterialTheme.typography.labelSmall)
+        /* ---- 阅读：与「应用配色」同一套分组结构 ----
+         * 主题 / 字号 / 行距 / 段距 / 字体 归为一组：它们共同决定书页长什么样，
+         * 原来是五个平铺的小节标签，扫读时看到的是五个标签而不是五个当前值。 */
+        SettingsSection("阅读") {
+            customFullBleed {
+                Text("主题", color = c.text, style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(horizontal = 16.dp))
+                Spacer(Modifier.height(10.dp))
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    for (t in READER_THEMES) {
+                        val selected = reader.theme == t.id
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(52.dp)
+                                    .background(t.bg, RoundedCornerShape(Radius.md))
+                                    .border(if (selected) 2.dp else 1.dp, if (selected) c.accent else c.border, RoundedCornerShape(Radius.md))
+                                    .echoPress(pressedScale = PressScale.Chip) { graph.settings.updateReader { r -> r.copy(theme = t.id) } },
+                                contentAlignment = Alignment.Center
+                            ) { Text("文", color = t.text, style = MaterialTheme.typography.titleSmallEmphasized) }
+                            Spacer(Modifier.height(6.dp))
+                            SwatchLabel(t.label, selected)
+                        }
+                    }
+                }
+            }
+            custom {
+                SettingsSlider("字号", "${reader.fontSize}sp", reader.fontSize.toFloat(), 14f..28f, steps = 13) { v ->
+                    graph.settings.updateReader { r -> r.copy(fontSize = v.toInt()) }
+                }
+            }
+            custom {
+                SettingsSlider("行距", String.format(java.util.Locale.ROOT, "%.1f", reader.lineHeight), reader.lineHeight, 1.4f..2.6f, steps = 11) { v ->
+                    graph.settings.updateReader { r -> r.copy(lineHeight = (Math.round(v * 10) / 10f)) }
+                }
+            }
+            custom {
+                SettingsSlider("段距", String.format(java.util.Locale.ROOT, "%.1f", reader.paraSpacing), reader.paraSpacing, 0.4f..2f, steps = 15) { v ->
+                    graph.settings.updateReader { r -> r.copy(paraSpacing = (Math.round(v * 10) / 10f)) }
+                }
+            }
+            custom {
+                Text("字体", color = c.text, style = MaterialTheme.typography.bodyLarge)
+                Spacer(Modifier.height(10.dp))
+                // 二选一 → 连接式按钮组。字体名各自用对应字族渲染，选项本身就是预览。
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(androidx.compose.material3.ButtonGroupDefaults.ConnectedSpaceBetween)
+                ) {
+                    val serif = reader.fontFamily == "serif"
+                    androidx.compose.material3.ToggleButton(
+                        checked = serif,
+                        onCheckedChange = { if (it) graph.settings.updateReader { r -> r.copy(fontFamily = "serif") } },
+                        modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
+                        shapes = connectedShapesAt(0, 2),
+                        border = if (serif) null else BorderStroke(1.dp, c.border)
+                    ) { Text("宋体 / 衬线", fontFamily = FontFamily.Serif, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
+                    androidx.compose.material3.ToggleButton(
+                        checked = !serif,
+                        onCheckedChange = { if (it) graph.settings.updateReader { r -> r.copy(fontFamily = "sans") } },
+                        modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
+                        shapes = connectedShapesAt(1, 2),
+                        border = if (!serif) null else BorderStroke(1.dp, c.border)
+                    ) { Text("黑体 / 无衬线", fontFamily = FontFamily.SansSerif, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
                 }
             }
         }
         Spacer(Modifier.height(20.dp))
-        SectionLabel("字号") { Text("${reader.fontSize}sp", color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold) }
-        EchoSlider(reader.fontSize.toFloat(), { v -> graph.settings.updateReader { r -> r.copy(fontSize = v.toInt()) } }, 14f..28f, steps = 13)
-        Spacer(Modifier.height(12.dp))
-        SectionLabel("行距") { Text(String.format(java.util.Locale.ROOT, "%.1f", reader.lineHeight), color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold) }
-        EchoSlider(reader.lineHeight, { v -> graph.settings.updateReader { r -> r.copy(lineHeight = (Math.round(v * 10) / 10f)) } }, 1.4f..2.6f, steps = 11)
-        Spacer(Modifier.height(12.dp))
-        SectionLabel("段距") { Text(String.format(java.util.Locale.ROOT, "%.1f", reader.paraSpacing), color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold) }
-        EchoSlider(reader.paraSpacing, { v -> graph.settings.updateReader { r -> r.copy(paraSpacing = (Math.round(v * 10) / 10f)) } }, 0.4f..2f, steps = 15)
-        Spacer(Modifier.height(16.dp))
-        SectionLabel("字体")
-        // 二选一 → 连接式按钮组。字体名仍各自用对应字族渲染，选项本身就是预览。
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(androidx.compose.material3.ButtonGroupDefaults.ConnectedSpaceBetween)
-        ) {
-            val serif = reader.fontFamily == "serif"
-            androidx.compose.material3.ToggleButton(
-                checked = serif,
-                onCheckedChange = { if (it) graph.settings.updateReader { r -> r.copy(fontFamily = "serif") } },
-                modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
-                shapes = connectedShapesAt(0, 2),
-                border = if (serif) null else BorderStroke(1.dp, c.border)
-            ) { Text("宋体 / 衬线", fontFamily = FontFamily.Serif, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
-            androidx.compose.material3.ToggleButton(
-                checked = !serif,
-                onCheckedChange = { if (it) graph.settings.updateReader { r -> r.copy(fontFamily = "sans") } },
-                modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
-                shapes = connectedShapesAt(1, 2),
-                border = if (!serif) null else BorderStroke(1.dp, c.border)
-            ) { Text("黑体 / 无衬线", fontFamily = FontFamily.SansSerif, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
-        }
-        Spacer(Modifier.height(16.dp))
-        SectionLabel("触觉反馈")
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            EchoSegmented("开", "关", firstSelected = reader.haptics) { on ->
+
+        SettingsSection("其他") {
+            switch("触觉反馈", value = "翻页、吸附与返回时的轻微震动", checked = reader.haptics) { on ->
                 graph.settings.updateReader { r -> r.copy(haptics = on) }
             }
         }
@@ -354,252 +416,238 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
         }
     }
 
-    EchoSheet(open = open, onDismiss = onClose, title = "AI 朗读设置") {
-        SectionLabel("朗读引擎")
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OptionTile("AI TTS", "OpenRouter / OpenAI 兼容接口", tts.provider == TtsProvider.OPENAI, Modifier.weight(1f).fillMaxHeight()) {
-                settings.updateTts { it.copy(provider = TtsProvider.OPENAI) }
-            }
-            OptionTile("系统语音", "免费离线，质量取决于设备", tts.provider == TtsProvider.SYSTEM, Modifier.weight(1f).fillMaxHeight()) {
-                settings.updateTts { it.copy(provider = TtsProvider.SYSTEM) }
-            }
-        }
-        Spacer(Modifier.height(18.dp))
 
-        if (tts.provider == TtsProvider.OPENAI) {
-            SectionLabel(if (isOpenRouter) "OpenRouter" else "API 配置") {
-                if (isOpenRouter) Text(
-                    "创建 Key →", color = c.accent, style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { runCatching { uriHandler.openUri("https://openrouter.ai/settings/keys") } }
+    /* ---------------- 界面：按原生「设置」的组织方式重排 ----------------
+     *
+     * 旧版是一张长表单：八个「小节标签 + 控件」平铺，凭据、模型、音色、试听、倍速、
+     * 高级选项全在一个层级上。它有三个具体问题：
+     * ① 扫读时看到的全是标签，看不到值 —— 想知道现在用的哪个音色，得去输入框里读；
+     * ② 一次性配好的凭据永远占着最上面两屏，而每次都可能改的音色和语速被压在下面；
+     * ③ 「试听」是一个全宽渐变主按钮，夹在语气指令和倍速之间 —— 它验证的是连接，
+     *    却离连接状态行隔了三个小节。
+     *
+     * 现在：每行的副标题就是当前值；凭据折叠进状态行；试听紧挨状态行；
+     * 模型与音色改为独立选择器，主面板只留一行结论。
+     */
+    var showModelPicker by remember { mutableStateOf(false) }
+    var showVoicePicker by remember { mutableStateOf(false) }
+    var showCredentials by remember { mutableStateOf(false) }
+    // 没填 Key 时凭据默认展开 —— 那是此刻唯一要做的事
+    LaunchedEffect(open) { if (open) showCredentials = tts.openai.apiKey.isBlank() }
+
+    val currentModelInfo = models.firstOrNull { it.id == model }
+    val modelLabel = when {
+        model.isBlank() -> "未选择"
+        currentModelInfo != null -> currentModelInfo.name.substringAfter(": ").ifEmpty { model }
+        else -> model
+    }
+    val currentVoice = tts.openai.voice
+    val voiceLabel = when {
+        currentVoice.isBlank() -> if (hints?.voiceOptional == true) "服务默认" else "未设置"
+        else -> voiceCatalog.firstOrNull { it.id == currentVoice }?.let { v ->
+            buildString { append(v.label); v.note?.let { append(" · ").append(it) } }
+        } ?: currentVoice
+    }
+
+    EchoSheet(open = open, onDismiss = onClose, title = "AI 朗读设置") {
+        SettingsSection("朗读引擎") {
+            custom {
+                EchoSegmented(
+                    items = listOf(SegmentItem("AI 语音"), SegmentItem("系统语音")),
+                    selectedIndex = if (tts.provider == TtsProvider.OPENAI) 0 else 1
+                ) { i ->
+                    settings.updateTts { it.copy(provider = if (i == 0) TtsProvider.OPENAI else TtsProvider.SYSTEM) }
+                }
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    if (tts.provider == TtsProvider.OPENAI) "OpenRouter / OpenAI 兼容接口，音质最好"
+                    else "系统内置语音，免费离线，音质取决于设备",
+                    color = c.text2, style = MaterialTheme.typography.bodyMedium
                 )
             }
-            EchoTextField(tts.openai.baseUrl, { v -> settings.updateOpenAI { it.copy(baseUrl = v.trim()) } }, label = "Base URL", placeholder = "https://openrouter.ai/api/v1", keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri)
-            Spacer(Modifier.height(10.dp))
-            EchoTextField(tts.openai.apiKey, { v -> settings.updateOpenAI { it.copy(apiKey = v.trim()) } }, label = "API Key", placeholder = "sk-or-...", password = true)
-            // 连接状态行：自动同步的结果 / 余额
-            Spacer(Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val st = sync
-                val (dot, text) = when (st) {
-                    SyncState.Idle -> c.text3 to (if (tts.openai.apiKey.isBlank()) "填入 Key 后自动同步模型与音色" else "等待同步…")
-                    SyncState.Syncing -> c.accent to "正在同步模型列表…"
-                    is SyncState.Ok -> {
-                        // 有任何可疑信号就不给绿灯：一个「已连接」的绿点如果建立在未验证的字节上，
-                        // 比没有指示器更糟。
-                        val warn = st.suspiciousAuth != null || st.creditsError != null
-                        (if (warn) warningColor(c.isDark) else Color(0xFF34C759)) to buildString {
-                            append(if (isOpenRouter) "已连接 OpenRouter" else "已连接")
-                            append(" · ${st.count} 个语音模型")
-                            st.credits?.let { append(" · 余额 $" + String.format(java.util.Locale.ROOT, "%.2f", it.remaining)) }
-                            st.creditsError?.let { append(" · 余额获取失败（${it.badge()}）") }
-                            st.suspiciousAuth?.let { append(" · 鉴权可疑（${it.badge()}）") }
-                        }
-                    }
-                    is SyncState.Failed -> c.danger to st.error.headline()
-                }
-                Box(Modifier.size(7.dp).background(dot, CircleShape))
-                Spacer(Modifier.width(7.dp))
-                Text(text, color = if (st is SyncState.Failed) c.danger else c.text2, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
-                // 「详情」始终可达：状态行放不下的原因（服务商原话、端点、响应体片段）都在里面
-                val detailFor = when (st) {
-                    is SyncState.Failed -> st.error
-                    is SyncState.Ok -> st.suspiciousAuth ?: st.creditsError
-                    else -> null
-                }
-                if (detailFor != null) {
-                    Text("详情", color = c.accent, style = MaterialTheme.typography.bodySmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { ErrorDetails.show(detailFor) }.padding(start = 8.dp))
-                }
-                if (sync !is SyncState.Syncing && tts.openai.apiKey.isNotBlank()) {
-                    Text("刷新", color = c.accent, style = MaterialTheme.typography.bodySmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { scope.launch { syncModels(tts.openai, silent = false) } }.padding(start = 8.dp))
-                }
-            }
-            Spacer(Modifier.height(18.dp))
+        }
+        Spacer(Modifier.height(20.dp))
 
-            SectionLabel("模型") { if (models.isNotEmpty()) Text("${models.size} 个", color = c.text3, style = MaterialTheme.typography.labelSmall) }
-            if (models.isNotEmpty()) {
-                // OpenRouter 风格模型卡片：推荐优先，可按名称/厂商筛选
-                if (models.size > 6) {
-                    EchoTextField(modelFilter, { modelFilter = it }, placeholder = "筛选模型（名称 / 厂商 / 中文 / 免费）")
-                    Spacer(Modifier.height(8.dp))
-                }
-                val recommendedIds = Voices.RECOMMENDED_MODELS.map { it.id }
-                val q = modelFilter.trim().lowercase()
-                val ordered = remember(models, q) {
-                    val list = models.sortedWith(compareBy<TtsModelInfo> { val i = recommendedIds.indexOf(it.id); if (i < 0) 99 else i }.thenBy { it.id })
-                    if (q.isEmpty()) list else list.filter { m ->
-                        val h = Voices.modelHints(m.id)
-                        m.id.lowercase().contains(q) || m.name.lowercase().contains(q) || vendorLabel(m.id).lowercase().contains(q) ||
-                            (h?.langs?.contains(q) == true) || (q == "免费" && m.id.contains(":free")) || (q == "中文" && (h?.langs?.contains("中") == true))
-                    }
-                }
-                val listState = rememberLazyListState()
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 320.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    itemsIndexed(ordered, key = { _, m -> m.id }) { _, m ->
-                        val selected = m.id == model
-                        val h = Voices.modelHints(m.id)
-                        val voicesN = Voices.catalogVoices(m.id, m.voices).size
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .background(if (selected) c.accentSoft else c.cardAlt, RoundedCornerShape(Radius.md))
-                                .border(1.dp, if (selected) c.accent else Color.Transparent, RoundedCornerShape(Radius.md))
-                                .echoPress(pressedScale = PressScale.Tile) { settings.setModel(m.id) }
-                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // 厂商徽标：厂商名首字母，按厂商哈希配色
-                            val hue = (app.echoread.core.Hash.cyrb53(vendorOf(m.id)).take(6).toLong(16) % 360).toFloat()
-                            Box(Modifier.size(34.dp).background(Color.hsl(hue, 0.55f, if (c.isDark) 0.38f else 0.52f), RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
-                                Text(vendorLabel(m.id).take(1).uppercase(), color = Color.White, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
-                            }
-                            Spacer(Modifier.width(10.dp))
-                            Column(Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(m.name.substringAfter(": ").ifEmpty { m.name }, color = if (selected) c.accent else c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                                    if (m.id.contains(":free")) Tag("免费", Color(0xFF34C759))
-                                    if (h?.langs?.contains("中") == true) Tag("中文", c.accent)
-                                    if (h?.cloning == true) Tag("克隆", Color(0xFFB47CFF))
-                                }
-                                Text(m.id, color = c.text3, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                val meta = listOfNotNull(priceLabel(m, m.id), h?.langs, if (voicesN > 0) "$voicesN 音色" else if (h?.freeVoice != null) "开放音色 ID" else null).joinToString(" · ")
-                                if (meta.isNotEmpty()) Text(meta, color = c.text2, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                            if (selected) {
-                                Spacer(Modifier.width(6.dp))
-                                Icon(EchoIcons.Check, null, tint = c.accent, modifier = Modifier.size(16.dp))
+        if (tts.provider == TtsProvider.OPENAI) {
+            /* ---- 服务：状态即入口。点状态行展开凭据，试听就在旁边 ---- */
+            SettingsSection("服务") {
+                custom {
+                    val st = sync
+                    val (dot, statusText) = when (st) {
+                        SyncState.Idle -> c.text3 to (if (tts.openai.apiKey.isBlank()) "填入 API Key 后自动同步模型与音色" else "等待同步…")
+                        SyncState.Syncing -> c.accent to "正在同步模型列表…"
+                        is SyncState.Ok -> {
+                            // 有任何可疑信号就不给绿灯：一个「已连接」的绿点如果建立在未验证的字节上，
+                            // 比没有指示器更糟。
+                            val warn = st.suspiciousAuth != null || st.creditsError != null
+                            (if (warn) warningColor(c.isDark) else Color(0xFF34C759)) to buildString {
+                                append(if (isOpenRouter) "已连接 OpenRouter" else "已连接")
+                                append(" · ${st.count} 个语音模型")
+                                st.credits?.let { append(" · 余额 $" + String.format(java.util.Locale.ROOT, "%.2f", it.remaining)) }
+                                st.creditsError?.let { append(" · 余额获取失败（${it.badge()}）") }
+                                st.suspiciousAuth?.let { append(" · 鉴权可疑（${it.badge()}）") }
                             }
                         }
+                        is SyncState.Failed -> c.danger to st.error.headline()
                     }
-                    if (ordered.isEmpty()) item { Text("没有匹配的模型", color = c.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp)) }
-                }
-                Spacer(Modifier.height(8.dp))
-            } else {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (r in Voices.RECOMMENDED_MODELS) Chip(r.label, selected = model == r.id, trailing = r.tag) { settings.setModel(r.id) }
-                }
-                Spacer(Modifier.height(8.dp))
-            }
-            EchoTextField(model, { v -> settings.setModel(v.trim()) }, label = "模型 ID（可手动填写列表外的模型）", placeholder = "如 hexgrad/kokoro-82m")
-            if (modelMeta.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                Text(modelMeta, color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp)
-            }
-            Spacer(Modifier.height(18.dp))
-
-            SectionLabel("音色") { if (voiceCatalog.isNotEmpty()) Text("${voiceCatalog.size} 个" + if (settings.serverVoicesFor(model) != null) " · 来自 OpenRouter" else "", color = c.text3, style = MaterialTheme.typography.labelSmall) }
-            when {
-                freeVoice != null -> {
-                    EchoTextField(tts.openai.voice, { v -> settings.setVoice(v.trim()) }, placeholder = freeVoice.placeholder)
-                    Spacer(Modifier.height(8.dp))
-                    Text(freeVoice.hint, color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp)
-                    if (hints.voiceOptional || freeVoice.suggestions.isNotEmpty()) {
-                        Spacer(Modifier.height(8.dp))
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            if (hints.voiceOptional) Chip("默认音色", selected = tts.openai.voice.isEmpty()) { settings.setVoice("") }
-                            for (v in freeVoice.suggestions) {
-                                Chip(v.label, selected = tts.openai.voice == v.id, trailing = genderMark(v.gender), trailingColor = genderColor(v.gender)) { settings.setVoice(v.id) }
-                            }
-                        }
-                    }
-                }
-                voiceCatalog.isNotEmpty() -> {
-                    EchoTextField(tts.openai.voice, { v -> settings.setVoice(v.trim()) }, placeholder = "音色 ID")
-                    if (voiceGroups.size > 1) {
-                        Spacer(Modifier.height(8.dp))
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Chip("全部", selected = voiceLang.isEmpty()) { voiceLang = "" }
-                            for (g in voiceGroups) Chip(g.label, selected = voiceLang == g.lang, trailing = "${g.voices.size}") { voiceLang = g.lang }
-                        }
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Column(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 260.dp)
-                            .verticalScrollCompat()
+                    Row(
+                        Modifier.fillMaxWidth().echoPress(pressedScale = PressScale.Tile) { showCredentials = !showCredentials },
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        for (g in shownGroups) {
-                            if (shownGroups.size > 1) Text(g.label, color = c.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(bottom = 4.dp, top = 4.dp))
-                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                for (v in g.voices) {
-                                    Chip(
-                                        if (v.note != null) "${v.label}·${v.note}" else v.label,
-                                        selected = tts.openai.voice == v.id,
-                                        trailing = genderMark(v.gender), trailingColor = genderColor(v.gender)
-                                    ) { settings.setVoice(v.id) }
-                                }
+                        Box(Modifier.size(8.dp).background(dot, CircleShape))
+                        Spacer(Modifier.width(10.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                if (tts.openai.apiKey.isBlank()) "未配置" else if (isOpenRouter) "OpenRouter" else "自定义接口",
+                                color = c.text, style = MaterialTheme.typography.bodyLarge
+                            )
+                            Text(
+                                statusText,
+                                color = if (st is SyncState.Failed) c.danger else c.text2,
+                                style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        Icon(
+                            if (showCredentials) EchoIcons.ChevronUp else EchoIcons.ChevronDown,
+                            if (showCredentials) "收起" else "展开",
+                            tint = c.text3, modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    // 「详情」与「刷新」：状态行放不下的原因都在详情里
+                    val detailFor = when (val st2 = sync) {
+                        is SyncState.Failed -> st2.error
+                        is SyncState.Ok -> st2.suspiciousAuth ?: st2.creditsError
+                        else -> null
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        // 试听验证的就是这条连接，所以放在这里，而不是隔着三个小节的表单中段
+                        OutlineButton(
+                            if (testing) (testResult.ifEmpty { "正在合成…" }) else "试听",
+                            Modifier.weight(1f), color = c.accent, height = 40.dp
+                        ) { if (!testing) runTest() }
+                        if (tts.openai.apiKey.isNotBlank()) {
+                            OutlineButton("刷新", Modifier.weight(1f), height = 40.dp) {
+                                scope.launch { syncModels(tts.openai, silent = false) }
                             }
-                            Spacer(Modifier.height(6.dp))
+                        }
+                        if (detailFor != null) {
+                            OutlineButton("详情", Modifier.weight(1f), color = c.danger, height = 40.dp) { ErrorDetails.show(detailFor) }
+                        }
+                    }
+                    AnimatedVisibility(showCredentials, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut) {
+                        Column(Modifier.padding(top = 14.dp)) {
+                            EchoTextField(
+                                tts.openai.baseUrl, { v -> settings.updateOpenAI { it.copy(baseUrl = v.trim()) } },
+                                label = "Base URL", placeholder = "https://openrouter.ai/api/v1",
+                                keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri
+                            )
+                            Spacer(Modifier.height(10.dp))
+                            EchoTextField(
+                                tts.openai.apiKey, { v -> settings.updateOpenAI { it.copy(apiKey = v.trim()) } },
+                                label = "API Key", placeholder = "sk-or-...", password = true
+                            )
+                            if (isOpenRouter) {
+                                Spacer(Modifier.height(8.dp))
+                                Text(
+                                    "去 OpenRouter 创建 Key →", color = c.accent,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.echoPress(pressedScale = PressScale.Chip) {
+                                        runCatching { uriHandler.openUri("https://openrouter.ai/settings/keys") }
+                                    }
+                                )
+                            }
                         }
                     }
                 }
-                else -> EchoTextField(tts.openai.voice, { v -> settings.setVoice(v.trim()) }, placeholder = "该模型未提供音色列表，可手动填写（留空试用服务默认）")
             }
-            Spacer(Modifier.height(18.dp))
-
-            if (showInstructions) {
-                SectionLabel("语气指令（部分模型支持）")
-                EchoTextField(tts.openai.instructions, { v -> settings.updateOpenAI { it.copy(instructions = v) } }, placeholder = "如：用温暖沉静的女声朗读")
-                Spacer(Modifier.height(18.dp))
-            }
-
-            GradientButton(
-                if (testing) (if (testResult.isNotEmpty()) testResult else "正在合成…") else if (testResult.isNotEmpty()) "结果：$testResult" else "试听测试（合成「你好」）",
-                Modifier.fillMaxWidth(), enabled = !testing, height = 50.dp
-            ) { runTest() }
             Spacer(Modifier.height(20.dp))
-        }
 
-        SectionLabel("播放倍速") { Text(String.format(java.util.Locale.ROOT, "%.2f×", tts.rate), color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold) }
-        EchoSlider(tts.rate, { v -> settings.updateTts { it.copy(rate = (Math.round(v * 20) / 20f)) } }, 0.5f..2.5f, steps = 39)
-        Spacer(Modifier.height(14.dp))
+            /* ---- 声音：每行的副标题就是当前值，一眼扫完全部配置 ---- */
+            SettingsSection("声音") {
+                row("模型", value = modelLabel, onClick = { showModelPicker = true }, trailing = { ChevronEnd() })
+                row("音色", value = voiceLabel, onClick = { showVoicePicker = true }, trailing = { ChevronEnd() })
+                if (showInstructions) {
+                    custom {
+                        Text("语气指令", color = c.text, style = MaterialTheme.typography.bodyLarge)
+                        Spacer(Modifier.height(8.dp))
+                        EchoTextField(
+                            tts.openai.instructions,
+                            { v -> settings.updateOpenAI { it.copy(instructions = v) } },
+                            placeholder = "如：用温暖沉静的女声朗读"
+                        )
+                    }
+                }
+                custom {
+                    SettingsSlider(
+                        "语速", String.format(java.util.Locale.ROOT, "%.2f×", tts.rate),
+                        tts.rate, 0.5f..2.5f, steps = 39
+                    ) { v -> settings.updateTts { it.copy(rate = (Math.round(v * 20) / 20f)) } }
+                }
+            }
+            Spacer(Modifier.height(20.dp))
 
-        Text(
-            if (showAdvanced) "收起高级选项 ▲" else "高级选项 ▼",
-            color = c.text2, style = MaterialTheme.typography.bodySmall,
-            modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showAdvanced = !showAdvanced }.padding(vertical = 4.dp)
-        )
-        AnimatedVisibility(showAdvanced, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut) {
-            EchoCard(Modifier.padding(top = 8.dp), radius = Radius.lg, padding = androidx.compose.foundation.layout.PaddingValues(14.dp), color = c.cardAlt) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("单片段字数 ", color = c.text, style = MaterialTheme.typography.bodyMedium)
-                    Text("(${tts.maxChunkChars})", color = c.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
-                    EchoSlider(tts.maxChunkChars.toFloat(), { v -> settings.updateTts { it.copy(maxChunkChars = (Math.round(v / 10) * 10)) } }, 80f..400f, steps = 31, modifier = Modifier.width(150.dp))
+            /* ---- 高级：影响成本与延迟的旋钮，以及缓存 ---- */
+            SettingsSection("高级") {
+                custom {
+                    SettingsSlider("单片段字数", "${tts.maxChunkChars}", tts.maxChunkChars.toFloat(), 80f..400f, steps = 31) { v ->
+                        settings.updateTts { it.copy(maxChunkChars = (Math.round(v / 10) * 10)) }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text("每次请求合成多少字。调大更省请求次数，但换段更慢。", color = c.text3, style = MaterialTheme.typography.bodySmall)
                 }
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("预取片段数 ", color = c.text, style = MaterialTheme.typography.bodyMedium)
-                    Text("(${tts.prefetch})", color = c.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
-                    EchoSlider(tts.prefetch.toFloat(), { v -> settings.updateTts { it.copy(prefetch = Math.round(v)) } }, 0f..5f, steps = 4, modifier = Modifier.width(150.dp))
+                custom {
+                    SettingsSlider("预取段数", "${tts.prefetch}", tts.prefetch.toFloat(), 0f..5f, steps = 4) { v ->
+                        settings.updateTts { it.copy(prefetch = Math.round(v)) }
+                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text("提前合成几段。调大更不容易断，但弱网下可能白花钱。", color = c.text3, style = MaterialTheme.typography.bodySmall)
                 }
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    val st = cacheStats
-                    Text(
-                        if (st == null) "音频缓存 …" else "音频缓存 ${st.count} 条 · ${formatBytes(st.bytes)}",
-                        color = c.text2, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f)
-                    )
-                    Text("清空", color = c.danger, style = MaterialTheme.typography.bodySmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) {
-                        scope.launch {
-                            graph.audioCache.clear()
-                            cacheStats = graph.audioCache.stats()
-                            Toaster.success("音频缓存已清空")
-                        }
-                    })
+                row(
+                    "语音缓存",
+                    value = cacheStats?.let { "${it.count} 条 · ${formatBytes(it.bytes)}" } ?: "统计中…",
+                    trailing = {
+                        Text("清空", color = c.danger, style = MaterialTheme.typography.labelLarge,
+                            modifier = Modifier.echoPress(pressedScale = PressScale.Chip) {
+                                scope.launch {
+                                    graph.audioCache.clear()
+                                    cacheStats = graph.audioCache.stats()
+                                    Toaster.success("语音缓存已清空")
+                                }
+                            })
+                    }
+                )
+            }
+        } else {
+            /* ---- 系统语音：只有语速可调 ---- */
+            SettingsSection("声音") {
+                custom {
+                    SettingsSlider(
+                        "语速", String.format(java.util.Locale.ROOT, "%.2f×", tts.rate),
+                        tts.rate, 0.5f..2.5f, steps = 39
+                    ) { v -> settings.updateTts { it.copy(rate = (Math.round(v * 20) / 20f)) } }
                 }
             }
         }
-        Spacer(Modifier.height(16.dp))
-        Text(
-            "填入 Key 后自动从 OpenRouter 同步全部语音模型、音色与单价（每 6 小时刷新）；也兼容 OpenAI 官方、SiliconFlow 等 OpenAI 格式接口。Fish S2.1 有免费档可先试听。",
-            color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 17.sp
-        )
         Spacer(Modifier.height(8.dp))
     }
+
+    ModelPickerSheet(
+        open = showModelPicker, graph = graph, models = models, current = model,
+        onClose = { showModelPicker = false }
+    )
+    VoicePickerSheet(
+        open = showVoicePicker, graph = graph, model = model, current = currentVoice,
+        onClose = { showVoicePicker = false }
+    )
 }
+
+/** 尾部的「进入」箭头，所有可点进子界面的行共用 */
+@Composable
+private fun ChevronEnd() {
+    Icon(EchoIcons.ChevronRight, null, tint = echo.text3, modifier = Modifier.size(20.dp))
+}
+
 
 @Composable
 private fun Tag(text: String, color: Color) {
@@ -693,4 +741,197 @@ private fun gestureSummary(g: app.echoread.core.GestureSettings): String {
         else -> "左右热区 ${(g.prevZone * 100).toInt()}/${(g.nextZone * 100).toInt()}%"
     }
     return "$swipe · $tap" + if (g.tapToRead) " · 轻点朗读" else ""
+}
+
+/* ---------------- 模型 / 音色选择器 ----------------
+ *
+ * 从主面板里拆出来的理由：模型列表在 OpenRouter 上有几十条，音色可能上百个。
+ * 它们内联在设置页里会把「其余所有设置」推到看不见的地方，而它们各自只被改一次。
+ * 拆成选择器后，主面板每项只剩一行结论，列表本身反而能给到全屏高度与搜索。
+ */
+
+/** 模型选择器：推荐优先排序，可按名称/厂商/语言/免费筛选 */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
+@Composable
+fun BoxScope.ModelPickerSheet(
+    open: Boolean,
+    graph: AppGraph,
+    models: List<TtsModelInfo>,
+    current: String,
+    onClose: () -> Unit
+) {
+    val c = echo
+    val settings = graph.settings
+    var filter by remember { mutableStateOf("") }
+    LaunchedEffect(open) { if (open) filter = "" }
+
+    EchoSheet(open = open, onDismiss = onClose, title = "选择模型", maxHeightFraction = 0.88f, scrollable = false) {
+        if (models.isEmpty()) {
+            Text(
+                "还没有同步到模型列表。填入 API Key 后会自动同步；也可以先用下面的推荐模型。",
+                color = c.text2, style = MaterialTheme.typography.bodyMedium
+            )
+            Spacer(Modifier.height(12.dp))
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                for (r in Voices.RECOMMENDED_MODELS) {
+                    Chip(r.label, selected = current == r.id, trailing = r.tag) { settings.setModel(r.id); onClose() }
+                }
+            }
+            Spacer(Modifier.height(16.dp))
+            EchoTextField(current, { v -> settings.setModel(v.trim()) }, label = "或手动填写模型 ID", placeholder = "如 hexgrad/kokoro-82m")
+            return@EchoSheet
+        }
+
+        EchoTextField(filter, { filter = it }, placeholder = "筛选模型（名称 / 厂商 / 中文 / 免费）")
+        Spacer(Modifier.height(10.dp))
+        val recommendedIds = Voices.RECOMMENDED_MODELS.map { it.id }
+        val q = filter.trim().lowercase()
+        val ordered = remember(models, q) {
+            val list = models.sortedWith(
+                compareBy<TtsModelInfo> { val i = recommendedIds.indexOf(it.id); if (i < 0) 99 else i }.thenBy { it.id }
+            )
+            if (q.isEmpty()) list else list.filter { m ->
+                val h = Voices.modelHints(m.id)
+                m.id.lowercase().contains(q) || m.name.lowercase().contains(q) || vendorLabel(m.id).lowercase().contains(q) ||
+                    (h?.langs?.contains(q) == true) || (q == "免费" && m.id.contains(":free")) || (q == "中文" && (h?.langs?.contains("中") == true))
+            }
+        }
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            itemsIndexed(ordered, key = { _, m -> m.id }) { _, m ->
+                val selected = m.id == current
+                val h = Voices.modelHints(m.id)
+                val voicesN = Voices.catalogVoices(m.id, m.voices).size
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .background(if (selected) c.accentSoft else c.cardAlt, RoundedCornerShape(Radius.md))
+                        .border(1.dp, if (selected) c.accent else Color.Transparent, RoundedCornerShape(Radius.md))
+                        .echoPress(pressedScale = PressScale.Tile) { settings.setModel(m.id); onClose() }
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // 厂商徽标：厂商名首字母，按厂商哈希配色
+                    val hue = (app.echoread.core.Hash.cyrb53(vendorOf(m.id)).take(6).toLong(16) % 360).toFloat()
+                    Box(
+                        Modifier.size(36.dp).background(Color.hsl(hue, 0.55f, if (c.isDark) 0.38f else 0.52f), RoundedCornerShape(Radius.mdMinus)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(vendorLabel(m.id).take(1).uppercase(), color = Color.White, style = MaterialTheme.typography.titleSmallEmphasized)
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                m.name.substringAfter(": ").ifEmpty { m.name },
+                                color = if (selected) c.accent else c.text,
+                                style = MaterialTheme.typography.bodyLargeEmphasized,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
+                            )
+                            if (m.id.contains(":free")) Tag("免费", Color(0xFF34C759))
+                            if (h?.langs?.contains("中") == true) Tag("中文", c.accent)
+                            if (h?.cloning == true) Tag("克隆", Color(0xFFB47CFF))
+                        }
+                        val meta = listOfNotNull(
+                            priceLabel(m, m.id), h?.langs,
+                            if (voicesN > 0) "$voicesN 音色" else if (h?.freeVoice != null) "开放音色 ID" else null
+                        ).joinToString(" · ")
+                        if (meta.isNotEmpty()) {
+                            Text(meta, color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                        Text(m.id, color = c.text3, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (selected) {
+                        Spacer(Modifier.width(8.dp))
+                        Icon(EchoIcons.Check, "已选中", tint = c.accent, modifier = Modifier.size(20.dp))
+                    }
+                }
+            }
+            if (ordered.isEmpty()) {
+                item { Text("没有匹配的模型", color = c.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(12.dp)) }
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        EchoTextField(current, { v -> settings.setModel(v.trim()) }, label = "或手动填写列表外的模型 ID", placeholder = "如 hexgrad/kokoro-82m")
+    }
+}
+
+/** 音色选择器：按语言分组，可筛选；模型不提供音色列表时退回手填 */
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun BoxScope.VoicePickerSheet(
+    open: Boolean,
+    graph: AppGraph,
+    model: String,
+    current: String,
+    onClose: () -> Unit
+) {
+    val c = echo
+    val settings = graph.settings
+    val models by settings.models.collectAsState()
+    var lang by remember { mutableStateOf("") }
+    LaunchedEffect(open, model) { if (open) lang = "" }
+
+    val hints = remember(model) { Voices.modelHints(model) }
+    val freeVoice = hints?.freeVoice
+    val catalog = remember(model, models) { Voices.catalogVoices(model, settings.serverVoicesFor(model)) }
+    val groups = remember(catalog) { Voices.groupVoices(catalog) }
+    val shown = if (lang.isEmpty()) groups else groups.filter { it.lang == lang }
+
+    EchoSheet(open = open, onDismiss = onClose, title = "选择音色", maxHeightFraction = 0.88f, scrollable = false) {
+        when {
+            freeVoice != null -> {
+                Text(freeVoice.hint, color = c.text2, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(12.dp))
+                EchoTextField(current, { v -> settings.setVoice(v.trim()) }, label = "音色 ID", placeholder = freeVoice.placeholder)
+                if (hints.voiceOptional || freeVoice.suggestions.isNotEmpty()) {
+                    Spacer(Modifier.height(12.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (hints.voiceOptional) Chip("服务默认", selected = current.isEmpty()) { settings.setVoice(""); onClose() }
+                        for (v in freeVoice.suggestions) {
+                            Chip(v.label, selected = current == v.id, trailing = genderMark(v.gender), trailingColor = genderColor(v.gender)) {
+                                settings.setVoice(v.id); onClose()
+                            }
+                        }
+                    }
+                }
+            }
+            catalog.isNotEmpty() -> {
+                if (groups.size > 1) {
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Chip("全部", selected = lang.isEmpty()) { lang = "" }
+                        for (g in groups) Chip(g.label, selected = lang == g.lang, trailing = "${g.voices.size}") { lang = g.lang }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                }
+                Column(Modifier.fillMaxWidth().weight(1f, fill = false).verticalScrollCompat()) {
+                    for (g in shown) {
+                        if (shown.size > 1) {
+                            Text(g.label, color = c.text3, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(vertical = 6.dp))
+                        }
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            for (v in g.voices) {
+                                Chip(
+                                    if (v.note != null) "${v.label}·${v.note}" else v.label,
+                                    selected = current == v.id,
+                                    trailing = genderMark(v.gender), trailingColor = genderColor(v.gender)
+                                ) { settings.setVoice(v.id); onClose() }
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                EchoTextField(current, { v -> settings.setVoice(v.trim()) }, label = "或手动填写音色 ID", placeholder = "音色 ID")
+            }
+            else -> {
+                Text("该模型未提供音色列表，可手动填写；留空则试用服务默认音色。",
+                    color = c.text2, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(12.dp))
+                EchoTextField(current, { v -> settings.setVoice(v.trim()) }, label = "音色 ID", placeholder = "留空 = 服务默认")
+            }
+        }
+    }
 }

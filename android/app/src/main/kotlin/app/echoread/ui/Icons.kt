@@ -33,6 +33,8 @@ object EchoIcons {
 
     val Back: ImageVector by lazy { stroke("back", 2f, "m15 18-6-6 6-6") }
     val ChevronRight: ImageVector by lazy { stroke("chevronRight", 2f, "m9 18 6-6-6-6") }
+    val ChevronDown: ImageVector by lazy { stroke("chevronDown", 2f, "m6 9 6 6 6-6") }
+    val ChevronUp: ImageVector by lazy { stroke("chevronUp", 2f, "m6 15 6-6 6 6") }
     val Toc: ImageVector by lazy { stroke("toc", 1.8f, "M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01") }
     val TextStyle: ImageVector by lazy { stroke("textStyle", 1.8f, "M4 7V5h16v2M9 20h6M12 5v15") }
     val Waves: ImageVector by lazy { stroke("waves", 1.8f, "M12 3v18M7 8v8M17 8v8M2 11v2M22 11v2") }

@@ -72,6 +72,55 @@ data class GestureSettings(
     val zonesActive: Boolean get() = tapTurn && tapAxis != PageAxis.OFF && (prevZone > 0.001f || nextZone > 0.001f)
 }
 
+/**
+ * M3 配色风格。这九种就是 Google material-color-utilities 里的全部变体，
+ * 原生安卓从壁纸取色时给出的几个候选，本质上就是同一个种子色跑不同变体的结果。
+ *
+ * 差别在于「种子色的色相/彩度如何铺开成五条色板」：
+ * - [TONAL_SPOT] 安卓默认。只保留种子色相，彩度收敛，最克制
+ * - [VIBRANT] 主色高彩度，次/三色相邻色相，鲜明
+ * - [EXPRESSIVE] 三色相偏移最大，色彩关系最活泼
+ * - [NEUTRAL] 几乎去色，接近灰阶
+ * - [MONOCHROME] 纯灰阶
+ * - [FIDELITY] / [CONTENT] 尽量忠实还原种子色本身（用于跟随封面/图片取色）
+ * - [RAINBOW] / [FRUIT_SALAD] 三色相大幅分离，最跳
+ */
+@Serializable
+enum class ColorStyle {
+    @SerialName("tonal_spot") TONAL_SPOT,
+    @SerialName("vibrant") VIBRANT,
+    @SerialName("expressive") EXPRESSIVE,
+    @SerialName("neutral") NEUTRAL,
+    @SerialName("monochrome") MONOCHROME,
+    @SerialName("fidelity") FIDELITY,
+    @SerialName("content") CONTENT,
+    @SerialName("rainbow") RAINBOW,
+    @SerialName("fruit_salad") FRUIT_SALAD;
+
+    companion object {
+        /**
+         * 提供给用户选择的风格。刻意不含 [FIDELITY] 与 [CONTENT]：
+         * 这两个变体的设计意图是「尽量忠实还原种子色」，用于从封面/壁纸图片取色的场景；
+         * 在固定品牌种子色下它们生成的主色完全相同（实测均为 #3758B8），
+         * 摆两个看起来一样的选项只是噪音。引擎仍支持它们，留给将来「跟随书籍封面取色」。
+         */
+        val PICKABLE = listOf(TONAL_SPOT, VIBRANT, EXPRESSIVE, NEUTRAL, RAINBOW, FRUIT_SALAD, MONOCHROME)
+    }
+
+    val label: String
+        get() = when (this) {
+            TONAL_SPOT -> "标准"
+            VIBRANT -> "鲜明"
+            EXPRESSIVE -> "活泼"
+            NEUTRAL -> "淡雅"
+            MONOCHROME -> "单色"
+            FIDELITY -> "忠实"
+            CONTENT -> "内容"
+            RAINBOW -> "彩虹"
+            FRUIT_SALAD -> "缤纷"
+        }
+}
+
 @Serializable
 data class ReaderSettings(
     /** dark / light / paper / eye / ink */
@@ -86,8 +135,19 @@ data class ReaderSettings(
     /** 翻页手势（0.2.0 新增；旧存档缺该键时取默认值 = 旧行为） */
     val gestures: GestureSettings = GestureSettings(),
     /** Material You 动态取色（跟随壁纸，Android 12+）。默认关闭以保留品牌色 */
-    val dynamicColor: Boolean = false
-)
+    val dynamicColor: Boolean = false,
+    /** 固定配色的种子色（ARGB）。关闭动态取色时，整套配色由它 × [colorStyle] 现算 */
+    val seedColor: Int = DEFAULT_SEED,
+    /** 配色风格，对应 material-color-utilities 的变体 */
+    val colorStyle: ColorStyle = ColorStyle.TONAL_SPOT,
+    /** 对比度，对应系统「对比度」设置：0 = 标准，0.5 = 中，1 = 高 */
+    val contrast: Float = 0f
+) {
+    companion object {
+        /** 品牌种子色。0.1.x 起沿用，HCT 色相 273.21 */
+        const val DEFAULT_SEED: Int = 0xFF7C9BFF.toInt()
+    }
+}
 
 /** 在线拉取到的 TTS 模型条目 */
 @Serializable

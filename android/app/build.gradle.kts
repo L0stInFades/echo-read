@@ -17,6 +17,7 @@ plugins {
 }
 
 android {
+    testOptions { unitTests.all { it.testLogging { showStandardStreams = true } } }
     namespace = "app.echoread"
     compileSdk = 36
 
@@ -111,6 +112,7 @@ dependencies {
     implementation(libs.compose.foundation)
     implementation(libs.compose.material3)
     implementation(libs.androidx.graphics.shapes)
+    implementation(libs.material.color.utilities)
     debugImplementation(libs.compose.ui.tooling)
 
     implementation(libs.room.runtime)

@@ -152,7 +152,9 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(start = 18.dp, end = 18.dp, bottom = 120.dp)
+            // 16dp = M3 紧凑窗口（<600dp）的正文边距。全应用统一到这一个值：
+            // 原来书架 18dp、弹层 20dp、弹层标题 22dp，三处各不相同
+            contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 120.dp)
         ) {
             // 大标题区（One UI 下沉标题）
             item("header") {
@@ -177,7 +179,9 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                     Spacer(Modifier.height(4.dp))
                     Text(
                         if (books.isNotEmpty()) "书架 · ${books.size} 本" else "AI 听书 · 声临其境",
-                        color = c.text3, style = MaterialTheme.typography.bodySmall, letterSpacing = 3.sp,
+                        // 字距归零：与 Theme.kt 里定下的中文排版规则一致。
+                        // 3sp 加在 12sp 的中文上是 25% 的字距，「书架」会被拉成「书 架」
+                        color = c.text3, style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.graphicsLayer {
                             alpha = 1f - (collapse.value / 0.6f).coerceIn(0f, 1f)
                             compositingStrategy = CompositingStrategy.ModulateAlpha
@@ -506,7 +510,7 @@ private fun ContinueCard(b: BookMeta, modifier: Modifier = Modifier, onClick: ()
         Box(Modifier.width(52.dp).height(76.dp).shadow(12.dp, RoundedCornerShape(10.dp))) { BookCover(b, Modifier.fillMaxSize(), radius = 10.dp, titleSize = 11) }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text("继续阅读", color = c.accent, style = MaterialTheme.typography.labelSmallEmphasized, letterSpacing = 2.sp)
+            Text("继续阅读", color = c.accent, style = MaterialTheme.typography.labelSmallEmphasized)
             Spacer(Modifier.height(2.dp))
             Text(b.title, color = c.text, style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(2.dp))

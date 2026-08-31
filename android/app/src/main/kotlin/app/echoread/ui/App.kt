@@ -78,6 +78,14 @@ private fun androidx.compose.foundation.layout.BoxScope.ConfigConfirmSheet(graph
     }
 }
 
+/** 配色选择的最小订阅单元：只有这四项变化才需要重建主题 */
+private data class PaletteChoice(
+    val dynamic: Boolean,
+    val seed: Int,
+    val style: app.echoread.core.ColorStyle,
+    val contrast: Float
+)
+
 private const val SHELF_KEY = "__shelf__"
 
 /**
@@ -117,10 +125,21 @@ fun EchoApp(graph: AppGraph) {
     }
     // 只订阅需要的这一个布尔，不要整个 ReaderSettings：
     // 后者每拖动一格字号/行距/热区滑块都会发一个新实例，会把整个组合根连同书架一起作废重组。
-    val dynamicColor by remember(graph) {
-        graph.settings.reader.map { it.dynamicColor }.distinctUntilChanged()
-    }.collectAsState(graph.settings.reader.value.dynamicColor)
-    EchoTheme(dynamic = dynamicColor) {
+    // 只订阅配色相关的这几个字段，不要整个 ReaderSettings：
+    // 后者每拖动一格字号/行距/热区滑块都会发一个新实例，会把整个组合根连同书架一起作废重组。
+    val palette by remember(graph) {
+        graph.settings.reader.map {
+            PaletteChoice(it.dynamicColor, it.seedColor, it.colorStyle, it.contrast)
+        }.distinctUntilChanged()
+    }.collectAsState(graph.settings.reader.value.let {
+        PaletteChoice(it.dynamicColor, it.seedColor, it.colorStyle, it.contrast)
+    })
+    EchoTheme(
+        dynamic = palette.dynamic,
+        seed = Color(palette.seed),
+        style = palette.style,
+        contrast = palette.contrast
+    ) {
         Box(Modifier.fillMaxSize().background(echo.canvas).semantics { testTagsAsResourceId = true }) {
             // 重入闸门：转场进行中忽略重复「打开」。返回必须永远生效，否则转场中按返回会 pause 播放却留在阅读器
             val navigate: (String?) -> Unit = { to -> if (to == null || !nav.isSettling) bookId = to }

@@ -122,8 +122,8 @@ fun EchoCard(
 fun SectionLabel(text: String, modifier: Modifier = Modifier, trailing: (@Composable RowScope.() -> Unit)? = null) {
     val c = echo
     Row(modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        // labelMedium + 1sp 字距：小节标签靠「小而宽」与正文拉开层级，而不是靠字重
-        Text(text, color = c.text3, style = MaterialTheme.typography.labelMedium, letterSpacing = 1.sp, modifier = Modifier.weight(1f))
+        // 字距归零（中文全角方块自带留白），层级靠字号与颜色拉开
+        Text(text, color = c.text3, style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
         trailing?.invoke(this)
     }
 }
@@ -558,7 +558,7 @@ fun BoxScope.EchoSheet(
             .graphicsLayer { translationY = (1f - driver.value.coerceIn(-0.05f, 1.3f)) * size.height }
             .nestedScroll(nested)
             .driveVertically(driver, enabled = { true }, bounds = { 0f..1f }, onSettle = settle)
-            .background(c.card, shape)
+            .background(c.sheet, shape)
             .border(1.dp, c.border, shape)
             .imePadding()
     ) {
@@ -575,7 +575,9 @@ fun BoxScope.EchoSheet(
             ) {
                 Box(Modifier.width(36.dp).height(4.dp).background(c.text3.copy(alpha = 0.5f), CircleShape))
             }
-            Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 12.dp, top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            // end = 10dp 而非 16dp：关闭键的可点区是 48dp、绘制圆是 36dp，
+            // 图标的视觉边缘比容器边缘内缩 6dp，抵掉这 6dp 才能和左边 16dp 视觉对齐
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 10.dp, top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 // 弹层标题是这块面的主角，用 Expressive 的强调级字体 —— 这正是 Emphasized 阶梯存在的意义
                 Text(title, color = c.text, style = MaterialTheme.typography.titleMediumEmphasized, modifier = Modifier.weight(1f))
                 IconButtonEcho(EchoIcons.Close, "关闭", size = 36.dp, iconSize = 18.dp, onClick = onDismiss)
@@ -587,7 +589,7 @@ fun BoxScope.EchoSheet(
                 .weight(1f, fill = false)
                 .fillMaxWidth()
                 .let { if (scrollable) it.verticalScroll(scroll) else it }
-                .padding(horizontal = 20.dp)
+                .padding(horizontal = 16.dp)
                 .padding(bottom = 20.dp)
                 .windowInsetsPadding(WindowInsets.navigationBars),
             content = content

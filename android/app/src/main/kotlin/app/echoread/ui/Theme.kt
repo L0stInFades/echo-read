@@ -1,5 +1,7 @@
 package app.echoread.ui
 
+import app.echoread.core.ReaderSettings
+import app.echoread.core.ColorStyle
 import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,6 +47,12 @@ data class EchoColors(
     val canvas: Color,
     val card: Color,
     val cardAlt: Color,
+    /**
+     * 弹层/大面板的底色，比 [card] 低一档。
+     * 必须比卡片低：分组卡片画在弹层上，两者同色就等于卡片不存在 ——
+     * 实测深色下只差一档只有 1.05:1，差两档（Low↔High）才有 1.20:1，能看出边界。
+     */
+    val sheet: Color,
     val border: Color,
     val text: Color,
     val text2: Color,
@@ -59,110 +67,15 @@ data class EchoColors(
 
 /* ---------------- M3 色板（seed #7C9BFF · SchemeTonalSpot · 2021 spec） ---------------- */
 
-/** 行尾注释是该色在调色板中的色调（tone），便于审计整条明度阶梯 */
-val EchoLightScheme = lightColorScheme(
-    primary = Color(0xFF4C5C92),                 // primary T40
-    onPrimary = Color(0xFFFFFFFF),               // T100
-    primaryContainer = Color(0xFFDBE1FF),        // T90
-    onPrimaryContainer = Color(0xFF344479),      // T30
-    inversePrimary = Color(0xFFB5C4FF),          // T80
-    secondary = Color(0xFF595E72),
-    onSecondary = Color(0xFFFFFFFF),
-    secondaryContainer = Color(0xFFDDE1F9),
-    onSecondaryContainer = Color(0xFF414659),
-    tertiary = Color(0xFF745470),
-    onTertiary = Color(0xFFFFFFFF),
-    tertiaryContainer = Color(0xFFFFD6F7),
-    onTertiaryContainer = Color(0xFF5B3D57),
-    error = Color(0xFFBA1A1A),
-    onError = Color(0xFFFFFFFF),
-    errorContainer = Color(0xFFFFDAD6),
-    onErrorContainer = Color(0xFF93000A),
-    background = Color(0xFFFAF8FF),              // neutral T98
-    onBackground = Color(0xFF1A1B21),            // neutral T10
-    surface = Color(0xFFFAF8FF),
-    onSurface = Color(0xFF1A1B21),
-    surfaceVariant = Color(0xFFE2E1EC),
-    onSurfaceVariant = Color(0xFF45464F),
-    surfaceTint = Color(0xFF4C5C92),
-    inverseSurface = Color(0xFF2F3036),
-    inverseOnSurface = Color(0xFFF1F0F7),
-    outline = Color(0xFF767680),                 // neutralVariant T50
-    outlineVariant = Color(0xFFC6C6D0),          // neutralVariant T80
-    scrim = Color(0xFF000000),
-    // 色调化表面：M3 用这一组离散中性色取代「elevation + surfaceTint 叠色」
-    surfaceBright = Color(0xFFFAF8FF),
-    surfaceDim = Color(0xFFDAD9E0),
-    surfaceContainerLowest = Color(0xFFFFFFFF),  // T100
-    surfaceContainerLow = Color(0xFFF4F3FA),     // T96
-    surfaceContainer = Color(0xFFEEEDF4),        // T94
-    surfaceContainerHigh = Color(0xFFE9E7EF),    // T92
-    surfaceContainerHighest = Color(0xFFE3E1E9), // T90
-    primaryFixed = Color(0xFFDBE1FF),
-    primaryFixedDim = Color(0xFFB5C4FF),
-    onPrimaryFixed = Color(0xFF02174B),
-    onPrimaryFixedVariant = Color(0xFF344479),
-    secondaryFixed = Color(0xFFDDE1F9),
-    secondaryFixedDim = Color(0xFFC1C5DD),
-    onSecondaryFixed = Color(0xFF161B2C),
-    onSecondaryFixedVariant = Color(0xFF414659),
-    tertiaryFixed = Color(0xFFFFD6F7),
-    tertiaryFixedDim = Color(0xFFE2BBDB),
-    onTertiaryFixed = Color(0xFF2B122A),
-    onTertiaryFixedVariant = Color(0xFF5B3D57)
-)
+/* ---------------- M3 色板 ----------------
+ *
+ * 这里原本写死了浅色/深色两套 48 角色常量（约 110 行）。0.2.2 起改为运行时生成：
+ * 见 ColorSchemes.kt —— 跑 Google 的 material-color-utilities，按种子色 × 风格现算。
+ * 已用契约测试锁住：默认种子色 #7C9BFF + 标准风格必须逐位复现原来那套人工核验过的色板
+ * （见 ColorSchemeTest.defaultPaletteIsUnchanged）。
+ */
 
-/** 深色是听书 App 的主场景：夜里读书用得最多的就是它 */
-val EchoDarkScheme = darkColorScheme(
-    primary = Color(0xFFB5C4FF),                 // primary T80
-    onPrimary = Color(0xFF1C2D61),               // T20
-    primaryContainer = Color(0xFF344479),        // T30
-    onPrimaryContainer = Color(0xFFDBE1FF),      // T90
-    inversePrimary = Color(0xFF4C5C92),
-    secondary = Color(0xFFC1C5DD),
-    onSecondary = Color(0xFF2B3042),
-    secondaryContainer = Color(0xFF414659),
-    onSecondaryContainer = Color(0xFFDDE1F9),
-    tertiary = Color(0xFFE2BBDB),
-    onTertiary = Color(0xFF432740),
-    tertiaryContainer = Color(0xFF5B3D57),
-    onTertiaryContainer = Color(0xFFFFD6F7),
-    error = Color(0xFFFFB4AB),
-    onError = Color(0xFF690005),
-    errorContainer = Color(0xFF93000A),
-    onErrorContainer = Color(0xFFFFDAD6),
-    background = Color(0xFF121318),              // neutral T6
-    onBackground = Color(0xFFE3E1E9),            // neutral T90
-    surface = Color(0xFF121318),
-    onSurface = Color(0xFFE3E1E9),
-    surfaceVariant = Color(0xFF45464F),
-    onSurfaceVariant = Color(0xFFC6C6D0),
-    surfaceTint = Color(0xFFB5C4FF),
-    inverseSurface = Color(0xFFE3E1E9),
-    inverseOnSurface = Color(0xFF2F3036),
-    outline = Color(0xFF8F909A),                 // neutralVariant T60
-    outlineVariant = Color(0xFF45464F),          // neutralVariant T30
-    scrim = Color(0xFF000000),
-    surfaceBright = Color(0xFF38393F),           // T24
-    surfaceDim = Color(0xFF121318),              // T6
-    surfaceContainerLowest = Color(0xFF0D0E13),  // T4
-    surfaceContainerLow = Color(0xFF1A1B21),     // T10
-    surfaceContainer = Color(0xFF1E1F25),        // T12
-    surfaceContainerHigh = Color(0xFF292A2F),    // T17
-    surfaceContainerHighest = Color(0xFF34343A), // T22
-    primaryFixed = Color(0xFFDBE1FF),
-    primaryFixedDim = Color(0xFFB5C4FF),
-    onPrimaryFixed = Color(0xFF02174B),
-    onPrimaryFixedVariant = Color(0xFF344479),
-    secondaryFixed = Color(0xFFDDE1F9),
-    secondaryFixedDim = Color(0xFFC1C5DD),
-    onSecondaryFixed = Color(0xFF161B2C),
-    onSecondaryFixedVariant = Color(0xFF414659),
-    tertiaryFixed = Color(0xFFFFD6F7),
-    tertiaryFixedDim = Color(0xFFE2BBDB),
-    onTertiaryFixed = Color(0xFF2B122A),
-    onTertiaryFixedVariant = Color(0xFF5B3D57)
-)
+
 
 /**
  * 由 M3 色板派生出全应用在用的 10 个语义色。
@@ -182,6 +95,7 @@ fun echoColorsFrom(s: ColorScheme, dark: Boolean) = EchoColors(
     canvas = s.surface,
     card = s.surfaceContainer,
     cardAlt = s.surfaceContainerHigh,
+    sheet = s.surfaceContainerLow,
     border = s.outlineVariant,
     text = s.onSurface,
     text2 = s.onSurfaceVariant,
@@ -193,13 +107,31 @@ fun echoColorsFrom(s: ColorScheme, dark: Boolean) = EchoColors(
     isDark = dark
 )
 
-val LocalEchoColors = staticCompositionLocalOf { echoColorsFrom(EchoDarkScheme, true) }
+/**
+ * 默认值只在「主题尚未提供」的极短窗口里被读到（例如预览）。
+ * 用默认种子色现算一份深色方案即可，不必为此保留一整套写死的常量。
+ */
+val LocalEchoColors = staticCompositionLocalOf {
+    echoColorsFrom(
+        dynamicSchemeOf(Color(ReaderSettings.DEFAULT_SEED), ColorStyle.TONAL_SPOT, dark = true).toColorScheme(),
+        true
+    )
+}
 
 /**
  * 品牌渐变：primary → tertiary。
  *
- * 每个使用点各拿一份实例 —— `ShaderBrush` 内部按「上次创建时的尺寸」缓存 shader，
- * 全局单例被 36sp 标题 / 胶囊按钮 / 2dp 进度条轮流命中时缓存反复失效，每帧重建 LinearGradientShader。
+ * 配色可由用户任意更换后，这个选择需要有据可依。实测七种可选风格下两端的色相距离
+ * （种子 #7C9BFF、深色）：
+ *   primary→tertiary   标准 40° / 鲜明 61° / 活泼 101° / 淡雅 24° / 彩虹 59° / 缤纷 51° / 单色 0°
+ *   primary→secondary  标准  1° / 鲜明  9° / 活泼  95° / 淡雅  9° / 彩虹  0° / 缤纷  0° / 单色 0°
+ *
+ * 取 tertiary：七种里有六种落在 24~61°，是和谐的邻近／类比配色；只有「活泼」到 101°，
+ * 而那个变体（EXPRESSIVE）本来就是为强色彩关系设计的，用户选它就是要这个效果。
+ * 换成 secondary 的话，六种风格的两端色相差只有 0~9°，渐变会直接看不出来。
+ *
+ * 注意：**实心控件不要用它**。播放键曾经用这个渐变，在「苔绿 + 活泼」下会变成红到绿，
+ * 已改为纯色 primary 容器（见 ReaderScreen.PlayButton）。渐变留给文字/大面积品牌元素。
  */
 fun auroraBrush(primary: Color, tertiary: Color): Brush = Brush.linearGradient(listOf(primary, tertiary))
 
@@ -363,29 +295,34 @@ fun readerThemeOf(id: String): ReaderTheme = READER_THEMES.firstOrNull { it.id =
 /* ---------------- 主题入口 ---------------- */
 
 /**
- * [MaterialExpressiveTheme] 而不是 MaterialTheme：它会额外置入 `LocalUsingExpressiveTheme`，
- * 并让落进来的 M3 组件走 Expressive 的形状/字体默认值。动效则显式交给 [EchoMotionScheme] ——
- * 组件动画因此与我们自研 CA 管线共用同一套弹簧参数，全应用只有一套动效词汇。
+ * 主题入口。配色的取得顺序与原生安卓一致：
  *
- * [dynamic] 默认关闭：本次改版的目的正是拿出一套「像 EchoRead 的 Google 调色板」，
- * 默认跟随壁纸会让刚生成的品牌色永远不出现。用户可在阅读样式里自行打开。
- * 动态取色 API 标着 @RequiresApi(31)，而本应用 minSdk 26，版本判断不可省略。
+ * 1. **动态取色**（[dynamic] 且 Android 12+）：系统已从壁纸算好，直接取平台资源；
+ * 2. **按种子色现算**：跑 Google 的 material-color-utilities，按 [seed] × [style] × [contrast]
+ *    铺开全部 48 个角色 —— 这与系统内部做的事是同一套算法，只是种子色由用户选。
+ *
+ * 不再保留写死的浅色/深色两套常量：写死意味着只能有一套配色，
+ * 而「可切换的配色系列」要的正是同一算法在不同种子与风格下的产物。
  */
 @Composable
 fun EchoTheme(
     dark: Boolean = isSystemInDarkTheme(),
     dynamic: Boolean = false,
+    seed: Color = Color(ReaderSettings.DEFAULT_SEED),
+    style: ColorStyle = ColorStyle.TONAL_SPOT,
+    contrast: Float = 0f,
     content: @Composable () -> Unit
 ) {
     val context = LocalContext.current
+    val useDynamic = dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     // dynamicXxxColorScheme() 每次调用都要解析约 48 个平台颜色资源，必须 remember
-    val scheme = remember(dark, dynamic, context) {
-        if (dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    val dynamicScheme = remember(dark, useDynamic, context) {
+        if (useDynamic) {
             if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        } else {
-            if (dark) EchoDarkScheme else EchoLightScheme
-        }
+        } else null
     }
+    val generated = rememberGeneratedScheme(seed, style, dark, contrast)
+    val scheme = dynamicScheme ?: generated
     val colors = remember(scheme, dark) { echoColorsFrom(scheme, dark) }
     CompositionLocalProvider(LocalEchoColors provides colors) {
         MaterialExpressiveTheme(
