@@ -1,14 +1,14 @@
 {
-  "versionCode": 9,
-  "versionName": "0.2.1-exp",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.1-exp/EchoRead-v0.2.1-exp.apk",
+  "versionCode": 10,
+  "versionName": "0.2.2-exp",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.2-exp/EchoRead-v0.2.2-exp.apk",
   "mirrors": [
-    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.1-exp/EchoRead-v0.2.1-exp.apk",
-    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.1-exp/EchoRead-v0.2.1-exp.apk",
-    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.1-exp/EchoRead-v0.2.1-exp.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.2-exp/EchoRead-v0.2.2-exp.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.2-exp/EchoRead-v0.2.2-exp.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.2-exp/EchoRead-v0.2.2-exp.apk"
   ],
-  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n· 修复播放进度条：原来测的是「合成了几段」而不是读到哪 —— 没按过播放时一直显示 0%、每次换章会倒退、连调「单片段字数」滑块都能让它自己乱走。现在按全书字数计算，和书架上的百分比一致\n· 朗读出错终于看得见：以前服务端报错时界面完全没有提示（实测连打 49 次请求也一声不吭），现在会明确写出是「API Key 被拒绝（401）」还是「服务商故障（503）」，点「详情」能看到服务商原话、端点与响应内容，可一键复制\n· 无效 Key 不再偷偷刷请求：原本会以每秒约 10 次的频率反复失败，连暂停时也在跑\n· 网关返回的网页或乱码不再被当成音频存进缓存（原本要等三十秒后变成解码失败，且之后永不恢复）\n· 界面继续向 Material 3 Expressive 靠拢：排序、翻页方向、字体等单选改成相连的分段按钮；底栏重排，错误信息不再被截断，进度条横贯整条；按钮按下会形变\n· 小按钮的可点范围补到 48dp；弹层在平板与折叠屏上限制宽度\n· 修复应用内更新的下载镜像失效",
-  "sha256": "e67caff65506439286405baa22e8445bb4635ef59561a6e6b8c14c09b4ad7226",
+  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n· 全新「应用配色」：可切换的谷歌标准配色系列 —— 8 种主色 × 7 种风格 × 3 档对比度，也可跟随壁纸取色。整套配色由谷歌自己的色彩算法实时生成，不是几套写死的方案；选「淡雅」整个应用变淡，选「单色」变灰，连书封都跟着走\n· AI 朗读设置重做：每一行直接显示当前值（用的哪个模型、哪个音色），不用点开逐个看；API Key 等一次性配置折叠进连接状态行；「试听」挪到连接状态旁边；模型与音色改为独立选择器，不再把其余设置挤到看不见\n· 阅读样式面板同样按分组重排\n· 播放卡片重做：播放键改用 Material 3 自带的组件，播放时按钮从圆形变成方圆角来表示状态，去掉了原来那圈发虚的光晕；进度条从波浪改为直条（波浪在「全书进度」这种活动段很短的场景下只能画出一条歪线）；合成中不再让按钮图标变成一团黑块\n· 界面对齐统一：全应用页边距统一为 16dp，设置项左缘对齐差 3.3dp 的问题已修，分组卡片现在能看清边界\n· 书封不再是一排互不相干的高饱和色块，改为与当前配色同一色系\n· 修复 Kokoro 82M 等「多段音频拼接返回」的模型只播出第一段就跳过后续内容的问题",
+  "sha256": "b2a102eace353d0b0800be40e87835be366d370834a4a9890c20ee91db621f54",
   "minSdk": 26,
   "experimental": true
 }
