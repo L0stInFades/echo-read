@@ -1,11 +1,12 @@
 {
-  "versionCode": 7,
-  "versionName": "0.1.6",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.6/EchoRead-v0.1.6.apk",
+  "versionCode": 8,
+  "versionName": "0.2.0-exp",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.0-exp/EchoRead-v0.2.0-exp.apk",
   "mirrors": [
-    "https://ghproxy.net/https://github.com/L0stInFades/echo-read/releases/download/android-v0.1.6/EchoRead-v0.1.6.apk"
+    "https://ghproxy.net/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.0-exp/EchoRead-v0.2.0-exp.apk"
   ],
-  "notes": "修复：「试听测试（合成你好）」之前只测连接不出声，现在合成后真的播放出来",
-  "sha256": "358f129fcd4edcbd6a48f7347c195b0f5afc7ddfeafc215dd91e40073e6b0623",
-  "minSdk": 26
+  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片右上角的 ✕，之后不会再提醒这一版。\n\n· Material 3 Expressive 全新界面：配色改用 Google 的色彩算法生成，动效与自研动画管线融合\n· 新增「翻页手势」设置：左右 / 上下滑动、点击翻页热区的位置与范围可调，带实时预览\n· 导入改为应用内界面：自动扫描本机全部 TXT / EPUB，搜索筛选后多选批量入库\n· 启动器图标按自适应图标规范重做\n· 修复：更新提示现在可以永久叉掉；五套阅读主题的次要文字与「纸墨」高亮对比度不足",
+  "sha256": "e0db9059572b1f04c3c4b9c3ceca09942c00f5dc2fd03cf2ee757302b8d331ba",
+  "minSdk": 26,
+  "experimental": true
 }
