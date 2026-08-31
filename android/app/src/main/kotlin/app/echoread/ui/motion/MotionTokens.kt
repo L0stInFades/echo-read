@@ -47,24 +47,46 @@ class Spring2(val response: Float, val damping: Float) {
 }
 
 /**
- * 弹簧档位（6 档）。`settle` 为理论稳定时间，用于与设计规范对齐。
+ * 弹簧档位（0.2.0-exp：8 档）—— **谷歌 Material 3 Expressive 动效标准与自研 CA 管线的融合点**。
  *
- * | Token      | response | ζ    | settle | 过冲  | 语义                                   |
- * |------------|----------|------|--------|-------|----------------------------------------|
- * | Instant    | 0.15     | 1.00 |  95ms  | 0%    | 按压/松手、开关、图标态                 |
- * | Track      | 0.20     | 0.95 | 135ms  | ~0%   | 手势 settle 专用：拖拽回位、跟手收敛     |
- * | Standard   | 0.30     | 0.90 | 213ms  | 0.15% | 翻页、Chip、局部位移、列表项            |
- * | Emphasized | 0.40     | 0.85 | 300ms  | 0.6%  | 底部弹层、根导航、大面积转场            |
- * | Gentle     | 0.55     | 1.00 | 350ms  | 0%    | 低频大面积（进度条、glow、背景色）      |
- * | Playful    | 0.28     | 0.70 | 255ms  | 4.6%  | 播放键 pop（仅限 ≤52dp 的元素）         |
+ * 取值全部来自 material3 1.5.0-alpha18 里 `StandardMotionTokens` / `ExpressiveMotionTokens` 的实际字节码
+ * （javap 读出的 ldc 常量），再用 `response = 2π/√k` 换算到我们的 (response, damping) 参数化。
+ * 八档里有五档与 Google 的 token **数值完全相等**，两档是我们独有、且有明确理由不采用 Google 的对应档，
+ * 一档（Track）是真正的融合：借 M3 Expressive 的刚度，保留我们的阻尼。
+ *
+ * | Token      | response | ζ    | k    | settle | 过冲  | 对应 Google token            | 语义 |
+ * |------------|----------|------|------|--------|-------|------------------------------|------|
+ * | Flash      | 0.102    | 1.00 | 3795 |  65ms  | 0%    | = fastEffects（两套一致）     | 可打断的 alpha/颜色：消散、取消 |
+ * | Instant    | 0.157    | 1.00 | 1602 | 100ms  | 0%    | = defaultEffects（两套一致）  | 按压/松手、开关、图标态 |
+ * | Gentle     | 0.550    | 1.00 |  130 | 350ms  | 0%    | **我们独有**                  | 低频大面积（进度条、glow、背景色） |
+ * | Track      | 0.220    | 0.95 |  816 | 147ms  | 0.01% | **融合**：刚度取 Expressive fastSpatial，阻尼保留我们的 | 手势 settle 专用 |
+ * | Standard   | 0.238    | 0.90 |  697 | 168ms  | 0.15% | = STANDARD defaultSpatial     | 翻页、Chip、局部位移、列表项 |
+ * | Playful    | 0.222    | 0.60 |  801 | 236ms  | 9.5%  | = EXPRESSIVE fastSpatial      | 播放键 pop（仅限 ≤52dp 的元素） |
+ * | Emphasized | 0.322    | 0.80 |  381 | 256ms  | 1.5%  | = EXPRESSIVE defaultSpatial   | 底部弹层、根导航、大面积转场 |
+ * | Expand     | 0.444    | 0.80 |  200 | 353ms  | 1.5%  | = EXPRESSIVE slowSpatial      | 大面积尺寸变化 / 形状 morph |
+ *
+ * 两处刻意不跟随 Google：
+ * 1. **Track 不用 Expressive fastSpatial 的 ζ=0.6**。9.5% 过冲落在翻页上，意味着接近一页宽的正文
+ *    滑出页边再弹回来 —— 在阅读器里不可接受。取它的刚度（到位节奏是 M3 的），阻尼仍用 0.95（不见过冲）。
+ * 2. **Gentle 无对应档**。Google 最慢的 effects 档 141ms、最慢的 spatial 档 354ms 但 ζ=0.8。
+ *    Gentle 是两套体系里唯一「又慢又临界阻尼」的弹簧，而颜色一旦过冲就会溢出色域、观感上是一次闪烁。
+ *    它的 350ms 恰好与 Google 最慢动效同时长，却零过冲。
+ *
+ * 另注：Google 的三条 effects 档在 standard 与 expressive 两套里逐字节相同（ζ 恒为 1.0）——
+ * 「颜色与透明度永不过冲」是硬约束而非风格选择，这一点与本文件原有的 [Dur] 注释完全一致。
  */
 object EchoMotion {
-    val Instant = Spring2(0.15f, 1.00f)
-    val Track = Spring2(0.20f, 0.95f)
-    val Standard = Spring2(0.30f, 0.90f)
-    val Emphasized = Spring2(0.40f, 0.85f)
-    val Gentle = Spring2(0.55f, 1.00f)
-    val Playful = Spring2(0.28f, 0.70f)
+    /* ---- effects（ζ=1.0，绝不过冲） ---- */
+    val Flash = Spring2(0.102f, 1.00f)
+    val Instant = Spring2(0.157f, 1.00f)
+    val Gentle = Spring2(0.550f, 1.00f)
+
+    /* ---- spatial ---- */
+    val Track = Spring2(0.220f, 0.95f)
+    val Standard = Spring2(0.238f, 0.90f)
+    val Playful = Spring2(0.222f, 0.60f)
+    val Emphasized = Spring2(0.322f, 0.80f)
+    val Expand = Spring2(0.444f, 0.80f)
 }
 
 /** 时长档位：只用于不可打断的纯 alpha / color（可打断的位移一律用弹簧） */

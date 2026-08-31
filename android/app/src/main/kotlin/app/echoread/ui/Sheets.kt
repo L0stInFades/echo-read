@@ -100,10 +100,42 @@ fun BoxScope.ChapterListSheet(open: Boolean, titles: List<String>, current: Int,
 /* ---------- 阅读样式 ---------- */
 
 @Composable
-fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
+fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: () -> Unit = {}, onClose: () -> Unit) {
     val c = echo
     val reader by graph.settings.reader.collectAsState()
     EchoSheet(open = open, onDismiss = onClose, title = "阅读样式") {
+        // 翻页手势单独开一层：内容多且带实时预览，塞进本表会把主题/字号挤到看不见
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .background(c.cardAlt, RoundedCornerShape(Radius.md))
+                .echoPress(pressedScale = PressScale.Tile) { onOpenGestures() }
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(EchoIcons.SwipeH, null, tint = c.accent, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text("翻页手势", color = c.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text(gestureSummary(reader.gestures), color = c.text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+            Icon(EchoIcons.ChevronRight, null, tint = c.text3, modifier = Modifier.size(16.dp))
+        }
+        Spacer(Modifier.height(18.dp))
+
+        SectionLabel("外观") {
+            Text(if (reader.dynamicColor) "跟随壁纸" else "品牌配色", color = c.text3, fontSize = 11.sp)
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Chip("品牌配色", selected = !reader.dynamicColor, modifier = Modifier.weight(1f)) { graph.settings.updateReader { r -> r.copy(dynamicColor = false) } }
+            Chip("动态取色", selected = reader.dynamicColor, modifier = Modifier.weight(1f)) { graph.settings.updateReader { r -> r.copy(dynamicColor = true) } }
+        }
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+            Spacer(Modifier.height(6.dp))
+            Text("动态取色需要 Android 12 及以上", color = c.text3, fontSize = 11.sp)
+        }
+        Spacer(Modifier.height(18.dp))
+
         SectionLabel("主题")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             for (t in READER_THEMES) {
@@ -566,8 +598,12 @@ fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Un
             Spacer(Modifier.height(18.dp))
         }
         val sections = listOf(
-            "书架" to "点底部「导入」选择 TXT / EPUB，可一次多本；也可以在文件管理器里用「打开方式」发给 EchoRead。点封面打开书籍，长按封面可继续阅读或从书架删除。最近读过的书会出现在顶部「继续阅读」。",
+            "导入书籍" to "点底部「导入书籍」会自动扫描本机所有 TXT / EPUB，勾选后批量入库，已在书架的会标出来。" +
+                "首次使用需要授权：Android 11 起系统只允许「所有文件访问权限」做全盘扫描，不想开也可以只授权某个文件夹（书常放在 Download、Documents、Books 里）。" +
+                "也可以随时用「从文件管理器选择」，或在文件管理器里用「打开方式」发给 EchoRead。",
             "点读" to "打开书籍后，轻点正文任意位置，AI 就从那个字开始朗读。底栏可以暂停、切章、调倍速，月亮按钮是睡眠定时。锁屏与通知栏可控制播放、切章。",
+            "翻页手势" to "阅读页 → T 图标 → 「翻页手势」可以改：左右滑 / 上下滑 / 关闭滑动，点击翻页热区放在左右还是上下、各占多宽，以及要不要保留「轻点朗读」。" +
+                "顶部有实时预览，拖滑块就能看到热区变化。提示：系统手势导航会吃掉屏幕左右边缘起手的横滑，改成「上下滑」可以完全避开这个冲突。",
             "声音" to "齿轮里填入 OpenRouter / OpenAI 兼容接口的 API Key，拉取模型后选音色即可。没有 Key 时切到「系统语音」，用手机自带的离线朗读引擎。",
             "离线" to "书架和已经听过的片段缓存在本机（最多 300MB，自动淘汰最旧）。断网也能继续读、继续听缓存过的句子。"
         )
@@ -578,4 +614,19 @@ fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Un
             Spacer(Modifier.height(16.dp))
         }
     }
+}
+
+/** 手势设置一行摘要，显示在「阅读样式」的入口行上 */
+private fun gestureSummary(g: app.echoread.core.GestureSettings): String {
+    val swipe = when (g.axis) {
+        app.echoread.core.PageAxis.HORIZONTAL -> "左右滑"
+        app.echoread.core.PageAxis.VERTICAL -> "上下滑"
+        app.echoread.core.PageAxis.OFF -> "不滑动"
+    }
+    val tap = when {
+        !g.zonesActive -> "无点击热区"
+        g.tapAxis == app.echoread.core.PageAxis.VERTICAL -> "上下热区 ${(g.prevZone * 100).toInt()}/${(g.nextZone * 100).toInt()}%"
+        else -> "左右热区 ${(g.prevZone * 100).toInt()}/${(g.nextZone * 100).toInt()}%"
+    }
+    return "$swipe · $tap" + if (g.tapToRead) " · 轻点朗读" else ""
 }

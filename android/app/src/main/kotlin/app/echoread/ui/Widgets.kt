@@ -171,6 +171,9 @@ fun GradientButton(
     onClick: () -> Unit
 ) {
     val brush = rememberAurora()
+    // 渐变两端就是 primary/tertiary，其上的内容色必须取 onPrimary。
+    // 写死 Color.White 在深色模式下是 1.7:1（primary 是 T80 的浅紫），按钮文字几乎读不出来。
+    val onBrush = echo.onAccent
     Row(
         modifier
             .height(height)
@@ -185,10 +188,10 @@ fun GradientButton(
         horizontalArrangement = Arrangement.Center
     ) {
         if (icon != null) {
-            Icon(icon, null, tint = Color.White, modifier = Modifier.size(16.dp))
+            Icon(icon, null, tint = onBrush, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
         }
-        Text(text, color = Color.White, fontSize = fontSize.sp, fontWeight = FontWeight.SemiBold)
+        Text(text, color = onBrush, fontSize = fontSize.sp, fontWeight = FontWeight.SemiBold)
     }
 }
 

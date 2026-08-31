@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- M3 深色 surface（neutral T6）—— 听书应用的主场景 -->
+    <color name="app_bg">#121318</color>
+</resources>

@@ -2,6 +2,7 @@ package app.echoread.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import app.echoread.core.GestureSettings
 import app.echoread.core.OpenAISpeechConfig
 import app.echoread.core.ReaderSettings
 import app.echoread.core.TtsModelInfo
@@ -127,7 +128,26 @@ class SettingsStore(context: Context) {
             if (!(out.lineHeight >= 1.2f && out.lineHeight <= 3f)) out = out.copy(lineHeight = fb.lineHeight)
             if (out.fontFamily != "serif" && out.fontFamily != "sans") out = out.copy(fontFamily = fb.fontFamily)
             if (!(out.paraSpacing >= 0f && out.paraSpacing <= 3f)) out = out.copy(paraSpacing = fb.paraSpacing)
-            return out
+            return out.copy(gestures = sanitizeGestures(out.gestures))
+        }
+
+        /**
+         * 手势值域守卫：热区比例越界会让「点读」永远点不到（两侧各占满半屏），
+         * slopScale 归零则任何一次点按都会被判成拖动 —— 都是能把阅读器变砖的值。
+         */
+        fun sanitizeGestures(g: GestureSettings): GestureSettings {
+            val fb = GestureSettings()
+            var prev = if (g.prevZone.isFinite()) g.prevZone.coerceIn(0f, 0.5f) else fb.prevZone
+            var next = if (g.nextZone.isFinite()) g.nextZone.coerceIn(0f, 0.5f) else fb.nextZone
+            // 开着「轻点朗读」时两侧之和必须留出中间的可点读带；关掉朗读则允许各占一半、整页都是翻页区
+            val maxSum = if (g.tapToRead) 0.8f else 1f
+            if (prev + next > maxSum) {
+                val k = maxSum / (prev + next)
+                prev *= k
+                next *= k
+            }
+            val slop = if (g.slopScale.isFinite()) g.slopScale.coerceIn(0.5f, 3f) else fb.slopScale
+            return g.copy(prevZone = prev, nextZone = next, slopScale = slop)
         }
     }
 }

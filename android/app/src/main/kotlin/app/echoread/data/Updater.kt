@@ -28,7 +28,12 @@ data class UpdateInfo(
     val mirrors: List<String> = emptyList(),
     val notes: String = "",
     val sha256: String = "",
-    val minSdk: Int = 26
+    val minSdk: Int = 26,
+    /**
+     * 实验性版本（如 0.2.0-exp）：卡片上打「实验版」标记并提示可能不稳定。
+     * 新增字段对旧客户端安全 —— 旧版 Updater 的 Json 配置带 ignoreUnknownKeys=true，会直接忽略它。
+     */
+    val experimental: Boolean = false
 )
 
 sealed interface UpdateState {
@@ -66,31 +71,45 @@ class Updater(private val context: Context) {
         val cur = _state.value
         if (cur is UpdateState.Downloading || cur is UpdateState.Ready) return cur
         _state.value = UpdateState.Checking
-        val result = withContext(Dispatchers.IO) {
-            var lastErr: Exception? = null
-            for (url in MANIFEST_URLS) {
-                try {
-                    val req = Request.Builder().url(url).header("Cache-Control", "no-cache").get().build()
-                    SpeechApi.client.newCall(req).execute().use { res ->
-                        if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
-                        val info = json.decodeFromString(UpdateInfo.serializer(), res.body?.string() ?: "")
-                        return@withContext info
+        // 注意 try 必须罩住 withContext 本身：原先写成 `withContext{…}.let{ runCatching{it} }`，
+        // 异常在 .let 之前就已经抛出整个函数，Result 永远是 success，UpdateState.Error 因此不可达。
+        val result = try {
+            Result.success(
+                withContext(Dispatchers.IO) {
+                    var lastErr: Exception? = null
+                    for (url in MANIFEST_URLS) {
+                        try {
+                            val req = Request.Builder().url(url).header("Cache-Control", "no-cache").get().build()
+                            SpeechApi.client.newCall(req).execute().use { res ->
+                                if (!res.isSuccessful) throw IllegalStateException("HTTP ${res.code}")
+                                val info = json.decodeFromString(UpdateInfo.serializer(), res.body?.string() ?: "")
+                                return@withContext info
+                            }
+                        } catch (e: Exception) {
+                            lastErr = e
+                        }
                     }
-                } catch (e: Exception) {
-                    lastErr = e
+                    throw lastErr ?: IllegalStateException("无法获取更新清单")
                 }
-            }
-            throw lastErr ?: IllegalStateException("无法获取更新清单")
-        }.let { runCatching { it } }
+            )
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e // 协程取消不是「检查失败」，必须原样上抛
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
         prefs.edit().putLong(KEY_LAST_CHECK, now).apply()
         val info = result.getOrNull()
         val next = when {
             info == null -> UpdateState.Error("检查更新失败：${result.exceptionOrNull()?.message ?: "网络异常"}")
             info.versionCode > currentVersionCode && Build.VERSION.SDK_INT >= info.minSdk -> {
-                // 本地已下载好同版本安装包则直接就绪
-                val f = apkFile(info)
-                if (f.isFile && f.length() > 0 && (info.sha256.isEmpty() || sha256(f).equals(info.sha256, ignoreCase = true))) UpdateState.Ready(info, f)
-                else UpdateState.Available(info)
+                // 用户已把这一版「叉掉」：静默检查不再打扰（手动检查 force=true 仍然照常提示）
+                if (!force && isDismissed(info.versionCode)) UpdateState.UpToDate
+                else {
+                    // 本地已下载好同版本安装包则直接就绪
+                    val f = apkFile(info)
+                    if (f.isFile && f.length() > 0 && (info.sha256.isEmpty() || sha256(f).equals(info.sha256, ignoreCase = true))) UpdateState.Ready(info, f)
+                    else UpdateState.Available(info)
+                }
             }
             else -> UpdateState.UpToDate
         }
@@ -98,13 +117,17 @@ class Updater(private val context: Context) {
         return next
     }
 
+    /** 该版本是否已被用户永久忽略 */
+    fun isDismissed(versionCode: Long): Boolean = prefs.getLong(KEY_DISMISSED, 0L) >= versionCode
+
     private fun apkFile(info: UpdateInfo): File = File(File(context.cacheDir, "updates").apply { mkdirs() }, "EchoRead-v${info.versionName}.apk")
 
     /** 下载安装包（带进度），校验 SHA-256 */
     suspend fun download(info: UpdateInfo): UpdateState {
         val target = apkFile(info)
         _state.value = UpdateState.Downloading(info, 0f)
-        val result = withContext(Dispatchers.IO) {
+        val result = try {
+            Result.success(withContext(Dispatchers.IO) {
             var lastErr: Exception? = null
             for (url in listOf(info.apkUrl) + info.mirrors) {
                 try {
@@ -149,7 +172,12 @@ class Updater(private val context: Context) {
                 }
             }
             throw lastErr ?: IllegalStateException("下载失败")
-        }.let { runCatching { it } }
+            })
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
         val next = result.getOrNull()?.let { UpdateState.Ready(info, it) }
             ?: UpdateState.Error("下载失败：${result.exceptionOrNull()?.message ?: "网络异常"}", info)
         _state.value = next
@@ -176,7 +204,20 @@ class Updater(private val context: Context) {
         return true
     }
 
+    /**
+     * 叉掉更新卡片。0.2.0-exp 起是**按版本永久忽略**：把该 versionCode 记进 prefs，
+     * 后续每日静默检查不再弹出（进程重启也不会复活）；更高版本发布后自然重新提示，
+     * 「怎么用 → 检查更新」的手动路径也照常能找到它。
+     */
     fun dismiss() {
+        val info = when (val s = _state.value) {
+            is UpdateState.Available -> s.info
+            is UpdateState.Ready -> s.info
+            is UpdateState.Error -> s.info
+            is UpdateState.Downloading -> s.info
+            else -> null
+        }
+        if (info != null) prefs.edit().putLong(KEY_DISMISSED, info.versionCode).apply()
         _state.value = UpdateState.Idle
     }
 
@@ -192,6 +233,8 @@ class Updater(private val context: Context) {
 
     companion object {
         private const val KEY_LAST_CHECK = "last-check"
+        /** 被用户叉掉的最高 versionCode（含），静默检查跳过它及更低版本 */
+        private const val KEY_DISMISSED = "dismissed-version"
         private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
         val MANIFEST_URLS = listOf(
             "https://cdn.jsdelivr.net/gh/L0stInFades/echo-read@main/android/update.json",

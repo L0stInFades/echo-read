@@ -45,7 +45,7 @@ fun Modifier.driveHorizontally(
     onDragStart: () -> Unit = {},
     onTap: ((position: Offset, size: IntSize) -> Unit)? = null,
     onSettle: (velocityPxPerSec: Float) -> Unit,
-): Modifier = driveAxis(driver, Orientation.Horizontal, enabled, bounds, onDragStart, onTap, onSettle)
+): Modifier = driveAxis(driver, { Orientation.Horizontal }, enabled, bounds, { 1f }, onDragStart, onTap, onSettle)
 
 /** 垂直手势绑定（底部弹层）：语义与 [driveHorizontally] 完全一致 */
 fun Modifier.driveVertically(
@@ -54,13 +54,34 @@ fun Modifier.driveVertically(
     bounds: () -> ClosedFloatingPointRange<Float>,
     onDragStart: () -> Unit = {},
     onSettle: (velocityPxPerSec: Float) -> Unit,
-): Modifier = driveAxis(driver, Orientation.Vertical, enabled, bounds, onDragStart, null, onSettle)
+): Modifier = driveAxis(driver, { Orientation.Vertical }, enabled, bounds, { 1f }, onDragStart, null, onSettle)
+
+/**
+ * 轴向可配置的翻页手势绑定（阅读器专用）。
+ *
+ * [axis] 返回 null 表示「关闭滑动翻页」——此时仍然识别点按（点读 / 点击热区翻页），
+ * 但任何超过 slop 的位移都被放弃，绝不接管。
+ *
+ * 轴向与 slop 都在**每次手势开始时读一次**：设置里换方向不会重启手势协程
+ * （`pointerInput` 的 key 必须恒定，见下方说明），进行中的那一次拖动也不会中途变轴。
+ */
+fun Modifier.drivePaging(
+    driver: MotionDriver,
+    axis: () -> Orientation?,
+    enabled: () -> Boolean,
+    bounds: () -> ClosedFloatingPointRange<Float>,
+    slopScale: () -> Float = { 1f },
+    onDragStart: () -> Unit = {},
+    onTap: ((position: Offset, size: IntSize) -> Unit)? = null,
+    onSettle: (velocityPxPerSec: Float) -> Unit,
+): Modifier = driveAxis(driver, axis, enabled, bounds, slopScale, onDragStart, onTap, onSettle)
 
 private fun Modifier.driveAxis(
     driver: MotionDriver,
-    orientation: Orientation,
+    axis: () -> Orientation?,
     enabled: () -> Boolean,
     bounds: () -> ClosedFloatingPointRange<Float>,
+    slopScale: () -> Float,
     onDragStart: () -> Unit,
     onTap: ((Offset, IntSize) -> Unit)?,
     onSettle: (Float) -> Unit,
@@ -100,11 +121,13 @@ private fun Modifier.driveAxis(
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false)
             if (!enabled()) return@awaitEachGesture
+            // 本次手势的轴向与阈值：开始时读一次，中途改设置不影响进行中的这一次
+            val orientation = axis()
             val tracker = VelocityTracker()
             tracker.addPointerInputChange(down)
             // 自己等 slop：官方的 awaitXxxTouchSlopOrCancellation 用一个 null 同时表示「抬手」「被别人消费」
             // 「另一轴移动过大」，三者不能混为一谈 —— 否则一次纵向滑动会被当成点按去翻页 / 点读。
-            val slop = viewConfiguration.touchSlop
+            val slop = viewConfiguration.touchSlop * slopScale().coerceIn(0.5f, 3f)
             var travel = Offset.Zero
             var overSlop = 0f
             var dragging = false
@@ -120,6 +143,11 @@ private fun Modifier.driveAxis(
                 }
                 tracker.addPointerInputChange(ch)
                 travel += ch.positionChange()
+                if (orientation == null) {
+                    // 滑动翻页已关闭：不接管任何拖动，超过 slop 就放弃本次手势（也不再算点按）
+                    if (travel.getDistance() > slop) break
+                    continue
+                }
                 val main = axisOf(travel, orientation)
                 if (abs(main) > slop) {
                     overSlop = main - sign(main) * slop
@@ -130,7 +158,7 @@ private fun Modifier.driveAxis(
                 // 另一轴明显主导：既不接管也不算点按，把手势让给别人
                 if (abs(crossAxisOf(travel, orientation)) > slop * 1.5f) break
             }
-            if (!dragging) {
+            if (!dragging || orientation == null) {
                 if (tapped && onTap != null) onTap(down.position, size)
                 return@awaitEachGesture
             }

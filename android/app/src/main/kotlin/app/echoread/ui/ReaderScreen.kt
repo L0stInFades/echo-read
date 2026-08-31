@@ -11,6 +11,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,7 +34,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -85,6 +87,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import app.echoread.AppGraph
 import app.echoread.core.BookMeta
+import app.echoread.core.GestureSettings
+import app.echoread.core.PageAxis
 import app.echoread.core.PlayerState
 import app.echoread.core.Range
 import app.echoread.tts.SleepMode
@@ -93,7 +97,7 @@ import app.echoread.ui.motion.EchoTransitions
 import app.echoread.ui.motion.MotionDriver
 import app.echoread.ui.motion.PressScale
 import app.echoread.ui.motion.Haptics
-import app.echoread.ui.motion.driveHorizontally
+import app.echoread.ui.motion.drivePaging
 import app.echoread.ui.motion.echoPress
 import app.echoread.ui.motion.preemptable
 import app.echoread.ui.reader.ChapterPages
@@ -156,6 +160,12 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
     val sleepRemaining by player.sleepRemaining.collectAsState()
     val theme = readerThemeOf(reader.theme)
 
+    // 翻页手势配置。手势泵的 pointerInput key 恒定（业务状态绝不重启手势协程），
+    // 因此传进去的 lambda 只能经 State 读取可变配置 —— 直接捕获组合期的普通值会永远停在首帧的设置。
+    val gestures = reader.gestures
+    val gesturesRef = rememberUpdatedState(gestures)
+    val verticalPaging = gestures.axis == PageAxis.VERTICAL
+
     var meta by remember { mutableStateOf<BookMeta?>(null) }
     var loadFailed by remember { mutableStateOf(false) }
     var titles by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -185,6 +195,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
     var showChapters by remember { mutableStateOf(false) }
     var showStyle by remember { mutableStateOf(false) }
     var showTts by remember { mutableStateOf(false) }
+    var showGestures by remember { mutableStateOf(false) }
     var showSleep by remember { mutableStateOf(false) }
 
     SideEffect {
@@ -249,10 +260,29 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
         if (landed && req != null) request = null
     }
 
+    // 驱动器的「一个单位」= 翻页方向上的页面尺寸：横翻取宽、竖翻取高。
+    // 换方向并不改变页面尺寸，所以不能只靠 onSizeChanged 更新，必须跟着轴向一起重算，
+    // 否则竖翻时 1 个单位仍是页宽 —— 手指划过整页只推动 0.5 个单位，永远翻不过去。
+    LaunchedEffect(pageSize, verticalPaging) {
+        val unit = if (verticalPaging) pageSize.height else pageSize.width
+        if (unit > 0) driver.unitPx = unit.toFloat()
+    }
+
+    // 换轴瞬间把呈现值归零：若此刻还有未收敛的 settle 或橡皮筋回弹，
+    // 旧偏移是记在 X 上的，换轴后按 Y 解读，三张页面画布会整体跳一下。
+    LaunchedEffect(verticalPaging) { preemptable { driver.snapTo(0f) } }
+
     // 排版规格去抖：字号/行距滑块每像素回调不再触发整章重排；首屏不等待
     LaunchedEffect(bookId) {
-        // haptics 不影响排版：归一化掉，切换触觉开关不重排整章
-        snapshotFlow { if (pageSize.width > 0 && pageSize.height > 0) LayoutSpec(reader.copy(haptics = true), pageSize.width, pageSize.height) else null }
+        // haptics / 手势 / 动态取色都不影响正文排版：一律归一化掉。
+        // LayoutSpec 持有整个 ReaderSettings 并按结构相等比较，不归一化的话，
+        // 拖一下热区滑块、或切一下动态取色，就会把当前章连同前后邻章一起重排 + 交叉淡入
+        //（长章数百毫秒的卡顿）。正文颜色只跟阅读主题 reader.theme 走，与应用配色无关。
+        snapshotFlow {
+            if (pageSize.width > 0 && pageSize.height > 0) {
+                LayoutSpec(reader.copy(haptics = true, gestures = GestureSettings(), dynamicColor = false), pageSize.width, pageSize.height)
+            } else null
+        }
             .filterNotNull()
             .distinctUntilChanged()
             .debounce { if (spec == null) 0L else 90L }
@@ -458,24 +488,40 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
         }
     }
 
+    /**
+     * 轻点裁决：先看「点击翻页热区」，落在热区外才是点读。
+     * 热区的轴向与两端占比都可在「翻页手势」设置里调（默认左右各 20%，与 0.1.x 完全一致）。
+     */
     fun handleTap(pos: Offset, sz: IntSize) {
-        val w = sz.width.toFloat()
-        when {
-            pos.x < w * 0.2f -> pager.flip(-1)
-            pos.x > w * 0.8f -> pager.flip(1)
-            else -> {
-                // 滑动/回弹进行中不接受点读：此刻模型页与画面上的页可能不是同一页
-                if (driver.isDragging || driver.isSettling) return
-                val ref = pager.anchor
-                val p = window.pagesOf(ref.chapter) ?: return
-                val cur = ref.page.coerceIn(0, p.pageCount - 1)
-                val top = p.pageTop(cur)
-                val lastLine = p.pages[cur].last
-                if (pos.y + top > p.layout.getLineBottom(lastLine)) return
-                val r = p.layout.getOffsetForPosition(Offset(pos.x, pos.y + top))
-                playFrom(p.toChapter(r))
+        val g = gestures
+        if (g.zonesActive) {
+            val vertical = g.tapAxis == PageAxis.VERTICAL
+            val extent = (if (vertical) sz.height else sz.width).toFloat()
+            val at = if (vertical) pos.y else pos.x
+            if (extent > 0f) {
+                // 起始边（左/上）默认 = 上一页；invertZones 时互换
+                val startDelta = if (g.invertZones) 1 else -1
+                if (g.prevZone > 0.001f && at < g.prevZone * extent) {
+                    pager.flip(startDelta)
+                    return
+                }
+                if (g.nextZone > 0.001f && at > extent - g.nextZone * extent) {
+                    pager.flip(-startDelta)
+                    return
+                }
             }
         }
+        if (!g.tapToRead) return
+        // 滑动/回弹进行中不接受点读：此刻模型页与画面上的页可能不是同一页
+        if (driver.isDragging || driver.isSettling) return
+        val ref = pager.anchor
+        val p = window.pagesOf(ref.chapter) ?: return
+        val cur = ref.page.coerceIn(0, p.pageCount - 1)
+        val top = p.pageTop(cur)
+        val lastLine = p.pages[cur].last
+        if (pos.y + top > p.layout.getLineBottom(lastLine)) return
+        val r = p.layout.getOffsetForPosition(Offset(pos.x, pos.y + top))
+        playFrom(p.toChapter(r))
     }
     val tapRef = rememberUpdatedState<(Offset, IntSize) -> Unit>({ p, s -> handleTap(p, s) })
 
@@ -559,7 +605,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
             }
             // 排版中的细进度线（固定占位，不改变正文高度）
             Box(Modifier.fillMaxWidth().height(2.dp)) {
-                if (laying) ThinProgressLine(c.accent, Modifier.fillMaxWidth())
+                if (laying) ThinProgressLine(theme.accent, Modifier.fillMaxWidth())
             }
 
             // 页面区域：页面画布与页脚上下分列（页脚不与正文重叠），画布实际尺寸即分页高度
@@ -573,14 +619,19 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                             .weight(1f)
                             .clipToBounds()
                             .testTag("reader.page")
-                            .onSizeChanged {
-                                if (pageSize != it) pageSize = it
-                                if (it.width > 0) driver.unitPx = it.width.toFloat()
-                            }
-                            .driveHorizontally(
+                            .onSizeChanged { if (pageSize != it) pageSize = it }
+                            .drivePaging(
                                 driver = driver,
+                                axis = {
+                                    when (gesturesRef.value.axis) {
+                                        PageAxis.HORIZONTAL -> Orientation.Horizontal
+                                        PageAxis.VERTICAL -> Orientation.Vertical
+                                        PageAxis.OFF -> null
+                                    }
+                                },
                                 enabled = { true },
                                 bounds = { pager.bounds() },
+                                slopScale = { gesturesRef.value.slopScale },
                                 onDragStart = { pager.beginManual() },
                                 onTap = { pos, sz -> tapRef.value(pos, sz) },
                                 onSettle = { v -> pager.settle(v) },
@@ -602,7 +653,10 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                                             .fillMaxSize()
                                             .graphicsLayer {
                                                 val v = driver.value
-                                                translationX = (slot - v) * size.width
+                                                // 两个轴都显式赋值：换方向时另一轴必须归零，不能依赖图层属性的复位时机
+                                                val off = slot - v
+                                                translationX = if (verticalPaging) 0f else off * size.width
+                                                translationY = if (verticalPaging) off * size.height else 0f
                                                 alpha = when {
                                                     slot == 0 -> if (pager.outgoing != null) pager.fade.value else 1f
                                                     abs(v) > 0.0005f -> 1f
@@ -702,14 +756,31 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                         Text(
                             statusText,
                             color = when {
-                                snap.retryNote.isNotEmpty() && snap.bookId == bookId -> Color(0xFFFBBF24)
-                                playing && follow == Follow.DETACHED -> c.accent
+                                snap.retryNote.isNotEmpty() && snap.bookId == bookId -> warningColor(theme.isDark)
+                                playing && follow == Follow.DETACHED -> theme.accent
                                 else -> theme.text
                             },
                             fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis
                         )
-                        Spacer(Modifier.height(6.dp))
-                        GradientBar(chapterProgress, Modifier.fillMaxWidth(), height = 2.dp, track = theme.text.copy(alpha = 0.12f))
+                        Spacer(Modifier.height(4.dp))
+                        // 播放中用 M3 Expressive 的波形进度条：波在动 = 正在出声，一眼可辨。
+                        // 只在 playing 时用它——暂停时退回静态细条，且应用不可见时 Compose 本就不出帧，
+                        // 因此不会重蹈「60fps 常驻动画耗电」的覆辙（见 PageCanvas 里同样的取舍）。
+                        if (playing) {
+                            LinearWavyProgressIndicator(
+                                progress = { chapterProgress },
+                                modifier = Modifier.fillMaxWidth(),
+                                color = theme.accent,
+                                trackColor = theme.text.copy(alpha = 0.12f),
+                                // waveSpeed = 0：保留波形轮廓，但关掉「波纹逐帧行进」那条常驻动画。
+                                // 听书的典型场景就是屏幕常亮跟读数小时，一条每 vsync 重算 Path 的动画
+                                // 正是本文件里 PageCanvas 注释明确否掉过的耗电模式。进度本身仍在推进，
+                                // 换段时条会前进，动态感不丢。
+                                waveSpeed = 0.dp
+                            )
+                        } else {
+                            GradientBar(chapterProgress, Modifier.fillMaxWidth(), height = 2.dp, track = theme.text.copy(alpha = 0.12f))
+                        }
                     }
                     Spacer(Modifier.width(6.dp))
                     IconButtonEcho(EchoIcons.SkipPrev, "上一章", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = pager.anchor.chapter > 0) { gotoChapter(pager.anchor.chapter - 1) }
@@ -720,7 +791,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     } else {
                         Text(
                             if (sleepMode === SleepMode.Chapter) "本章" else "%d:%02d".format(java.util.Locale.ROOT, sleepRemaining / 60, sleepRemaining % 60),
-                            color = c.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            color = theme.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                             modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showSleep = !showSleep }.padding(horizontal = 6.dp, vertical = 8.dp)
                         )
                     }
@@ -737,7 +808,12 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
             onClose = { showChapters = false }, onSelect = { gotoChapter(it) }
         )
         LaunchedEffect(showChapters) { if (showChapters && titles.isEmpty()) titles = graph.library.chapterTitles(bookId) }
-        ReaderStyleSheet(open = showStyle, graph = graph) { showStyle = false }
+        ReaderStyleSheet(
+            open = showStyle,
+            graph = graph,
+            onOpenGestures = { showStyle = false; showGestures = true }
+        ) { showStyle = false }
+        GestureSettingsSheet(open = showGestures, graph = graph) { showGestures = false }
         TtsSettingsSheet(open = showTts, graph = graph) { showTts = false }
     }
 }
@@ -889,8 +965,9 @@ private fun PlayButton(playing: Boolean, busy: Boolean, onClick: () -> Unit) {
                 .background(brush, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            if (busy) CircularProgressIndicator(color = Color.White, strokeWidth = 2.5.dp, modifier = Modifier.size(20.dp))
-            else Icon(if (playing) EchoIcons.Pause else EchoIcons.Play, if (playing) "暂停" else "播放", tint = Color.White, modifier = Modifier.size(22.dp))
+            val onBrush = echo.onAccent
+            if (busy) LoadingIndicator(modifier = Modifier.size(24.dp), color = onBrush)
+            else Icon(if (playing) EchoIcons.Pause else EchoIcons.Play, if (playing) "暂停" else "播放", tint = onBrush, modifier = Modifier.size(22.dp))
         }
     }
 }

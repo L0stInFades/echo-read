@@ -205,6 +205,26 @@ object EpubParser {
     }
 
     /**
+     * 只读书名/作者（导入列表的预览用）：走 zip 中央目录 + container.xml + OPF 元数据，
+     * 不解压正文、不抽章节、不解码封面。任何异常都返回 null —— 预览失败不该影响这本书能否导入。
+     */
+    fun peekMeta(file: File): Pair<String, String>? = try {
+        ZipFile(file).use { zip ->
+            val containerXml = zip.readText("META-INF/container.xml")
+            val opfPath = containerXml?.let {
+                Jsoup.parse(it, "", Parser.xmlParser()).allElements.firstOrNull { e -> e.localName() == "rootfile" }?.attr("full-path")
+            }
+            val opfXml = if (opfPath.isNullOrEmpty()) null else zip.readText(opfPath)
+            if (opfXml == null) null else {
+                val opf = parseOpf(opfXml, opfPath!!)
+                if (opf.title.isBlank() || opf.title == "未命名") null else opf.title to opf.author
+            }
+        }
+    } catch (_: Throwable) {
+        null
+    }
+
+    /**
      * 解析 EPUB 文件。coverScaler 把原始封面图字节缩放为缩略 JPEG（Android 侧用 BitmapFactory，
      * 单测传 null 或原样返回），解析核心保持纯 JVM。
      */

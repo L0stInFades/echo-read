@@ -31,7 +31,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ContainedLoadingIndicator
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -97,14 +98,10 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
     var sort by remember { mutableStateOf(SortMode.RECENT) }
     var showSettings by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
+    var showImport by remember { mutableStateOf(false) }
     var actionBook by remember { mutableStateOf<BookMeta?>(null) }
 
     LaunchedEffect(Unit) { library.refresh() }
-
-    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
-        if (uris.isNotEmpty()) graph.pendingImports.update { it + uris }
-    }
-    val pickFiles = { picker.launch(arrayOf("text/plain", "application/epub+zip", "application/octet-stream", "*/*")) }
 
     fun openSample() = scope.launch {
         try {
@@ -197,7 +194,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(Modifier.size(38.dp).background(rememberAurora(), CircleShape), contentAlignment = Alignment.Center) {
-                            Icon(EchoIcons.Key, null, tint = Color.White, modifier = Modifier.size(17.dp))
+                            Icon(EchoIcons.Key, null, tint = c.onAccent, modifier = Modifier.size(17.dp))
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
@@ -221,6 +218,8 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                         Spacer(Modifier.height(6.dp))
                         Text("导入 TXT 或 EPUB 书籍，轻点任意文字，\nAI 便从那里开始为你朗读", color = c.text2, fontSize = 13.sp, lineHeight = 20.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         Spacer(Modifier.height(24.dp))
+                        GradientButton("导入第一本书", height = 46.dp) { showImport = true }
+                        Spacer(Modifier.height(10.dp))
                         OutlineButton("没有书？先听示例 →", Modifier.testTag("shelf.sample")) { openSample() }
                         Spacer(Modifier.height(12.dp))
                         Text("怎么用？", color = c.text3, fontSize = 12.sp, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showHelp = true }.padding(6.dp))
@@ -327,7 +326,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
 
         // 底部主动作：拇指可达的「导入」
         Box(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 22.dp).zIndex(10f)) {
-            GradientButton("导入书籍", icon = EchoIcons.Plus, height = 52.dp, modifier = Modifier.shadow(20.dp, CircleShape, spotColor = c.accent.copy(alpha = 0.55f))) { pickFiles() }
+            GradientButton("导入书籍", icon = EchoIcons.Plus, height = 52.dp, modifier = Modifier.testTag("shelf.import").shadow(20.dp, CircleShape, spotColor = c.accent.copy(alpha = 0.55f))) { showImport = true }
         }
 
         // 导入中遮罩
@@ -341,12 +340,13 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                 Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).echoTap {},
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
             ) {
-                CircularProgressIndicator(color = c.accent, strokeWidth = 2.5.dp, modifier = Modifier.size(38.dp))
+                ContainedLoadingIndicator(modifier = Modifier.size(56.dp))
                 Spacer(Modifier.height(14.dp))
                 Text("正在解析书籍…", color = Color.White.copy(alpha = 0.8f), fontSize = 13.sp)
             }
         }
 
+        ImportSheet(open = showImport, graph = graph) { showImport = false }
         TtsSettingsSheet(open = showSettings, graph = graph) { showSettings = false }
         HelpSheet(open = showHelp, graph = graph) { showHelp = false }
         BookActionSheet(book = actionBook, onClose = { actionBook = null }, onOpen = { b -> actionBook = null; onOpenBook(b.id) }) { b ->
@@ -385,8 +385,16 @@ private fun UpdateCard(graph: AppGraph) {
                 is UpdateState.Error -> s.info
                 else -> null
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.Top) {
                 Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (info?.experimental == true) {
+                            Text(
+                                "实验版", color = warningColor(c.isDark), fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(end = 6.dp).background(warningColor(c.isDark).copy(alpha = 0.16f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
                     Text(
                         when (s) {
                             is UpdateState.Ready -> "新版本 v${info?.versionName} 已下载"
@@ -404,7 +412,7 @@ private fun UpdateCard(graph: AppGraph) {
                 }
                 Spacer(Modifier.width(10.dp))
                 when (s) {
-                    is UpdateState.Downloading -> CircularProgressIndicator(progress = { s.progress }, color = c.accent, trackColor = c.border, strokeWidth = 3.dp, modifier = Modifier.size(30.dp))
+                    is UpdateState.Downloading -> LoadingIndicator(progress = { s.progress }, modifier = Modifier.size(34.dp), color = c.accent)
                     is UpdateState.Ready -> GradientButton("安装", height = 38.dp, fontSize = 13) {
                         if (!graph.updater.install(context, s.file)) Toaster.show("请允许 EchoRead 安装应用，然后回来点「安装」", durationMs = 4000)
                     }
@@ -412,9 +420,21 @@ private fun UpdateCard(graph: AppGraph) {
                     is UpdateState.Error -> if (info != null) GradientButton("重试", height = 38.dp, fontSize = 13) { scope.launch { graph.updater.download(info) } }
                     else -> {}
                 }
+                // 可以叉掉：按版本永久忽略，重启也不会再弹。手动「检查更新」仍能找到它。
+                if (s !is UpdateState.Downloading) {
+                    IconButtonEcho(EchoIcons.Close, "忽略这一版更新", size = 30.dp, iconSize = 15.dp, tint = c.text3) { graph.updater.dismiss() }
+                }
             }
-            if (s is UpdateState.Available || s is UpdateState.Error) {
-                Text("稍后再说", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp).echoPress(pressedScale = PressScale.Chip) { graph.updater.dismiss() })
+            if (info?.experimental == true) {
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.Top) {
+                    Icon(EchoIcons.Warning, null, tint = warningColor(c.isDark), modifier = Modifier.size(14.dp).padding(top = 1.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        "实验版：界面与手势改动较大，可能有未发现的问题。不想升级就点右上角的 ✕，之后不会再提醒这一版。",
+                        color = c.text3, fontSize = 11.sp, lineHeight = 16.sp
+                    )
+                }
             }
         }
     }
