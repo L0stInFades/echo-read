@@ -5,6 +5,9 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -30,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
@@ -118,14 +122,23 @@ fun EchoCard(
 fun SectionLabel(text: String, modifier: Modifier = Modifier, trailing: (@Composable RowScope.() -> Unit)? = null) {
     val c = echo
     Row(modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Text(text, color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium, letterSpacing = 1.sp, modifier = Modifier.weight(1f))
+        // labelMedium + 1sp 字距：小节标签靠「小而宽」与正文拉开层级，而不是靠字重
+        Text(text, color = c.text3, style = MaterialTheme.typography.labelMedium, letterSpacing = 1.sp, modifier = Modifier.weight(1f))
         trailing?.invoke(this)
     }
 }
 
 /* ---------- 按钮 ---------- */
 
-/** 圆形图标按钮（按压回弹，无水波纹）。命中区恒为 [size]，缩放只发生在其内部。 */
+/**
+ * 图标按钮。
+ *
+ * **绘制尺寸与触控尺寸是两件事**：[size] 只决定画多大（阅读器底栏为了密度用 36dp，
+ * 更新卡片的关闭用 30dp），而指针命中区始终不小于 [touchSize]。
+ * Material 的可访问性下限是 48dp —— 低于它的目标在真机上明显难点中，
+ * 尤其是「忽略这一版更新」这种一旦点偏就要重新等下一次提示的操作。
+ * 实现上把 `.size(size)` 的可视圆放在内层，外层单独撑到 48dp 并承载点击。
+ */
 @Composable
 fun IconButtonEcho(
     icon: ImageVector,
@@ -136,11 +149,12 @@ fun IconButtonEcho(
     iconSize: Dp = 20.dp,
     background: Color = Color.Transparent,
     enabled: Boolean = true,
+    touchSize: Dp = 48.dp,
     onClick: () -> Unit
 ) {
     Box(
         modifier
-            .size(size)
+            .size(maxOf(size, touchSize))
             .graphicsLayer {
                 alpha = if (enabled) 1f else 0.3f
                 compositingStrategy = CompositingStrategy.ModulateAlpha
@@ -151,11 +165,15 @@ fun IconButtonEcho(
                 pressedAlpha = 0.6f,
                 onClickLabel = contentDescription,
                 onClick = onClick
-            )
-            .background(background, CircleShape),
+            ),
         contentAlignment = Alignment.Center
     ) {
-        Icon(icon, contentDescription, tint = tint, modifier = Modifier.size(iconSize))
+        Box(
+            Modifier.size(size).background(background, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, contentDescription, tint = tint, modifier = Modifier.size(iconSize))
+        }
     }
 }
 
@@ -181,7 +199,9 @@ fun GradientButton(
                 alpha = if (enabled) 1f else 0.6f
                 compositingStrategy = CompositingStrategy.ModulateAlpha
             }
-            .echoPress(enabled = enabled, pressedScale = PressScale.Button, onClick = onClick)
+            // 按下时胶囊向 16dp 圆角形变 —— M3 Expressive 的 pressedShape 就是这个手法，
+            // 且与缩放共用同一条弹簧，两者严格同相。
+            .echoPress(enabled = enabled, pressedScale = PressScale.Button, pressedCorner = Radius.md, onClick = onClick)
             .background(brush, CircleShape)
             .padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -191,7 +211,7 @@ fun GradientButton(
             Icon(icon, null, tint = onBrush, modifier = Modifier.size(16.dp))
             Spacer(Modifier.width(6.dp))
         }
-        Text(text, color = onBrush, fontSize = fontSize.sp, fontWeight = FontWeight.SemiBold)
+        Text(text, color = onBrush, fontSize = fontSize.sp, style = MaterialTheme.typography.labelLargeEmphasized)
     }
 }
 
@@ -208,7 +228,7 @@ fun OutlineButton(text: String, modifier: Modifier = Modifier, color: Color = ec
             .padding(horizontal = 20.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(text, color = color, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Text(text, color = color, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
     }
 }
 
@@ -226,18 +246,22 @@ fun Chip(
     val bg by animateColorAsState(if (selected) c.accentSoft else Color.Transparent, colorSpec, label = "chipBg")
     val fg by animateColorAsState(if (selected) c.accent else c.text2, colorSpec, label = "chipFg")
     val border by animateColorAsState(if (selected) c.accent else c.border, colorSpec, label = "chipBorder")
+    // 单选场景已经全部迁到 EchoSegmented，留在 Chip 的都是真正的「筛选」（音色语言、模型、导入类型）。
+    // 于是形状可以承担语义：**胶囊 = 动作，8dp = 筛选/选择，20/28dp = 容器**。
+    // 8dp 也正是 M3 FilterChip 的默认圆角，不是随手取的值。
+    val shape = RoundedCornerShape(Radius.sm)
     Row(
         modifier
             .echoPress(pressedScale = PressScale.Chip, onClick = onClick)
-            .border(1.dp, border, CircleShape)
-            .background(bg, CircleShape)
+            .border(1.dp, border, shape)
+            .background(bg, shape)
             .padding(horizontal = 11.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text, color = fg, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(text, color = fg, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         if (trailing != null) {
             Spacer(Modifier.width(3.dp))
-            Text(trailing, color = trailingColor ?: fg.copy(alpha = 0.6f), fontSize = 11.sp)
+            Text(trailing, color = trailingColor ?: fg.copy(alpha = 0.6f), style = MaterialTheme.typography.labelSmall)
         }
     }
 }
@@ -262,10 +286,10 @@ fun OptionTile(
             .border(1.dp, border, RoundedCornerShape(Radius.md))
             .padding(horizontal = 14.dp, vertical = 12.dp)
     ) {
-        Text(title, color = c.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, style = titleStyle)
+        Text(title, color = c.text, style = MaterialTheme.typography.bodyMedium.merge(titleStyle), fontWeight = FontWeight.SemiBold)
         if (subtitle != null) {
             Spacer(Modifier.height(2.dp))
-            Text(subtitle, color = c.text2, fontSize = 11.sp, lineHeight = 14.sp)
+            Text(subtitle, color = c.text2, style = MaterialTheme.typography.labelSmall, lineHeight = 14.sp)
         }
     }
 }
@@ -296,7 +320,7 @@ fun EchoTextField(
     val c = echo
     Column(modifier) {
         if (label != null) {
-            Text(label, color = c.text2, fontSize = 12.sp, modifier = Modifier.padding(bottom = 5.dp))
+            Text(label, color = c.text2, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(bottom = 5.dp))
         }
         Row(
             Modifier
@@ -523,8 +547,13 @@ fun BoxScope.EchoSheet(
         Modifier
             .align(Alignment.BottomCenter)
             .zIndex(50f)
+            // 宽度封顶：折叠屏展开态与平板上，一张横贯整个窗口的弹层既难读也不符合 M3 的容器观。
+            // 640dp 是 BottomSheetDefaults.SheetMaxWidth 的取值。
+            .widthIn(max = 640.dp)
             .fillMaxWidth()
-            .fillMaxHeight(maxHeightFraction)
+            // 高度改为「最多这么高」而不是「就是这么高」：内容少的弹层不再撑出一大片空白。
+            // maxHeightFraction 仍是天花板，交互（拖拽单位、结算阈值）完全不变。
+            .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * maxHeightFraction)
             .onSizeChanged { if (it.height > 0) driver.unitPx = it.height.toFloat() }
             .graphicsLayer { translationY = (1f - driver.value.coerceIn(-0.05f, 1.3f)) * size.height }
             .nestedScroll(nested)
@@ -533,10 +562,22 @@ fun BoxScope.EchoSheet(
             .border(1.dp, c.border, shape)
             .imePadding()
     ) {
-        Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
-            Box(Modifier.align(Alignment.CenterHorizontally).width(36.dp).height(4.dp).background(c.text3.copy(alpha = 0.5f), CircleShape))
-            Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 12.dp, top = 8.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(title, color = c.text, fontSize = 17.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+        Column(Modifier.fillMaxWidth()) {
+            // 抓手不只是装饰：给它 48dp 的可点区与「关闭」语义，
+            // 否则它看起来可交互、实际却只是一根画上去的线，读屏也完全读不到。
+            Box(
+                Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .height(28.dp)
+                    .width(72.dp)
+                    .echoPress(pressedScale = PressScale.Chip, onClickLabel = "关闭", onClick = onDismiss),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(Modifier.width(36.dp).height(4.dp).background(c.text3.copy(alpha = 0.5f), CircleShape))
+            }
+            Row(Modifier.fillMaxWidth().padding(start = 22.dp, end = 12.dp, top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                // 弹层标题是这块面的主角，用 Expressive 的强调级字体 —— 这正是 Emphasized 阶梯存在的意义
+                Text(title, color = c.text, style = MaterialTheme.typography.titleMediumEmphasized, modifier = Modifier.weight(1f))
                 IconButtonEcho(EchoIcons.Close, "关闭", size = 36.dp, iconSize = 18.dp, onClick = onDismiss)
             }
         }

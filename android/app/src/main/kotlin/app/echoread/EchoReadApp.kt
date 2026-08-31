@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.net.Uri
 import app.echoread.data.AccessTier
+import app.echoread.data.AndroidNetworkStatus
 import app.echoread.data.BookCandidate
 import app.echoread.data.BookScanner
 import app.echoread.data.ChapterCache
@@ -37,7 +38,8 @@ class AppGraph(context: Context) {
     val audioCache = AudioCache(File(context.cacheDir, "tts-audio"))
     val systemTts = SystemTts(context)
     val playback = Playback(context)
-    val engine = TtsEngine(mainScope, chapterCache, audioCache, systemTts, playback, File(context.cacheDir, "tts-tmp"))
+    val network = AndroidNetworkStatus(context)
+    val engine = TtsEngine(mainScope, chapterCache, audioCache, systemTts, playback, File(context.cacheDir, "tts-tmp"), network)
     val player = PlayerController(engine, library, settings, mainScope)
     val updater = Updater(context)
 

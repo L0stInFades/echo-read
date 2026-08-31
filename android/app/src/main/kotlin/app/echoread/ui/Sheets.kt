@@ -1,5 +1,9 @@
 package app.echoread.ui
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -24,6 +28,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -83,9 +88,9 @@ fun BoxScope.ChapterListSheet(open: Boolean, titles: List<String>, current: Int,
                         .padding(horizontal = 12.dp, vertical = 11.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("${i + 1}", color = c.text3, fontSize = 11.sp, modifier = Modifier.width(30.dp))
+                    Text("${i + 1}", color = c.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.width(30.dp))
                     Text(
-                        t, color = if (active) c.accent else c.text, fontSize = 14.sp,
+                        t, color = if (active) c.accent else c.text, style = MaterialTheme.typography.bodyMedium,
                         fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
                     )
@@ -116,23 +121,21 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: ()
             Icon(EchoIcons.SwipeH, null, tint = c.accent, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
-                Text("翻页手势", color = c.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text(gestureSummary(reader.gestures), color = c.text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text("翻页手势", color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                Text(gestureSummary(reader.gestures), color = c.text3, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Icon(EchoIcons.ChevronRight, null, tint = c.text3, modifier = Modifier.size(16.dp))
         }
         Spacer(Modifier.height(18.dp))
 
-        SectionLabel("外观") {
-            Text(if (reader.dynamicColor) "跟随壁纸" else "品牌配色", color = c.text3, fontSize = 11.sp)
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("品牌配色", selected = !reader.dynamicColor, modifier = Modifier.weight(1f)) { graph.settings.updateReader { r -> r.copy(dynamicColor = false) } }
-            Chip("动态取色", selected = reader.dynamicColor, modifier = Modifier.weight(1f)) { graph.settings.updateReader { r -> r.copy(dynamicColor = true) } }
+        // 标签右侧不再重复当前值：分段控件本身就把「选中的是哪一个」画出来了
+        SectionLabel("外观")
+        EchoSegmented("品牌配色", "动态取色", firstSelected = !reader.dynamicColor) { brand ->
+            graph.settings.updateReader { r -> r.copy(dynamicColor = !brand) }
         }
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
             Spacer(Modifier.height(6.dp))
-            Text("动态取色需要 Android 12 及以上", color = c.text3, fontSize = 11.sp)
+            Text("动态取色需要 Android 12 及以上", color = c.text3, style = MaterialTheme.typography.labelSmall)
         }
         Spacer(Modifier.height(18.dp))
 
@@ -151,34 +154,48 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: ()
                         contentAlignment = Alignment.Center
                     ) { Text("文", color = t.text, fontWeight = FontWeight.Bold, fontSize = 15.sp) }
                     Spacer(Modifier.height(5.dp))
-                    Text(t.label, color = if (selected) c.accent else c.text2, fontSize = 11.sp)
+                    Text(t.label, color = if (selected) c.accent else c.text2, style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
         Spacer(Modifier.height(20.dp))
-        SectionLabel("字号") { Text("${reader.fontSize}sp", color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+        SectionLabel("字号") { Text("${reader.fontSize}sp", color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold) }
         EchoSlider(reader.fontSize.toFloat(), { v -> graph.settings.updateReader { r -> r.copy(fontSize = v.toInt()) } }, 14f..28f, steps = 13)
         Spacer(Modifier.height(12.dp))
-        SectionLabel("行距") { Text(String.format(java.util.Locale.ROOT, "%.1f", reader.lineHeight), color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+        SectionLabel("行距") { Text(String.format(java.util.Locale.ROOT, "%.1f", reader.lineHeight), color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold) }
         EchoSlider(reader.lineHeight, { v -> graph.settings.updateReader { r -> r.copy(lineHeight = (Math.round(v * 10) / 10f)) } }, 1.4f..2.6f, steps = 11)
         Spacer(Modifier.height(12.dp))
-        SectionLabel("段距") { Text(String.format(java.util.Locale.ROOT, "%.1f", reader.paraSpacing), color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+        SectionLabel("段距") { Text(String.format(java.util.Locale.ROOT, "%.1f", reader.paraSpacing), color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold) }
         EchoSlider(reader.paraSpacing, { v -> graph.settings.updateReader { r -> r.copy(paraSpacing = (Math.round(v * 10) / 10f)) } }, 0.4f..2f, steps = 15)
         Spacer(Modifier.height(16.dp))
         SectionLabel("字体")
-        Row(Modifier.fillMaxWidth().height(IntrinsicSize.Max), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OptionTile("宋体 / 衬线", null, reader.fontFamily == "serif", Modifier.weight(1f).fillMaxHeight(), TextStyle(fontFamily = FontFamily.Serif)) {
-                graph.settings.updateReader { r -> r.copy(fontFamily = "serif") }
-            }
-            OptionTile("黑体 / 无衬线", null, reader.fontFamily == "sans", Modifier.weight(1f).fillMaxHeight()) {
-                graph.settings.updateReader { r -> r.copy(fontFamily = "sans") }
-            }
+        // 二选一 → 连接式按钮组。字体名仍各自用对应字族渲染，选项本身就是预览。
+        Row(
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(androidx.compose.material3.ButtonGroupDefaults.ConnectedSpaceBetween)
+        ) {
+            val serif = reader.fontFamily == "serif"
+            androidx.compose.material3.ToggleButton(
+                checked = serif,
+                onCheckedChange = { if (it) graph.settings.updateReader { r -> r.copy(fontFamily = "serif") } },
+                modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
+                shapes = connectedShapesAt(0, 2),
+                border = if (serif) null else BorderStroke(1.dp, c.border)
+            ) { Text("宋体 / 衬线", fontFamily = FontFamily.Serif, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
+            androidx.compose.material3.ToggleButton(
+                checked = !serif,
+                onCheckedChange = { if (it) graph.settings.updateReader { r -> r.copy(fontFamily = "sans") } },
+                modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
+                shapes = connectedShapesAt(1, 2),
+                border = if (!serif) null else BorderStroke(1.dp, c.border)
+            ) { Text("黑体 / 无衬线", fontFamily = FontFamily.SansSerif, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
         }
         Spacer(Modifier.height(16.dp))
         SectionLabel("触觉反馈")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Chip("开", reader.haptics, Modifier.weight(1f)) { graph.settings.updateReader { r -> r.copy(haptics = true) } }
-            Chip("关", !reader.haptics, Modifier.weight(1f)) { graph.settings.updateReader { r -> r.copy(haptics = false) } }
+            EchoSegmented("开", "关", firstSelected = reader.haptics) { on ->
+                graph.settings.updateReader { r -> r.copy(haptics = on) }
+            }
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -189,8 +206,15 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: ()
 private sealed interface SyncState {
     data object Idle : SyncState
     data object Syncing : SyncState
-    data class Ok(val count: Int, val credits: SpeechApi.Credits?) : SyncState
-    data class Failed(val message: String) : SyncState
+    data class Ok(
+        val count: Int,
+        val credits: SpeechApi.Credits?,
+        /** 余额单独失败：连接本身仍算成功，但必须显示出来 —— /credits 的 401 常常是 Key 被吊销的最早证据 */
+        val creditsError: app.echoread.core.net.NetError? = null,
+        /** 首次带鉴权的请求 401、兜底的匿名请求却成功：配置很可能是坏的，只是这次被网关放行了 */
+        val suspiciousAuth: app.echoread.core.net.NetError? = null
+    ) : SyncState
+    data class Failed(val error: app.echoread.core.net.NetError) : SyncState
 }
 
 private val VENDOR_LABELS = mapOf(
@@ -251,14 +275,28 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
         if (cfg.apiKey.isBlank()) return
         sync = SyncState.Syncing
         try {
-            val list = SpeechApi.fetchTtsModels(cfg)
-            settings.setModels(list, settings.fingerprintOf(cfg))
+            val r = SpeechApi.fetchTtsModels(cfg)
+            // 只有真正解析成功才回写缓存。旧实现会把「HTTP 200 + 一张网关登录页」解析成空列表
+            // 并覆盖掉原本好好的模型缓存，再被 6 小时的新鲜度闸门挡住重试 —— 绿点后面空无一物。
+            settings.setModels(r.models, settings.fingerprintOf(cfg))
             val credits = SpeechApi.fetchCredits(cfg)
-            sync = SyncState.Ok(list.size, credits)
-            if (!silent) Toaster.success(if (list.isNotEmpty()) "已同步 ${list.size} 个语音模型" else "该服务未列出语音模型，可手动输入模型名")
-        } catch (e: Exception) {
-            sync = SyncState.Failed(e.message ?: "获取模型列表失败")
-            if (!silent) Toaster.error(e.message ?: "获取模型列表失败")
+            sync = SyncState.Ok(
+                count = r.models.size,
+                credits = credits.getOrNull(),
+                creditsError = credits.exceptionOrNull()?.let {
+                    app.echoread.core.net.NetErrors.fromThrowable(it, endpoint = cfg.baseUrl, kind = app.echoread.core.net.CallKind.CREDITS)
+                },
+                suspiciousAuth = r.suspiciousAuth
+            )
+            if (!silent) Toaster.success(if (r.models.isNotEmpty()) "已同步 ${r.models.size} 个语音模型" else "该服务未列出语音模型，可手动输入模型名")
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            val err = app.echoread.core.net.NetErrors.fromThrowable(
+                e, endpoint = cfg.baseUrl, method = "GET", kind = app.echoread.core.net.CallKind.MODEL_LIST, model = cfg.model
+            )
+            sync = SyncState.Failed(err)
+            if (!silent) ErrorDetails.toast(err)
         }
     }
 
@@ -269,7 +307,16 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
         val fp = settings.fingerprintOf(tts.openai)
         val stale = models.isEmpty() || settings.modelsFingerprint != fp || System.currentTimeMillis() - settings.modelsSyncedAt > 6 * 3600_000L
         if (stale) syncModels(tts.openai, silent = true)
-        else if (sync is SyncState.Idle) sync = SyncState.Ok(models.size, SpeechApi.fetchCredits(tts.openai))
+        else if (sync is SyncState.Idle) {
+            val credits = SpeechApi.fetchCredits(tts.openai)
+            sync = SyncState.Ok(
+                count = models.size,
+                credits = credits.getOrNull(),
+                creditsError = credits.exceptionOrNull()?.let {
+                    app.echoread.core.net.NetErrors.fromThrowable(it, endpoint = tts.openai.baseUrl, kind = app.echoread.core.net.CallKind.CREDITS)
+                }
+            )
+        }
     }
 
     fun runTest() {
@@ -284,7 +331,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
             if (!r.ok || r.audio == null) {
                 testing = false
                 testResult = r.message
-                Toaster.error(r.message)
+                r.error?.let { ErrorDetails.toast(it) } ?: Toaster.error(r.message)
                 return@launch
             }
             // 试听就得真的响：合成成功后立刻播出来（占用同一个播放器，先暂停正在朗读的引擎）
@@ -322,7 +369,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
         if (tts.provider == TtsProvider.OPENAI) {
             SectionLabel(if (isOpenRouter) "OpenRouter" else "API 配置") {
                 if (isOpenRouter) Text(
-                    "创建 Key →", color = c.accent, fontSize = 12.sp,
+                    "创建 Key →", color = c.accent, style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { runCatching { uriHandler.openUri("https://openrouter.ai/settings/keys") } }
                 )
             }
@@ -332,26 +379,43 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
             // 连接状态行：自动同步的结果 / 余额
             Spacer(Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                val (dot, text) = when (val st = sync) {
-                    SyncState.Idle -> (if (tts.openai.apiKey.isBlank()) c.text3 else c.text3) to (if (tts.openai.apiKey.isBlank()) "填入 Key 后自动同步模型与音色" else "等待同步…")
+                val st = sync
+                val (dot, text) = when (st) {
+                    SyncState.Idle -> c.text3 to (if (tts.openai.apiKey.isBlank()) "填入 Key 后自动同步模型与音色" else "等待同步…")
                     SyncState.Syncing -> c.accent to "正在同步模型列表…"
-                    is SyncState.Ok -> Color(0xFF34C759) to buildString {
-                        append(if (isOpenRouter) "已连接 OpenRouter" else "已连接")
-                        append(" · ${st.count} 个语音模型")
-                        st.credits?.let { append(" · 余额 $" + String.format(java.util.Locale.ROOT, "%.2f", it.remaining)) }
+                    is SyncState.Ok -> {
+                        // 有任何可疑信号就不给绿灯：一个「已连接」的绿点如果建立在未验证的字节上，
+                        // 比没有指示器更糟。
+                        val warn = st.suspiciousAuth != null || st.creditsError != null
+                        (if (warn) warningColor(c.isDark) else Color(0xFF34C759)) to buildString {
+                            append(if (isOpenRouter) "已连接 OpenRouter" else "已连接")
+                            append(" · ${st.count} 个语音模型")
+                            st.credits?.let { append(" · 余额 $" + String.format(java.util.Locale.ROOT, "%.2f", it.remaining)) }
+                            st.creditsError?.let { append(" · 余额获取失败（${it.badge()}）") }
+                            st.suspiciousAuth?.let { append(" · 鉴权可疑（${it.badge()}）") }
+                        }
                     }
-                    is SyncState.Failed -> c.danger to st.message
+                    is SyncState.Failed -> c.danger to st.error.headline()
                 }
                 Box(Modifier.size(7.dp).background(dot, CircleShape))
                 Spacer(Modifier.width(7.dp))
-                Text(text, color = if (sync is SyncState.Failed) c.danger else c.text2, fontSize = 12.sp, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(text, color = if (st is SyncState.Failed) c.danger else c.text2, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f), maxLines = 2, overflow = TextOverflow.Ellipsis)
+                // 「详情」始终可达：状态行放不下的原因（服务商原话、端点、响应体片段）都在里面
+                val detailFor = when (st) {
+                    is SyncState.Failed -> st.error
+                    is SyncState.Ok -> st.suspiciousAuth ?: st.creditsError
+                    else -> null
+                }
+                if (detailFor != null) {
+                    Text("详情", color = c.accent, style = MaterialTheme.typography.bodySmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { ErrorDetails.show(detailFor) }.padding(start = 8.dp))
+                }
                 if (sync !is SyncState.Syncing && tts.openai.apiKey.isNotBlank()) {
-                    Text("刷新", color = c.accent, fontSize = 12.sp, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { scope.launch { syncModels(tts.openai, silent = false) } }.padding(start = 8.dp))
+                    Text("刷新", color = c.accent, style = MaterialTheme.typography.bodySmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { scope.launch { syncModels(tts.openai, silent = false) } }.padding(start = 8.dp))
                 }
             }
             Spacer(Modifier.height(18.dp))
 
-            SectionLabel("模型") { if (models.isNotEmpty()) Text("${models.size} 个", color = c.text3, fontSize = 11.sp) }
+            SectionLabel("模型") { if (models.isNotEmpty()) Text("${models.size} 个", color = c.text3, style = MaterialTheme.typography.labelSmall) }
             if (models.isNotEmpty()) {
                 // OpenRouter 风格模型卡片：推荐优先，可按名称/厂商筛选
                 if (models.size > 6) {
@@ -390,19 +454,19 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                             // 厂商徽标：厂商名首字母，按厂商哈希配色
                             val hue = (app.echoread.core.Hash.cyrb53(vendorOf(m.id)).take(6).toLong(16) % 360).toFloat()
                             Box(Modifier.size(34.dp).background(Color.hsl(hue, 0.55f, if (c.isDark) 0.38f else 0.52f), RoundedCornerShape(9.dp)), contentAlignment = Alignment.Center) {
-                                Text(vendorLabel(m.id).take(1).uppercase(), color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text(vendorLabel(m.id).take(1).uppercase(), color = Color.White, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
                             }
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(m.name.substringAfter(": ").ifEmpty { m.name }, color = if (selected) c.accent else c.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                    Text(m.name.substringAfter(": ").ifEmpty { m.name }, color = if (selected) c.accent else c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                                     if (m.id.contains(":free")) Tag("免费", Color(0xFF34C759))
                                     if (h?.langs?.contains("中") == true) Tag("中文", c.accent)
                                     if (h?.cloning == true) Tag("克隆", Color(0xFFB47CFF))
                                 }
                                 Text(m.id, color = c.text3, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 val meta = listOfNotNull(priceLabel(m, m.id), h?.langs, if (voicesN > 0) "$voicesN 音色" else if (h?.freeVoice != null) "开放音色 ID" else null).joinToString(" · ")
-                                if (meta.isNotEmpty()) Text(meta, color = c.text2, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (meta.isNotEmpty()) Text(meta, color = c.text2, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                             }
                             if (selected) {
                                 Spacer(Modifier.width(6.dp))
@@ -410,7 +474,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                             }
                         }
                     }
-                    if (ordered.isEmpty()) item { Text("没有匹配的模型", color = c.text3, fontSize = 12.sp, modifier = Modifier.padding(8.dp)) }
+                    if (ordered.isEmpty()) item { Text("没有匹配的模型", color = c.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(8.dp)) }
                 }
                 Spacer(Modifier.height(8.dp))
             } else {
@@ -422,16 +486,16 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
             EchoTextField(model, { v -> settings.setModel(v.trim()) }, label = "模型 ID（可手动填写列表外的模型）", placeholder = "如 hexgrad/kokoro-82m")
             if (modelMeta.isNotEmpty()) {
                 Spacer(Modifier.height(6.dp))
-                Text(modelMeta, color = c.text3, fontSize = 11.sp, lineHeight = 16.sp)
+                Text(modelMeta, color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp)
             }
             Spacer(Modifier.height(18.dp))
 
-            SectionLabel("音色") { if (voiceCatalog.isNotEmpty()) Text("${voiceCatalog.size} 个" + if (settings.serverVoicesFor(model) != null) " · 来自 OpenRouter" else "", color = c.text3, fontSize = 11.sp) }
+            SectionLabel("音色") { if (voiceCatalog.isNotEmpty()) Text("${voiceCatalog.size} 个" + if (settings.serverVoicesFor(model) != null) " · 来自 OpenRouter" else "", color = c.text3, style = MaterialTheme.typography.labelSmall) }
             when {
                 freeVoice != null -> {
                     EchoTextField(tts.openai.voice, { v -> settings.setVoice(v.trim()) }, placeholder = freeVoice.placeholder)
                     Spacer(Modifier.height(8.dp))
-                    Text(freeVoice.hint, color = c.text3, fontSize = 11.sp, lineHeight = 16.sp)
+                    Text(freeVoice.hint, color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp)
                     if (hints.voiceOptional || freeVoice.suggestions.isNotEmpty()) {
                         Spacer(Modifier.height(8.dp))
                         FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -459,7 +523,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                             .verticalScrollCompat()
                     ) {
                         for (g in shownGroups) {
-                            if (shownGroups.size > 1) Text(g.label, color = c.text3, fontSize = 11.sp, modifier = Modifier.padding(bottom = 4.dp, top = 4.dp))
+                            if (shownGroups.size > 1) Text(g.label, color = c.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.padding(bottom = 4.dp, top = 4.dp))
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 for (v in g.voices) {
                                     Chip(
@@ -490,25 +554,25 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
             Spacer(Modifier.height(20.dp))
         }
 
-        SectionLabel("播放倍速") { Text(String.format(java.util.Locale.ROOT, "%.2f×", tts.rate), color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+        SectionLabel("播放倍速") { Text(String.format(java.util.Locale.ROOT, "%.2f×", tts.rate), color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold) }
         EchoSlider(tts.rate, { v -> settings.updateTts { it.copy(rate = (Math.round(v * 20) / 20f)) } }, 0.5f..2.5f, steps = 39)
         Spacer(Modifier.height(14.dp))
 
         Text(
             if (showAdvanced) "收起高级选项 ▲" else "高级选项 ▼",
-            color = c.text2, fontSize = 12.sp,
+            color = c.text2, style = MaterialTheme.typography.bodySmall,
             modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showAdvanced = !showAdvanced }.padding(vertical = 4.dp)
         )
         AnimatedVisibility(showAdvanced, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut) {
             EchoCard(Modifier.padding(top = 8.dp), radius = Radius.lg, padding = androidx.compose.foundation.layout.PaddingValues(14.dp), color = c.cardAlt) {
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("单片段字数 ", color = c.text, fontSize = 13.sp)
-                    Text("(${tts.maxChunkChars})", color = c.text3, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                    Text("单片段字数 ", color = c.text, style = MaterialTheme.typography.bodyMedium)
+                    Text("(${tts.maxChunkChars})", color = c.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
                     EchoSlider(tts.maxChunkChars.toFloat(), { v -> settings.updateTts { it.copy(maxChunkChars = (Math.round(v / 10) * 10)) } }, 80f..400f, steps = 31, modifier = Modifier.width(150.dp))
                 }
                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("预取片段数 ", color = c.text, fontSize = 13.sp)
-                    Text("(${tts.prefetch})", color = c.text3, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                    Text("预取片段数 ", color = c.text, style = MaterialTheme.typography.bodyMedium)
+                    Text("(${tts.prefetch})", color = c.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
                     EchoSlider(tts.prefetch.toFloat(), { v -> settings.updateTts { it.copy(prefetch = Math.round(v)) } }, 0f..5f, steps = 4, modifier = Modifier.width(150.dp))
                 }
                 Spacer(Modifier.height(8.dp))
@@ -516,9 +580,9 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                     val st = cacheStats
                     Text(
                         if (st == null) "音频缓存 …" else "音频缓存 ${st.count} 条 · ${formatBytes(st.bytes)}",
-                        color = c.text2, fontSize = 12.sp, modifier = Modifier.weight(1f)
+                        color = c.text2, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f)
                     )
-                    Text("清空", color = c.danger, fontSize = 12.sp, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) {
+                    Text("清空", color = c.danger, style = MaterialTheme.typography.bodySmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) {
                         scope.launch {
                             graph.audioCache.clear()
                             cacheStats = graph.audioCache.stats()
@@ -531,7 +595,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
         Spacer(Modifier.height(16.dp))
         Text(
             "填入 Key 后自动从 OpenRouter 同步全部语音模型、音色与单价（每 6 小时刷新）；也兼容 OpenAI 官方、SiliconFlow 等 OpenAI 格式接口。Fish S2.1 有免费档可先试听。",
-            color = c.text3, fontSize = 11.sp, lineHeight = 17.sp
+            color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 17.sp
         )
         Spacer(Modifier.height(8.dp))
     }
@@ -581,7 +645,7 @@ fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Un
                             when (r) {
                                 is app.echoread.data.UpdateState.UpToDate -> Toaster.success("已是最新版本 v${graph.updater.currentVersionName}")
                                 is app.echoread.data.UpdateState.Available, is app.echoread.data.UpdateState.Ready -> { Toaster.show("发现新版本，见书架顶部"); onClose() }
-                                is app.echoread.data.UpdateState.Error -> Toaster.error(r.message)
+                                is app.echoread.data.UpdateState.Error -> r.error?.let { ErrorDetails.toast(it) } ?: Toaster.error(r.message)
                                 else -> Toaster.error("检查更新失败")
                             }
                         }
@@ -590,8 +654,8 @@ fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Un
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (checking) "正在检查更新…" else "检查更新", color = c.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text("当前版本 v${graph.updater.currentVersionName}", color = c.text3, fontSize = 11.sp)
+                    Text(if (checking) "正在检查更新…" else "检查更新", color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text("当前版本 v${graph.updater.currentVersionName}", color = c.text3, style = MaterialTheme.typography.labelSmall)
                 }
                 Icon(EchoIcons.ChevronRight, null, tint = c.text3, modifier = Modifier.size(16.dp))
             }
@@ -608,9 +672,9 @@ fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Un
             "离线" to "书架和已经听过的片段缓存在本机（最多 300MB，自动淘汰最旧）。断网也能继续读、继续听缓存过的句子。"
         )
         for ((h, p) in sections) {
-            Text(h, color = c.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            Text(h, color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(4.dp))
-            Text(p, color = c.text2, fontSize = 13.sp, lineHeight = 20.sp)
+            Text(p, color = c.text2, style = MaterialTheme.typography.bodyMedium, lineHeight = 20.sp)
             Spacer(Modifier.height(16.dp))
         }
     }

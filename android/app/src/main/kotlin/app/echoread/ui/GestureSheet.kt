@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -33,6 +34,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.echoread.AppGraph
@@ -64,32 +68,32 @@ fun BoxScope.GestureSettingsSheet(open: Boolean, graph: AppGraph, onClose: () ->
         Spacer(Modifier.height(18.dp))
 
         SectionLabel("滑动翻页") {
-            if (g.axis == PageAxis.VERTICAL) Text("不与系统返回手势冲突", color = c.text3, fontSize = 11.sp)
+            if (g.axis == PageAxis.VERTICAL) Text("不与系统返回手势冲突", color = c.text3, style = MaterialTheme.typography.labelSmall)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AxisToggle("左右", EchoIcons.SwipeH, g.axis == PageAxis.HORIZONTAL, Modifier.weight(1f)) { edit { it.copy(axis = PageAxis.HORIZONTAL) } }
-            AxisToggle("上下", EchoIcons.SwipeV, g.axis == PageAxis.VERTICAL, Modifier.weight(1f)) { edit { it.copy(axis = PageAxis.VERTICAL) } }
-            AxisToggle("关闭", EchoIcons.Close, g.axis == PageAxis.OFF, Modifier.weight(1f)) { edit { it.copy(axis = PageAxis.OFF) } }
+            AxisToggle("左右", EchoIcons.SwipeH, g.axis == PageAxis.HORIZONTAL, Modifier.weight(1f), index = 0, count = 3) { edit { it.copy(axis = PageAxis.HORIZONTAL) } }
+            AxisToggle("上下", EchoIcons.SwipeV, g.axis == PageAxis.VERTICAL, Modifier.weight(1f), index = 1, count = 3) { edit { it.copy(axis = PageAxis.VERTICAL) } }
+            AxisToggle("关闭", EchoIcons.Close, g.axis == PageAxis.OFF, Modifier.weight(1f), index = 2, count = 3) { edit { it.copy(axis = PageAxis.OFF) } }
         }
         if (g.axis == PageAxis.HORIZONTAL) {
             Spacer(Modifier.height(6.dp))
             Text(
                 "提示：系统手势导航会先吃掉屏幕左右边缘约 20~40dp 内起手的横滑，那一带只能返回、翻不了页。改成「上下」可以完全避开。",
-                color = c.text3, fontSize = 11.sp, lineHeight = 16.sp
+                color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp
             )
         }
         Spacer(Modifier.height(20.dp))
 
         SectionLabel("点击翻页热区")
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AxisToggle("左右两侧", EchoIcons.TapZone, g.tapTurn && g.tapAxis == PageAxis.HORIZONTAL, Modifier.weight(1f)) {
+            AxisToggle("左右两侧", EchoIcons.TapZone, g.tapTurn && g.tapAxis == PageAxis.HORIZONTAL, Modifier.weight(1f), index = 0, count = 3) {
                 edit { it.copy(tapTurn = true, tapAxis = PageAxis.HORIZONTAL) }
             }
-            AxisToggle("上下两端", EchoIcons.SwipeV, g.tapTurn && g.tapAxis == PageAxis.VERTICAL, Modifier.weight(1f)) {
+            AxisToggle("上下两端", EchoIcons.SwipeV, g.tapTurn && g.tapAxis == PageAxis.VERTICAL, Modifier.weight(1f), index = 1, count = 3) {
                 // 上下热区会吃掉首尾几行的点读，默认收窄一些
                 edit { it.copy(tapTurn = true, tapAxis = PageAxis.VERTICAL, prevZone = minOf(it.prevZone, 0.12f), nextZone = minOf(it.nextZone, 0.12f)) }
             }
-            AxisToggle("关闭", EchoIcons.Close, !g.tapTurn, Modifier.weight(1f)) { edit { it.copy(tapTurn = false) } }
+            AxisToggle("关闭", EchoIcons.Close, !g.tapTurn, Modifier.weight(1f), index = 2, count = 3) { edit { it.copy(tapTurn = false) } }
         }
 
         if (g.tapTurn) {
@@ -101,27 +105,29 @@ fun BoxScope.GestureSettingsSheet(open: Boolean, graph: AppGraph, onClose: () ->
             // 同一个手势拖两次结果还不一样。这里先按「另一侧不动」把被拖的这一侧钳住，
             // 让步的永远是正在编辑的那个值；sanitizeGestures 的比例缩放只留给加载腐坏存档时兜底。
             val zoneCap = (if (g.tapToRead) 0.8f else 1f)
-            SectionLabel(startLabel) { Text("${(g.prevZone * 100).toInt()}%", color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+            SectionLabel(startLabel) { Text("${(g.prevZone * 100).toInt()}%", color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold) }
             EchoSlider(g.prevZone, { v -> edit { it.copy(prevZone = minOf(Math.round(v * 100) / 100f, zoneCap - it.nextZone)) } }, 0f..0.5f, steps = 9)
             Spacer(Modifier.height(10.dp))
-            SectionLabel(endLabel) { Text("${(g.nextZone * 100).toInt()}%", color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold) }
+            SectionLabel(endLabel) { Text("${(g.nextZone * 100).toInt()}%", color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold) }
             EchoSlider(g.nextZone, { v -> edit { it.copy(nextZone = minOf(Math.round(v * 100) / 100f, zoneCap - it.prevZone)) } }, 0f..0.5f, steps = 9)
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Chip(if (g.tapAxis == PageAxis.VERTICAL) "点上翻上一页" else "点左翻上一页", selected = !g.invertZones, modifier = Modifier.weight(1f)) { edit { it.copy(invertZones = false) } }
-                Chip(if (g.tapAxis == PageAxis.VERTICAL) "点上翻下一页" else "点左翻下一页", selected = g.invertZones, modifier = Modifier.weight(1f)) { edit { it.copy(invertZones = true) } }
+                EchoSegmented(
+                    if (g.tapAxis == PageAxis.VERTICAL) "点上翻上一页" else "点左翻上一页",
+                    if (g.tapAxis == PageAxis.VERTICAL) "点上翻下一页" else "点左翻下一页",
+                    firstSelected = !g.invertZones
+                ) { first -> edit { it.copy(invertZones = !first) } }
             }
         }
 
         Spacer(Modifier.height(20.dp))
-        SectionLabel("轻点正文朗读") { Text(if (g.tapToRead) "热区之外生效" else "已关闭", color = c.text3, fontSize = 11.sp) }
+        SectionLabel("轻点正文朗读") { Text(if (g.tapToRead) "热区之外生效" else "已关闭", color = c.text3, style = MaterialTheme.typography.labelSmall) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Chip("开启", selected = g.tapToRead, modifier = Modifier.weight(1f)) { edit { it.copy(tapToRead = true) } }
-            Chip("关闭", selected = !g.tapToRead, modifier = Modifier.weight(1f)) { edit { it.copy(tapToRead = false) } }
+            EchoSegmented("开启", "关闭", firstSelected = g.tapToRead) { on -> edit { it.copy(tapToRead = on) } }
         }
         if (!g.tapToRead) {
             Spacer(Modifier.height(6.dp))
-            Text("关掉之后就只能用底栏的播放键从当前页开头朗读了。", color = c.text3, fontSize = 11.sp, lineHeight = 16.sp)
+            Text("关掉之后就只能用底栏的播放键从当前页开头朗读了。", color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp)
         }
 
         Spacer(Modifier.height(20.dp))
@@ -132,11 +138,11 @@ fun BoxScope.GestureSettingsSheet(open: Boolean, graph: AppGraph, onClose: () ->
                     g.slopScale >= 1.6f -> "迟钝"
                     else -> "标准"
                 },
-                color = c.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
+                color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold
             )
         }
         EchoSlider(g.slopScale, { v -> edit { it.copy(slopScale = (Math.round(v * 10) / 10f)) } }, 0.5f..3f, steps = 24)
-        Text("调大之后手指要移动更远才算「滑动」，可以避免想点读却翻了页。", color = c.text3, fontSize = 11.sp, lineHeight = 16.sp, modifier = Modifier.padding(top = 6.dp))
+        Text("调大之后手指要移动更远才算「滑动」，可以避免想点读却翻了页。", color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp, modifier = Modifier.padding(top = 6.dp))
 
         Spacer(Modifier.height(22.dp))
         OutlineButton("恢复默认", Modifier.fillMaxWidth()) { edit { GestureSettings() } }
@@ -152,17 +158,27 @@ fun BoxScope.GestureSettingsSheet(open: Boolean, graph: AppGraph, onClose: () ->
  * 不加边框的话三选一里未选中的那两个会完全没有容器，看上去像凭空浮着的文字。
  */
 @Composable
-private fun AxisToggle(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier = Modifier, onSelect: () -> Unit) {
+private fun AxisToggle(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    /** 在三选一里的位置，决定首/中/尾圆角 —— 没有它这三个按钮只是三个各自独立的胶囊 */
+    index: Int = 0,
+    count: Int = 1,
+    onSelect: () -> Unit
+) {
     val c = echo
     ToggleButton(
         checked = selected,
         onCheckedChange = { if (it) onSelect() },
-        modifier = modifier,
+        modifier = modifier.semantics { role = Role.RadioButton },
+        shapes = connectedShapesAt(index, count),
         border = if (selected) null else BorderStroke(1.dp, c.border)
     ) {
         Icon(icon, null, modifier = Modifier.size(17.dp))
         Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 13.sp, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
     }
 }
 
@@ -236,7 +252,7 @@ private fun ZoneLabel(text: String, share: Float, visible: Boolean, modifier: Mo
             Text(
                 text,
                 color = if (dim) c.text3 else c.accent,
-                fontSize = 11.sp,
+                style = MaterialTheme.typography.labelSmall,
                 fontWeight = if (dim) FontWeight.Normal else FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 maxLines = 1

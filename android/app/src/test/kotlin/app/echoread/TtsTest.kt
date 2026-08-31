@@ -2,8 +2,17 @@ package app.echoread
 
 import app.echoread.core.Hash
 import app.echoread.core.OpenAISpeechConfig
+import app.echoread.core.net.Disposition
+import app.echoread.core.net.NetCategory
+import app.echoread.core.net.NetErrors
+import app.echoread.core.net.StatusClass
+import java.io.InterruptedIOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
+import javax.net.ssl.SSLHandshakeException
+import javax.net.ssl.SSLPeerUnverifiedException
 import app.echoread.tts.SpeechApi
-import app.echoread.tts.SpeechHttpException
 import app.echoread.tts.Voices
 import app.echoread.tts.backoffDelay
 import kotlinx.serialization.json.Json
@@ -166,11 +175,109 @@ class TtsTest {
         assertEquals(36000L, backoffDelay(5) { 1.0 })
     }
 
+    /**
+     * 处置真值表，取代旧的布尔 isFatalSpeechError。
+     * 关键差异：400 类不再是「整本书致命」（一段被审核拦下不该停掉整本），
+     * 而 UnknownHostException 这类传输层异常不再被判成「可无限重试」。
+     */
     @Test
-    fun fatalErrors() {
-        for (s in listOf(400, 401, 402, 404)) assertTrue("$s 应为致命错误", SpeechApi.isFatalSpeechError(SpeechHttpException("x", s)))
-        for (s in listOf(429, 408, 500, 502)) assertFalse("$s 应可重试", SpeechApi.isFatalSpeechError(SpeechHttpException("x", s)))
-        assertFalse(SpeechApi.isFatalSpeechError(IOException("fetch failed")))
+    fun dispositionTruthTable() {
+        fun http(s: Int) = NetErrors.fromHttp(s, null, endpoint = "https://x.test/v1/audio/speech")
+        // 配置坏了：重试无意义，停掉会话
+        for (s in listOf(401, 402, 404)) assertEquals("$s 应停会话", Disposition.STOP_SESSION, http(s).disposition())
+        // 这一段不被接受：跳过它，继续读整本书
+        for (s in listOf(400, 413, 422, 451)) assertEquals("$s 应跳段", Disposition.SKIP_SEGMENT, http(s).disposition())
+        // 对方的问题 / 限流：值得退避重试
+        for (s in listOf(429, 408, 500, 502, 503)) assertEquals("$s 应重试", Disposition.RETRY, http(s).disposition())
+        // 501 Not Implemented 永远不会自愈
+        assertEquals(Disposition.SKIP_SEGMENT, http(501).disposition())
+        // 没网就别重试；有网的连不上值得重试
+        val dns = NetErrors.fromThrowable(UnknownHostException("no host"))
+        assertEquals(Disposition.STOP_SESSION, dns.disposition(online = false))
+        assertEquals(Disposition.RETRY, dns.disposition(online = true))
+    }
+
+    /** 异常分类顺序：子类必须排在父类前，否则 SocketTimeout/SSL 三兄弟会被父类吞掉 */
+    @Test
+    fun throwableClassification() {
+        assertEquals(NetCategory.TIMEOUT, NetErrors.fromThrowable(SocketTimeoutException("t")).category)
+        // okhttp 的 callTimeout 抛的是 InterruptedIOException（SocketTimeoutException 的父类）
+        assertEquals(NetCategory.TIMEOUT, NetErrors.fromThrowable(InterruptedIOException("call timeout")).category)
+        assertEquals(NetCategory.CONNECTIVITY, NetErrors.fromThrowable(UnknownHostException("h")).category)
+        assertEquals(NetCategory.CONNECTIVITY, NetErrors.fromThrowable(ConnectException("refused")).category)
+        assertEquals(NetCategory.TLS, NetErrors.fromThrowable(SSLHandshakeException("bad cert")).category)
+        assertEquals(NetCategory.TLS, NetErrors.fromThrowable(SSLPeerUnverifiedException("nope")).category)
+        assertEquals(NetCategory.CONNECTIVITY, NetErrors.fromThrowable(IOException("broken")).category)
+    }
+
+    /** 4xx / 5xx / 无响应 必须是三种可见地不同的形态 —— 这是用户提的原始诉求 */
+    @Test
+    fun statusClassIsAlwaysVisible() {
+        assertEquals(StatusClass.CLIENT, NetErrors.fromHttp(429, null).statusClass)
+        assertEquals(StatusClass.SERVER, NetErrors.fromHttp(503, null).statusClass)
+        assertEquals(StatusClass.NONE, NetErrors.fromThrowable(SocketTimeoutException("t")).statusClass)
+        // 标题里永远找得到状态码或「无响应」
+        assertTrue(NetErrors.fromHttp(503, null).headline().contains("503"))
+        assertTrue(NetErrors.fromHttp(401, null).headline().contains("401"))
+        assertTrue(NetErrors.fromThrowable(SocketTimeoutException("t")).headline().contains("无响应"))
+        // 本地前置校验绝不伪造状态码
+        assertEquals(null, NetErrors.config(missingKey = true).status)
+        assertEquals(Disposition.STOP_SESSION, NetErrors.config(missingKey = true).disposition())
+    }
+
+    /** 服务商原文必须留下来，尤其是 401/402/404/429 —— 旧实现恰好在这四个上把它丢了 */
+    @Test
+    fun providerMessageSurvives() {
+        val e = NetErrors.fromHttp(401, """{"error":{"message":"Key disabled by org policy","code":"key_disabled"}}""")
+        assertEquals("Key disabled by org policy", e.providerMessage)
+        assertEquals("key_disabled", e.providerCode)
+        assertTrue(e.detail().contains("Key disabled by org policy"))
+        // 另外四种真实世界里的错误体形状
+        assertEquals("boom", NetErrors.parseProviderError("""{"message":"boom"}""").first)
+        assertEquals("boom", NetErrors.parseProviderError("""{"detail":"boom"}""").first)
+        assertEquals("boom", NetErrors.parseProviderError("""{"error":"boom"}""").first)
+        // HTML 网关页：抓 <title>
+        assertEquals("502 Bad Gateway", NetErrors.parseProviderError("<html><title>502 Bad Gateway</title></html>").first)
+    }
+
+    /** Key 绝不能出现在可复制的诊断信息里 */
+    @Test
+    fun redactionStripsSecrets() {
+        val r = NetErrors.redact("""{"api_key":"sk-or-v1-abcdefghijklmnop","Authorization":"Bearer sk-abcdefghijklmnop"}""")!!
+        assertFalse("完整 key 不得出现", r.contains("abcdefghijklmnop"))
+        assertEquals(null, NetErrors.redact("  "))
+        // 端点上的 query 也要去掉（可能带 key）
+        assertEquals("https://x.test/v1/models", NetErrors.cleanEndpoint("https://x.test/v1/models?key=secret"))
+    }
+
+    @Test
+    fun retryAfterIsHonoured() {
+        assertEquals(12L, NetErrors.parseRetryAfter("12"))
+        assertEquals(null, NetErrors.parseRetryAfter("Wed, 21 Oct 2015 07:28:00 GMT"))
+        assertEquals(null, NetErrors.parseRetryAfter(null))
+        assertEquals(30L, NetErrors.fromHttp(429, null, retryAfterHeader = "30").retryAfterSec)
+    }
+
+
+    /**
+     * 200 + 非音频（门户认证页 / 代理拦截）必须当场报错，不能落盘。
+     * 实测教训：旧实现把 HTML 当音频缓存下来，用户看到的是三十秒后 Media3 的
+     * ERROR_CODE_PARSING_CONTAINER_UNSUPPORTED，而且缓存命中后连请求都不再发，永不自愈。
+     */
+    @Test
+    fun rejectsNonAudioPayload() {
+        val html = "<html><head><title>Login</title></head></html>".toByteArray()
+        assertFalse(SpeechApi.looksLikeAudio(html, "text/html"))
+        assertFalse(SpeechApi.looksLikeAudio(html, "audio/mpeg"))          // 声称是音频也不认
+        assertFalse(SpeechApi.looksLikeAudio("""{"error":{"message":"x"}}""".toByteArray(), "application/json"))
+        // 真音频要放行
+        assertTrue(SpeechApi.looksLikeAudio(byteArrayOf(0xFF.toByte(), 0xFB.toByte()) + ByteArray(32), "audio/mpeg"))
+        assertTrue(SpeechApi.looksLikeAudio("ID3".toByteArray() + ByteArray(32), "audio/mpeg"))
+        assertTrue(SpeechApi.looksLikeAudio("RIFF0000WAVE".toByteArray() + ByteArray(32), "audio/wav"))
+        assertTrue(SpeechApi.looksLikeAudio("OggS".toByteArray() + ByteArray(32), "audio/ogg"))
+        // PCM 裸流没有魔数，靠 Content-Type 放行
+        assertTrue(SpeechApi.looksLikeAudio(ByteArray(64) { 7 }, "audio/pcm;rate=24000"))
+        assertFalse(SpeechApi.looksLikeAudio(ByteArray(4), "audio/mpeg"))  // 太短
     }
 
     @Test

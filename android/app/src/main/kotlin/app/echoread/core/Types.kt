@@ -53,3 +53,30 @@ data class BookMeta(
 data class ChapterText(val bookId: String, val index: Int, val title: String, val text: String)
 
 enum class PlayerState { IDLE, LOADING, PLAYING, PAUSED, ERROR }
+
+/**
+ * 书级阅读进度（0..1）。**阅读器与书架共用这一个函数** —— 这是 0.2.0 修掉的一处硬伤：
+ * 0.1.x 里两块界面用三套互不相干的算法，同一本书同一时刻能同时显示 100% 和 0%。
+ *
+ * 定义：`(章号 + 章内比例) / 总章数`。刻意用 `chapterCount` 而不是 `chapterCount - 1` 作分母，
+ * 因为「刚翻到最后一章」是 11/12 = 91.7%，不是 100%；旧书架的 `chapterIndex/(chapterCount-1)`
+ * 会在**到达**最后一章的瞬间就报 100%，还把「已读 100%」写在一本刚开始读的最后一章上。
+ *
+ * 它有意**不**依赖任何合成参数。旧阅读器用 `segmentIndex / segmentCount`，
+ * 于是拖动「单片段字数」滑块能让静止不动的进度条在 40%～50% 之间来回走 —— 一个计费/延迟
+ * 旋钮不该是「我读了多少」的输入。
+ *
+ * @param chapterLen 当前章字符数。阅读器传精确值；书架没有分章长度，传 totalChars/chapterCount 的均值即可
+ */
+fun bookFraction(chapterIndex: Int, offsetInChapter: Int, chapterLen: Int, chapterCount: Int): Float {
+    if (chapterCount <= 0 || chapterIndex < 0) return 0f
+    val within = (offsetInChapter.toFloat() / chapterLen.coerceAtLeast(1)).coerceIn(0f, 1f)
+    return ((chapterIndex + within) / chapterCount).coerceIn(0f, 1f)
+}
+
+/** 书架用：只有元数据时的书级进度。章长取全书均值 */
+fun BookMeta.readFraction(): Float =
+    bookFraction(progress.chapterIndex, progress.offset, if (chapterCount > 0) totalChars / chapterCount else totalChars, chapterCount)
+
+/** 是否已经开始读（用于区分「未开始」与「已读 0%」） */
+fun BookMeta.started(): Boolean = progress.chapterIndex > 0 || progress.offset > 0

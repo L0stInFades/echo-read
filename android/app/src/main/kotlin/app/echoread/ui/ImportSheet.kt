@@ -23,6 +23,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.Text
@@ -160,18 +161,18 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
                         candidates.isEmpty() -> "尚未发现书籍"
                         else -> "共发现 ${candidates.size} 本" + if (shown.size != candidates.size) "，筛选出 ${shown.size} 本" else ""
                     },
-                    color = c.text, fontSize = 13.sp, fontWeight = FontWeight.Medium
+                    color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium
                 )
                 if (busy && progress.second > 0) {
-                    Text("已遍历 ${progress.second} 个文件", color = c.text3, fontSize = 11.sp)
+                    Text("已遍历 ${progress.second} 个文件", color = c.text3, style = MaterialTheme.typography.labelSmall)
                 } else if (!busy && truncated) {
                     // 触到遍历上限就如实说：把截断结果当完整结果展示，用户会以为「书就这些」
-                    Text("目录太多，只扫了一部分；可改为授权具体文件夹再扫", color = warningColor(c.isDark), fontSize = 11.sp, lineHeight = 15.sp)
+                    Text("目录太多，只扫了一部分；可改为授权具体文件夹再扫", color = warningColor(c.isDark), style = MaterialTheme.typography.labelSmall, lineHeight = 15.sp)
                 }
             }
             Spacer(Modifier.width(8.dp))
             if (busy) {
-                Text("停止", color = c.danger, fontSize = 12.sp,
+                Text("停止", color = c.danger, style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { graph.cancelScan() }.padding(6.dp))
             } else {
                 Row(
@@ -183,7 +184,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
                 ) {
                     Icon(EchoIcons.Refresh, null, tint = c.accent, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(5.dp))
-                    Text("重新扫描", color = c.accent, fontSize = 12.sp)
+                    Text("重新扫描", color = c.accent, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -215,7 +216,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
                 }
             )
             if (query.isNotEmpty()) {
-                Text("清除", color = c.text3, fontSize = 11.sp,
+                Text("清除", color = c.text3, style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { query = "" })
             }
         }
@@ -227,7 +228,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
                 val allSelected = shown.all { it.uri.toString() in selected }
                 Text(
                     if (allSelected) "取消全选" else "全选",
-                    color = c.accent, fontSize = 12.sp,
+                    color = c.accent, style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.echoPress(pressedScale = PressScale.Chip) {
                         if (allSelected) shown.forEach { selected.remove(it.uri.toString()) }
                         else shown.forEach { if (it.uri.toString() !in selected) selected.add(it.uri.toString()) }
@@ -260,7 +261,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
                 item {
                     Text(
                         if (busy) "扫描中…" else if (candidates.isEmpty()) "还没扫描到书。可以先授权访问，或用下面的「从文件管理器选择」。" else "没有符合条件的书",
-                        color = c.text3, fontSize = 12.sp, lineHeight = 18.sp,
+                        color = c.text3, style = MaterialTheme.typography.bodySmall, lineHeight = 18.sp,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 28.dp, horizontal = 8.dp)
                     )
                 }
@@ -321,8 +322,8 @@ private fun AccessCard(
             ) {
                 Icon(EchoIcons.CheckCircle, null, tint = c.accent, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
-                Text("已可扫描整机存储", color = c.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                Text("换文件夹", color = c.accent, fontSize = 12.sp,
+                Text("已可扫描整机存储", color = c.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text("换文件夹", color = c.accent, style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { onPickFolder() }.padding(4.dp))
             }
         }
@@ -334,7 +335,7 @@ private fun AccessCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(EchoIcons.Scan, null, tint = c.accent, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("让 EchoRead 找到手机里的书", color = c.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text("让 EchoRead 找到手机里的书", color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -346,7 +347,7 @@ private fun AccessCard(
                         scanner.safCanGrantRoot -> "选择文件夹即可扫描。本系统版本还允许直接选中「内部存储」根目录，一次授权覆盖全机。"
                         else -> "选择一个存放书籍的文件夹即可自动扫描。"
                     },
-                    color = c.text2, fontSize = 12.sp, lineHeight = 18.sp
+                    color = c.text2, style = MaterialTheme.typography.bodySmall, lineHeight = 18.sp
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -359,16 +360,16 @@ private fun AccessCard(
                 }
                 if (trees.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
-                    Text("已授权的文件夹", color = c.text3, fontSize = 11.sp)
+                    Text("已授权的文件夹", color = c.text3, style = MaterialTheme.typography.labelSmall)
                     Spacer(Modifier.height(4.dp))
                     for (t in trees) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                             Icon(EchoIcons.Folder, null, tint = c.text3, modifier = Modifier.size(14.dp))
                             Spacer(Modifier.width(6.dp))
-                            Text(scanner.treeLabel(t), color = c.text2, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                            Text(scanner.treeLabel(t), color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             // 授权会一直累积，每次扫描都要重走一遍；给一个撤销入口
                             Text(
-                                "移除", color = c.text3, fontSize = 11.sp,
+                                "移除", color = c.text3, style = MaterialTheme.typography.labelSmall,
                                 modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { onForgetTree(t) }.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
@@ -402,7 +403,7 @@ private fun CandidateRow(cand: BookCandidate, checked: Boolean, imported: Boolea
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     cand.title ?: cand.baseName,
-                    color = if (checked) c.accent else c.text, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                    color = if (checked) c.accent else c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
                 )
                 if (imported) {
@@ -419,7 +420,7 @@ private fun CandidateRow(cand: BookCandidate, checked: Boolean, imported: Boolea
                     if (cand.lastModified > 0) append(" · ").append(DateFormat.getDateInstance(DateFormat.SHORT, Locale.CHINA).format(Date(cand.lastModified)))
                     append(" · ").append(sourceLabel(cand.source))
                 },
-                color = c.text3, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis
+                color = c.text3, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis
             )
             val sub = cand.author ?: cand.path
             if (!sub.isNullOrBlank()) {

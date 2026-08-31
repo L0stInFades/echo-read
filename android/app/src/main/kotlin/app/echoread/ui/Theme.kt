@@ -220,19 +220,27 @@ fun rememberAurora(): Brush {
 object Radius {
     val xxl: Dp = 48.dp // extraExtraLarge
     val xl: Dp = 28.dp  // extraLarge
-    val lg: Dp = 20.dp  // largeIncreased
-    val md: Dp = 16.dp  // large
+    val lgPlus: Dp = 24.dp // largeIncreased
+    val lg: Dp = 20.dp  // large
+    val md: Dp = 16.dp  // medium
+    val mdMinus: Dp = 12.dp // 卡片之下、chip 之上的那一档；原来缺这一级，于是出现了 9/10/14dp 这类随手值
     val sm: Dp = 8.dp   // small
     val xs: Dp = 4.dp   // extraSmall
 }
 
-/** 供落进来的 M3 组件使用，与上面的 Radius 保持同一套语言（alpha18 的 Shapes 有 8 个槽位） */
+/**
+ * 供落进来的 M3 组件使用，与上面的 Radius 保持同一套语言（alpha18 的 Shapes 有 8 个槽位）。
+ *
+ * 注意 `large` 与 `largeIncreased` 必须是两个不同的值：M3 的组件靠这一级差别表达层级
+ * （例如 ButtonGroup 的 connected 形状会在 shape / checkedShape 之间取两档），
+ * 塌成同一个值等于把这条表达通道关掉了。
+ */
 val EchoShapes = Shapes(
     extraSmall = RoundedCornerShape(Radius.xs),
     small = RoundedCornerShape(Radius.sm),
     medium = RoundedCornerShape(Radius.md),
     large = RoundedCornerShape(Radius.lg),
-    largeIncreased = RoundedCornerShape(Radius.lg),
+    largeIncreased = RoundedCornerShape(Radius.lgPlus),
     extraLarge = RoundedCornerShape(Radius.xl),
     extraLargeIncreased = RoundedCornerShape(32.dp),
     extraExtraLarge = RoundedCornerShape(Radius.xxl)
@@ -246,24 +254,48 @@ val EchoShapes = Shapes(
  *    汉字是全角方块，本身自带留白，再加字距会显得松散断裂。
  * 2. **行高上调**。M3 正文行高比是 1.43~1.50，而汉字纵向填满字身框，1.5 在中文里偏挤，
  *    UI 正文取 1.6~1.75。（书籍正文的行高由阅读设置单独控制，不走这里。）
+ *
+ * **15 个 Emphasized 样式必须一并显式传入。** alpha18 的 `Typography` 同时存在 30 参与
+ * 15 参（legacy）两个构造器：只命名基础样式时，重载解析会选中 15 参那个，于是所有
+ * `*Emphasized` 静默退回 M3 默认值 —— 上面两条中文修正在它们身上一条都不生效，
+ * 而 Expressive 恰恰要求用 Emphasized 承担「强调」这件事。
+ *
+ * Emphasized 的差别只在字重（M3 自己的做法）：display/headline/body 由 Normal→Bold，
+ * title 由 Medium→Bold，label 由 Medium→ExtraBold。字号与行高保持一致，
+ * 这样同一段文字在普通与强调之间切换不会引起重排。
  */
 private val ZeroSpacing = 0.sp
 val EchoTypography = Typography(
     displayLarge = TextStyle(fontSize = 57.sp, lineHeight = 68.sp, fontWeight = FontWeight.Normal, letterSpacing = ZeroSpacing),
+    displayLargeEmphasized = TextStyle(fontSize = 57.sp, lineHeight = 68.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     displayMedium = TextStyle(fontSize = 45.sp, lineHeight = 56.sp, fontWeight = FontWeight.Normal, letterSpacing = ZeroSpacing),
+    displayMediumEmphasized = TextStyle(fontSize = 45.sp, lineHeight = 56.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     displaySmall = TextStyle(fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.Normal, letterSpacing = ZeroSpacing),
+    displaySmallEmphasized = TextStyle(fontSize = 36.sp, lineHeight = 46.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     headlineLarge = TextStyle(fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
+    headlineLargeEmphasized = TextStyle(fontSize = 32.sp, lineHeight = 42.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     headlineMedium = TextStyle(fontSize = 28.sp, lineHeight = 38.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
+    headlineMediumEmphasized = TextStyle(fontSize = 28.sp, lineHeight = 38.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     headlineSmall = TextStyle(fontSize = 24.sp, lineHeight = 34.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
+    headlineSmallEmphasized = TextStyle(fontSize = 24.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
+    titleLargeEmphasized = TextStyle(fontSize = 22.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 26.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
+    titleMediumEmphasized = TextStyle(fontSize = 16.sp, lineHeight = 26.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
+    titleSmallEmphasized = TextStyle(fontSize = 14.sp, lineHeight = 22.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 27.sp, fontWeight = FontWeight.Normal, letterSpacing = ZeroSpacing),
+    bodyLargeEmphasized = TextStyle(fontSize = 16.sp, lineHeight = 27.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 24.sp, fontWeight = FontWeight.Normal, letterSpacing = ZeroSpacing),
+    bodyMediumEmphasized = TextStyle(fontSize = 14.sp, lineHeight = 24.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal, letterSpacing = ZeroSpacing),
+    bodySmallEmphasized = TextStyle(fontSize = 12.sp, lineHeight = 20.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
+    labelLargeEmphasized = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = ZeroSpacing),
     labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
-    labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing)
+    labelMediumEmphasized = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = ZeroSpacing),
+    labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
+    labelSmallEmphasized = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = ZeroSpacing)
 )
 
 /* ---------------- 阅读器配色（刻意独立于 M3） ---------------- */
@@ -318,6 +350,13 @@ val READER_THEMES = listOf(
  * 按明暗给两个值：深色仍用琥珀，浅色换成同色相的深琥珀（在 surfaceContainer 上 5.1:1）。
  */
 fun warningColor(dark: Boolean): Color = if (dark) Color(0xFFFBBF24) else Color(0xFF8A5A00)
+
+/**
+ * 错误色（阅读器底栏的失败状态行、进度条）。与 [warningColor] 同理，不能用 app 的 `echo.danger`：
+ * 应用配色跟随系统深浅，而阅读主题是独立选择，浅色系统 + 暗夜主题会把浅红落在深底上。
+ * 两个取值都在对应底栏底色上 ≥ 4.5:1。
+ */
+fun dangerColor(dark: Boolean): Color = if (dark) Color(0xFFFF8A80) else Color(0xFFB3261E)
 
 fun readerThemeOf(id: String): ReaderTheme = READER_THEMES.firstOrNull { it.id == id } ?: READER_THEMES[0]
 
