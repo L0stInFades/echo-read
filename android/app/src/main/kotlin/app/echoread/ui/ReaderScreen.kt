@@ -1,5 +1,9 @@
 package app.echoread.ui
 
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.FilledIconToggleButton
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
@@ -20,6 +24,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -34,7 +39,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LinearWavyProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -796,16 +801,22 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                         .shadow(14.dp, RoundedCornerShape(Radius.xl), spotColor = Color.Black.copy(alpha = 0.35f))
                         .background(dockBg, RoundedCornerShape(Radius.xl))
                         .border(1.dp, dockBorder, RoundedCornerShape(Radius.xl))
-                        .padding(start = 18.dp, end = 14.dp, top = 8.dp, bottom = 8.dp)
+                        .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp)
                 ) {
                     val failure = snap.failure?.takeIf { snap.bookId == bookId }
                     val retryNote = snap.retryNote.takeIf { it.isNotEmpty() && snap.bookId == bookId }
                     // 状态行独占一整行。它是错误信息的常驻通道 ——
                     // 「连续 2 段失败 · 服务商故障（503）」这类文案挤在三分之一宽的栏里必然被截断，
                     // 而截断掉的恰好是状态码本身。控件行下面只放动作，符合 M3「工具栏是动作容器」的定位。
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    // 状态行与控件行同轴居中：控件行是对称的五槽，状态行若左对齐会在右上角
+                    // 留下一块 L 形空白，整个坞看上去像没排完
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Column(
-                            Modifier.weight(1f).echoPress(pressedScale = PressScale.Tile) {
+                            Modifier.weight(1f, fill = false).echoPress(pressedScale = PressScale.Tile) {
                                 // 点标题：播放中回到朗读所在页（跨章则装载朗读章）并恢复跟随；否则打开目录
                                 if (playing && follow == Follow.DETACHED) {
                                     follow = Follow.FOLLOWING
@@ -820,15 +831,21 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                             },
                             verticalArrangement = Arrangement.Center
                         ) {
+                            val busyNow = (snap.synthesizing || snap.state == PlayerState.LOADING) && snap.bookId == bookId
                             val statusText = when {
                                 // 失败最优先：它是用户此刻唯一需要知道的事，且必定带状态码
                                 failure != null -> failure.headline()
                                 retryNote != null -> retryNote
+                                // 合成中：按钮不再换图标，改由这里说明，避免每段都闪一次
+                                busyNow -> "正在合成…"
                                 playing && follow == Follow.DETACHED -> "回到朗读位置 ↩"
                                 playing || (snap.state == PlayerState.PAUSED && snap.bookId == bookId) -> snap.chapterTitle.ifEmpty { window.pagesOf(pager.anchor.chapter)?.chapter?.title ?: "" }
                                 else -> "轻点正文任意字开始朗读"
                             }
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Text(
                                     statusText,
                                     color = when {
@@ -856,47 +873,63 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                             }
                         }
                     }
+                    // 五个等权重槽位：播放键在第三格，因此**数学上**落在坞的正中。
+                    // 旧写法是 spacedBy(CenterHorizontally) 把五个控件当一组居中，
+                    // 而睡眠与倍速挂在右侧，实测把播放键推得偏左 99px（33dp）—— 最重要的控件不在中心。
+                    // 顺序也改成「次要 | 主要 | 主 | 主要 | 次要」的对称形，两侧视觉重量相当。
                     Row(
                         Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        IconButtonEcho(EchoIcons.SkipPrev, "上一章", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = pager.anchor.chapter > 0) { gotoChapter(pager.anchor.chapter - 1) }
-                        PlayButton(playing = playing, busy = snap.state == PlayerState.LOADING && snap.bookId == bookId || synthesizing) { togglePlay() }
-                        IconButtonEcho(EchoIcons.SkipNext, "下一章", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = meta?.let { pager.anchor.chapter < it.chapterCount - 1 } ?: false) { gotoChapter(pager.anchor.chapter + 1) }
-                        if (sleepMode === SleepMode.Off) {
-                            IconButtonEcho(EchoIcons.Moon, "睡眠定时", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp) { showSleep = !showSleep }
-                        } else {
+                        DockSlot {
+                            if (sleepMode === SleepMode.Off) {
+                                IconButtonEcho(EchoIcons.Moon, "睡眠定时", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp) { showSleep = !showSleep }
+                            } else {
+                                Text(
+                                    if (sleepMode === SleepMode.Chapter) "本章" else "%d:%02d".format(java.util.Locale.ROOT, sleepRemaining / 60, sleepRemaining % 60),
+                                    color = theme.accent,
+                                    style = MaterialTheme.typography.labelSmallEmphasized,
+                                    modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showSleep = !showSleep }.padding(horizontal = 6.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                        DockSlot {
+                            IconButtonEcho(EchoIcons.SkipPrev, "上一章", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = pager.anchor.chapter > 0) { gotoChapter(pager.anchor.chapter - 1) }
+                        }
+                        DockSlot {
+                            PlayButton(
+                                playing = playing,
+                                accent = theme.accent,
+                                onAccent = theme.bg
+                            ) { togglePlay() }
+                        }
+                        DockSlot {
+                            IconButtonEcho(EchoIcons.SkipNext, "下一章", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = meta?.let { pager.anchor.chapter < it.chapterCount - 1 } ?: false) { gotoChapter(pager.anchor.chapter + 1) }
+                        }
+                        DockSlot {
                             Text(
-                                if (sleepMode === SleepMode.Chapter) "本章" else "%d:%02d".format(java.util.Locale.ROOT, sleepRemaining / 60, sleepRemaining % 60),
-                                color = theme.accent,
+                                "${formatRate(tts.rate)}×",
+                                color = theme.text.copy(alpha = 0.75f),
                                 style = MaterialTheme.typography.labelSmallEmphasized,
-                                modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showSleep = !showSleep }.padding(horizontal = 6.dp, vertical = 8.dp)
+                                modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { cycleRate() }.padding(horizontal = 8.dp, vertical = 8.dp)
                             )
                         }
-                        Text(
-                            "${formatRate(tts.rate)}×",
-                            color = theme.text.copy(alpha = 0.75f),
-                            style = MaterialTheme.typography.labelSmallEmphasized,
-                            modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { cycleRate() }.padding(horizontal = 8.dp, vertical = 8.dp)
-                        )
                     }
                     // 进度条独占一行、横贯整个坞：它表达的是「位置」，长度就是它的可读性 ——
                     // 挤在三分之一宽的栏里读不出来。顺带长错误文案也不再被两侧控件压扁。
                     //
-                    // 播放/暂停用**同一个**组件，只改 amplitude：M3 自己会把「起伏 ↔ 拉平」这段
-                    // 过渡动画补上（BaseLinearWavyProgressNode 内部有 amplitudeAnimatable）。
-                    // 旧实现在两种状态间换组件（4dp 波形 ↔ 2dp 渐变条），高度、形状与动画手感一起变。
-                    LinearWavyProgressIndicator(
+                    // **这里用直条，不用 M3 的波形进度条。** 试过并实测否掉了：
+                    // 波形要成立，活动段必须长到能画出好几个周期。Android 通知栏里那条 squiggly
+                    // 进度条表示的是「单曲内的位置」，活动段通常占大半；而这条表示的是**全书位置**，
+                    // 读到第 2/20 章时活动段只有约 5%（约 100px），24dp 波长也只够一个多周期，
+                    // 画出来是一条肥虫子而不是波。振幅（±3dp）还比 4dp 的条本身更粗。
+                    // 「正在播放」已经由播放键的圆↔方圆角形变表达（M3 自己的形状形变），
+                    // 进度条不必再喊一遍，直条在任何进度下都干净，也不产生常驻动画。
+                    LinearProgressIndicator(
                         progress = { chapterProgress },
-                        modifier = Modifier.fillMaxWidth().padding(end = 10.dp),
+                        modifier = Modifier.fillMaxWidth(),
                         color = if (failure != null) dangerColor(theme.isDark) else theme.accent,
-                        trackColor = theme.text.copy(alpha = 0.12f),
-                        amplitude = { if (playing) 1f else 0f },
-                        // waveSpeed = 0：保留波形轮廓，但关掉「波纹逐帧行进」那条常驻动画。
-                        // 听书的典型场景就是屏幕常亮跟读数小时，一条每 vsync 重算 Path 的动画
-                        // 正是本文件里 PageCanvas 注释明确否掉过的耗电模式。进度本身仍在推进。
-                        waveSpeed = 0.dp
+                        trackColor = theme.text.copy(alpha = 0.12f)
                     )
                 }
             }
@@ -1038,36 +1071,50 @@ private fun ThinProgressLine(color: Color, modifier: Modifier) {
     )
 }
 
+/**
+ * 播放坞的一个等权重槽位。五个槽位平分整行宽度，居中的那个就在坞的正中 ——
+ * 靠内容自身宽度去凑居中在控件宽度不同（图标 36dp vs 「1×」文字）时必然偏。
+ */
 @Composable
-private fun PlayButton(playing: Boolean, busy: Boolean, onClick: () -> Unit) {
-    // 播放中用静态柔光 + 状态切换时的弹簧缩放，而非持续 60fps 的呼吸环：听书动辄数小时，省电优先
-    val glow by animateFloatAsState(if (playing) 1f else 0f, EchoMotion.Gentle.float(), label = "glow")
-    val pop by animateFloatAsState(if (playing) 1.06f else 1f, EchoMotion.Playful.float(), label = "pop")
-    val brush = rememberAurora()
-    val ringBrush = rememberAurora()
-    Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier
-                .size(52.dp)
-                .graphicsLayer {
-                    scaleX = 1f + glow * 0.18f; scaleY = 1f + glow * 0.18f; alpha = glow * 0.35f
-                    compositingStrategy = CompositingStrategy.ModulateAlpha
-                }
-                .background(ringBrush, CircleShape)
+private fun RowScope.DockSlot(content: @Composable () -> Unit) {
+    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { content() }
+}
+
+/**
+ * 主播放键 —— 直接用 M3 自己的 [FilledIconToggleButton]。
+ *
+ * 之前是手搓的：一个实心圆 + 放大 1.18 倍 alpha 0.35 的同色光晕 + 染成强调色的 12dp 投影。
+ * 在浅色阅读主题上那团光晕就是一坨糊，而且它想表达的「正在播放」本来就有更好的说法。
+ *
+ * M3 Expressive 对这类状态按钮的标准做法是**让形状说话**：
+ * [IconButtonDefaults.toggleableShapes] 给出未选中 / 按下 / 选中三种形状，
+ * 组件自己在其间做形变动画（走主题里的 Expressive 弹簧，也就是我们那套 CA 管线）。
+ * 于是暂停时是圆、播放时形变成方圆角 —— 一眼可辨，且全部由库负责，
+ * 涟漪、状态层、无障碍语义一并到位，不用我们自己描一遍。
+ *
+ * 配色吃**阅读主题**色而非 app 配色：阅读主题是独立于系统深浅色的用户选择，
+ * 且配色现在可由用户任意更换，写死或取 app 色都会错配。
+ */
+@Composable
+private fun PlayButton(playing: Boolean, accent: Color, onAccent: Color, onClick: () -> Unit) {
+    FilledIconToggleButton(
+        checked = playing,
+        onCheckedChange = { onClick() },
+        shapes = IconButtonDefaults.toggleableShapes(),
+        modifier = Modifier.size(52.dp).semantics {
+            contentDescription = if (playing) "暂停" else "播放"
+        },
+        colors = IconButtonDefaults.filledIconToggleButtonColors(
+            containerColor = accent,
+            contentColor = onAccent,
+            checkedContainerColor = accent,
+            checkedContentColor = onAccent
         )
-        Box(
-            Modifier
-                .size(48.dp)
-                .graphicsLayer { scaleX = pop; scaleY = pop }
-                .shadow(12.dp, CircleShape, spotColor = Color(0xFF7C9BFF).copy(alpha = 0.6f))
-                .echoPress(pressedScale = PressScale.Button, onClickLabel = if (playing) "暂停" else "播放", onClick = onClick)
-                .background(brush, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            val onBrush = echo.onAccent
-            if (busy) LoadingIndicator(modifier = Modifier.size(24.dp), color = onBrush)
-            else Icon(if (playing) EchoIcons.Pause else EchoIcons.Play, if (playing) "暂停" else "播放", tint = onBrush, modifier = Modifier.size(22.dp))
-        }
+    ) {
+        // 恒显播放/暂停图标。原来合成中会换成 LoadingIndicator —— 那是个会形变的多边形，
+        // 塞进 24dp 就是一团黑块，而且每段合成都要闪一次。
+        // 「正在合成」由状态行说，按钮只负责它自己的那件事。
+        Icon(if (playing) EchoIcons.Pause else EchoIcons.Play, null, modifier = Modifier.size(24.dp))
     }
 }
 

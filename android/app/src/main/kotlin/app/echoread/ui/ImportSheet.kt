@@ -152,8 +152,12 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
             }
         )
 
-        // 扫描状态
-        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Spacer(Modifier.height(12.dp))
+        // 扫描状态收进卡片，与全应用的分组语言一致：
+        // 它是一个「当前状态 + 一个动作」的单元，不是浮在底板上的一行字
+        SettingsSection {
+            custom {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(
                     when {
@@ -189,11 +193,13 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
             }
         }
         // M3 Expressive 的波形进度条：扫描是不定时长的任务，正好用不定态
-        Box(Modifier.fillMaxWidth().height(10.dp).padding(top = 4.dp)) {
+        Box(Modifier.fillMaxWidth().height(10.dp).padding(top = 6.dp)) {
             if (busy) LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
+            }
+        }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(14.dp))
 
         // 搜索 + 类型筛选
         Row(

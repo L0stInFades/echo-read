@@ -8,7 +8,13 @@ package app.echoread.tts
  * ExoPlayer 据此把 `dataEndPosition` 定在第一段末尾，读到那里就报 EOF —— 表现为「每段只读开头一句就跳下一段」。
  * 去掉这些帧后解码器退回逐帧解析，拼接流按真实长度完整播放。
  *
- * 纯函数、无分配热点：逐帧走一遍头部（不解码），同步丢失时把余下字节原样保留。
+ * **必须能重新同步。** 被拼接的每个文件前面通常还各带一个 ID3v2 标签；
+ * 原实现的帧游标走到第二个文件的 ID3 头时同步丢失就 `break`，把余下字节原样拷出 ——
+ * 于是第二个及之后所有 Xing 帧全都留了下来，等于只修好了第一段。
+ * 现在遇到 ID3 就整体跳过，遇到无法识别的字节就向前找下一个同步点，
+ * 全程只剪掉 Xing 帧本身，其余字节（含 ID3 与垃圾）逐字节原样保留。
+ *
+ * 纯函数、无分配热点：逐帧走一遍头部（不解码），游标只向前。
  */
 object Mp3Fix {
     private val BITRATE_V1 = intArrayOf(0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0)
@@ -23,26 +29,56 @@ object Mp3Fix {
 
     /** 返回去掉 Xing/Info 帧后的字节；没有可剥的帧时返回原数组（零拷贝） */
     fun stripXing(b: ByteArray): ByteArray {
-        var i = id3Size(b)
         val out = java.io.ByteArrayOutputStream(b.size)
-        out.write(b, 0, i)
+        var i = 0
         var stripped = 0
-        while (i + 4 <= b.size) {
+        // 尚未写出的区间起点：只有遇到 Xing 帧时才把它之前的部分冲出去，其余字节顺延保留
+        var pending = 0
+        while (i < b.size) {
+            val tag = id3SizeAt(b, i)
+            if (tag > 0) {
+                i += tag
+                continue
+            }
             val len = frameLength(b, i)
-            if (len <= 0 || i + len > b.size) break
-            if (isXing(b, i)) stripped++ else out.write(b, i, len)
-            i += len
+            if (len > 0 && i + len <= b.size) {
+                if (isXing(b, i)) {
+                    out.write(b, pending, i - pending)
+                    stripped++
+                    i += len
+                    pending = i
+                } else {
+                    i += len
+                }
+                continue
+            }
+            // 同步丢失：向前找下一个帧同步或 ID3 标签，跳过的字节原样保留
+            i = resyncFrom(b, i + 1)
         }
         if (stripped == 0) return b
-        if (i < b.size) out.write(b, i, b.size - i)
+        out.write(b, pending, b.size - pending)
         return out.toByteArray()
     }
 
-    private fun id3Size(b: ByteArray): Int {
-        if (b.size < 10 || b[0] != 'I'.code.toByte() || b[1] != 'D'.code.toByte() || b[2] != '3'.code.toByte()) return 0
-        val size = (b[6].toInt() and 0x7f shl 21) or (b[7].toInt() and 0x7f shl 14) or (b[8].toInt() and 0x7f shl 7) or (b[9].toInt() and 0x7f)
-        val footer = if (b[5].toInt() and 0x10 != 0) 10 else 0
-        return (10 + size + footer).coerceAtMost(b.size)
+    /** 从 [from] 起找下一个可解析的帧同步或 ID3 标签；找不到返回数组长度 */
+    private fun resyncFrom(b: ByteArray, from: Int): Int {
+        var i = from
+        while (i < b.size) {
+            if (id3SizeAt(b, i) > 0) return i
+            if (b[i] == 0xFF.toByte() && frameLength(b, i) > 0) return i
+            i++
+        }
+        return b.size
+    }
+
+    /** 位于 [i] 的 ID3v2 标签总长（含头与可选尾）；不是标签返回 0 */
+    private fun id3SizeAt(b: ByteArray, i: Int): Int {
+        if (i + 10 > b.size) return 0
+        if (b[i] != 'I'.code.toByte() || b[i + 1] != 'D'.code.toByte() || b[i + 2] != '3'.code.toByte()) return 0
+        val size = (b[i + 6].toInt() and 0x7f shl 21) or (b[i + 7].toInt() and 0x7f shl 14) or
+            (b[i + 8].toInt() and 0x7f shl 7) or (b[i + 9].toInt() and 0x7f)
+        val footer = if (b[i + 5].toInt() and 0x10 != 0) 10 else 0
+        return (10 + size + footer).coerceAtMost(b.size - i)
     }
 
     /** 帧总长（字节），非法帧头返回 0 */
