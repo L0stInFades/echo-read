@@ -1,14 +1,14 @@
 {
-  "versionCode": 12,
-  "versionName": "0.2.4-exp",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.4-exp/EchoRead-v0.2.4-exp.apk",
+  "versionCode": 13,
+  "versionName": "0.2.5-exp",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.5-exp/EchoRead-v0.2.5-exp.apk",
   "mirrors": [
-    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.4-exp/EchoRead-v0.2.4-exp.apk",
-    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.4-exp/EchoRead-v0.2.4-exp.apk",
-    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.4-exp/EchoRead-v0.2.4-exp.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.5-exp/EchoRead-v0.2.5-exp.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.5-exp/EchoRead-v0.2.5-exp.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.5-exp/EchoRead-v0.2.5-exp.apk"
   ],
-  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n· 深度重修「回到朗读位置」：点击后不再出现页面自己洗牌、标签闪回的问题（根因是状态提示每次闪现都在触发整章重新排版，已彻底解耦）\n· 翻页不再被系统抢回：松手瞬间的一个时序窗口会让刚翻到的页被自动拉回去，看起来像翻页失灵，已封死\n· 手动翻回朗读位置后，自动翻页现在会自己恢复 —— 以前摸过一下屏幕之后自动翻页就悄悄死掉，只有点标签才能救回\n· 暂停时翻走也能一键回到朗读位置（以前暂停后没有任何入口）\n· 按播放不再吞掉听书位置：以前暂停后翻到别的章再按播放，会从你正看的页开始念、原来的听书进度被覆盖；现在永远恢复原位置，「从正看的页开始念」交给轻点正文\n· 「回到朗读位置」不再被「正在合成…」顶掉，随时可点",
-  "sha256": "708c95dfc6803dffab873220d760a807824b7d92364c89d6fd2d5564e8f04eca",
+  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n修复：删除书籍后封面残留约半秒不消失（书架网格行级动画在给被删封面放遗照，已钉死根因并逐帧验证）",
+  "sha256": "7822aa603595b5a77c6f11779e277fcfce44c1a548b52bf11761405d9322baaa",
   "minSdk": 26,
   "experimental": true
 }
