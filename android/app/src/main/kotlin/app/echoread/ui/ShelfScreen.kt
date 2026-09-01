@@ -297,7 +297,14 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                                 .fillMaxWidth()
                                 // 删书、搜索过滤会让整列重排：没有它，行是瞬移的。
                                 // 位移用和转场同一条弹簧，全应用的运动语汇保持一致。
-                                .animateItem(placementSpec = EchoMotion.Standard.spec(IntOffset.VisibilityThreshold))
+                                // 淡入/淡出必须显式关掉（默认是弹簧而非 null）：行 key 取行首书 id，
+                                // 删一本书会让后续所有行换 key —— 旧行淡出、新行淡入，交叉期被删的
+                                // 封面半透明地叠在新行上残留约半秒（删除后封面"不消失"的元凶）。
+                                .animateItem(
+                                    fadeInSpec = null,
+                                    placementSpec = EchoMotion.Standard.spec(IntOffset.VisibilityThreshold),
+                                    fadeOutSpec = null
+                                )
                                 .background(c.card, shape)
                                 .padding(start = 14.dp, end = 14.dp, top = if (first) 14.dp else 0.dp, bottom = if (last) 14.dp else 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
