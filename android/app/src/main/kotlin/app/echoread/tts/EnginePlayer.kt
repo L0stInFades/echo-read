@@ -82,7 +82,7 @@ class EnginePlayer(
             val metadata = MediaMetadata.Builder()
                 .setTitle(title)
                 .setArtist(book.title)
-                .setAlbumTitle("EchoRead · AI 听书")
+                .setAlbumTitle("Lector · AI 听书")
                 .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
                 .setIsPlayable(true)
                 .setIsBrowsable(false)

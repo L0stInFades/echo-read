@@ -93,7 +93,7 @@ object SpeechApi {
     /** OpenRouter 应用归因头，仅对 openrouter.ai 附加 */
     private val APP_ATTRIBUTION = mapOf(
         "HTTP-Referer" to "https://github.com/L0stInFades/echo-read",
-        "X-OpenRouter-Title" to "EchoRead",
+        "X-OpenRouter-Title" to "Lector",
         "X-OpenRouter-Categories" to "audio-gen"
     )
 

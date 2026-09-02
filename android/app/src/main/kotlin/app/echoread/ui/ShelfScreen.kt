@@ -166,7 +166,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                         .padding(top = 56.dp, bottom = 22.dp)
                 ) {
                     Text(
-                        "EchoRead",
+                        "Lector",
                         style = TextStyle(brush = bigTitleBrush, fontSize = 36.sp, fontWeight = FontWeight.Black, letterSpacing = 0.5.sp),
                         modifier = Modifier.graphicsLayer {
                             // 大/小标题的交叉淡入只发生在行程两端，中段不会出现两个标题都半透明的「糊」
@@ -331,7 +331,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
             ) {
                 Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "EchoRead",
+                        "Lector",
                         style = TextStyle(brush = compactTitleBrush, fontSize = 17.sp, fontWeight = FontWeight.Black),
                         modifier = Modifier.weight(1f).padding(start = 6.dp).graphicsLayer {
                             val sm = ((collapse.value - 0.6f) / 0.4f).coerceIn(0f, 1f)
@@ -452,7 +452,7 @@ private fun UpdateCard(graph: AppGraph) {
                 when (s) {
                     is UpdateState.Downloading -> LoadingIndicator(progress = { s.progress }, modifier = Modifier.size(34.dp), color = c.accent)
                     is UpdateState.Ready -> GradientButton("安装", height = 38.dp, fontSize = 13) {
-                        if (!graph.updater.install(context, s.file)) Toaster.show("请允许 EchoRead 安装应用，然后回来点「安装」", durationMs = 4000)
+                        if (!graph.updater.install(context, s.file)) Toaster.show("请允许 Lector 安装应用，然后回来点「安装」", durationMs = 4000)
                     }
                     is UpdateState.Available -> GradientButton("立即更新", height = 38.dp, fontSize = 13) { scope.launch { graph.updater.download(s.info) } }
                     is UpdateState.Error -> if (info != null) GradientButton("重试", height = 38.dp, fontSize = 13) { scope.launch { graph.updater.download(info) } }

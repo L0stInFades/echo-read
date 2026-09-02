@@ -29,7 +29,7 @@ export function isOpenRouterBase(baseUrl: string): boolean {
  */
 const APP_ATTRIBUTION: Record<string, string> = {
   'HTTP-Referer': 'https://github.com/L0stInFades/echo-read',
-  'X-OpenRouter-Title': 'EchoRead',
+  'X-OpenRouter-Title': 'Lector',
   'X-OpenRouter-Categories': 'audio-gen'
 }
 

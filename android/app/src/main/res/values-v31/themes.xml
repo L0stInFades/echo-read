@@ -8,5 +8,8 @@
         <item name="android:windowLightNavigationBar">@bool/light_system_bars</item>
         <item name="android:windowSplashScreenBackground">@color/app_bg</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <!-- 前景层是墨色引号 + 白色方块：直接落在浅色启动底上白块会消失，
+             给系统启动画面的图标垫上与启动器一致的 Lector 蓝圆底 -->
+        <item name="android:windowSplashScreenIconBackgroundColor">#7C9BFF</item>
     </style>
 </resources>

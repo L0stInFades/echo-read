@@ -12,8 +12,8 @@ export default defineConfig({
       includeAssets: ['favicon.svg', 'logo.svg'],
       manifest: {
         id: '/',
-        name: 'EchoRead · AI 听书',
-        short_name: 'EchoRead',
+        name: 'Lector · AI 听书',
+        short_name: 'Lector',
         description: '顶级 AI TTS 网页听书应用：导入 TXT/EPUB，从任意字开始让 AI 为你朗读',
         lang: 'zh-CN',
         start_url: '/',

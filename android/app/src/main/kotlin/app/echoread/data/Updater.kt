@@ -137,7 +137,7 @@ class Updater(private val context: Context) {
     /** 该版本是否已被用户永久忽略 */
     fun isDismissed(versionCode: Long): Boolean = prefs.getLong(KEY_DISMISSED, 0L) >= versionCode
 
-    private fun apkFile(info: UpdateInfo): File = File(File(context.cacheDir, "updates").apply { mkdirs() }, "EchoRead-v${info.versionName}.apk")
+    private fun apkFile(info: UpdateInfo): File = File(File(context.cacheDir, "updates").apply { mkdirs() }, "Lector-v${info.versionName}.apk")
 
     /** 下载安装包（带进度），校验 SHA-256 */
     suspend fun download(info: UpdateInfo): UpdateState {

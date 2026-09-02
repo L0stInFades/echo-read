@@ -172,6 +172,6 @@ private fun KeyValue(k: String, v: String) {
 fun copyToClipboard(context: Context, text: String) {
     runCatching {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("EchoRead 诊断", text))
+        cm.setPrimaryClip(ClipData.newPlainText("Lector 诊断", text))
     }
 }

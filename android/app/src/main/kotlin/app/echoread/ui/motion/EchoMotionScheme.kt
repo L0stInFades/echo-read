@@ -23,7 +23,7 @@ import androidx.compose.material3.MotionScheme
  * - `defaultEffectsSpec → Instant`：与 Google 的 defaultEffects 数值完全相同，因此 M3 组件的按压形变
  *   与我们 `Modifier.echoPress` 的缩放是逐帧同步的。
  * - `slowEffectsSpec → Gentle`：唯一一处有意偏离（Google 141ms，我们 350ms）。大面积遮罩与背景色渐变
- *   用更慢的临界阻尼是 EchoRead 的既定风格，属选择而非疏漏。
+ *   用更慢的临界阻尼是 Lector 的既定风格，属选择而非疏漏。
  *
  * 六个 accessor 都是 O(1) 读取：`Spring2` 内部已缓存好 SpringSpec，不会每次组合分配。
  */

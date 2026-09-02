@@ -4,7 +4,7 @@ export const SAMPLE_BOOK_NAME = '深夜书屋（示例）'
 
 export const SAMPLE_BOOK_TEXT = `深夜书屋
 
-一段为 EchoRead 准备的示例文字，轻点任意字，让 AI 从那里开始读给你听。
+一段为 Lector 准备的示例文字，轻点任意字，让 AI 从那里开始读给你听。
 
 第一章 雨夜来客
 

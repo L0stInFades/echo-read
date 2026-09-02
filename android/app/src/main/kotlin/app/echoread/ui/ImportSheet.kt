@@ -341,7 +341,7 @@ private fun AccessCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(EchoIcons.Scan, null, tint = c.accent, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("让 EchoRead 找到手机里的书", color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text("让 Lector 找到手机里的书", color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
