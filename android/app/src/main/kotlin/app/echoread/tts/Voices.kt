@@ -3,7 +3,7 @@ package app.echoread.tts
 import app.echoread.core.TtsModelInfo
 
 /**
- * 音色目录：OpenRouter TTS 模型的精细音色体系（与网页版 tts/voices.ts 同步）。
+ * 音色目录：OpenRouter TTS 模型的精细音色体系。
  * ① 结构化音色 ID —— 解析为 语言/性别/风格（Kokoro、Deepgram、Voxtral、MAI…）
  * ② 具名音色表 —— 逐个标注（Gemini、Grok、Orpheus…）
  * ③ 开放音色 ID —— 服务端不枚举（Fish Audio 参考 ID、MiniMax 系统音色），给精选建议

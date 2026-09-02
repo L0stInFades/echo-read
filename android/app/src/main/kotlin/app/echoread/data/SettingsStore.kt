@@ -18,7 +18,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * 设置仓库：JSON 存于 SharedPreferences（对应网页版 localStorage），StateFlow 对外。
+ * 设置仓库：JSON 存于 SharedPreferences，StateFlow 对外。
  * 读取时缺失键回落默认值、类型不符整体回退，并做值域守卫；写入即持久化。
  */
 class SettingsStore(context: Context) {

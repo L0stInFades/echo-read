@@ -9,7 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.charset.Charset
 
-/** 解析与分段核心逻辑（移植自网页版 test/sanity.ts） */
+/** 解析与分段核心逻辑 */
 class CoreTest {
     @Test
     fun utf8Decode() {

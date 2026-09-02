@@ -46,7 +46,7 @@ import app.echoread.ui.motion.Thr
 /** 已解码封面的进程级缓存：列表滚动往返不重复解码（≤360px JPEG，约 0.3MB/张） */
 private val coverCache = LruCache<String, ImageBitmap>(48)
 
-/** 封面：有图用图（IO 线程解码、淡入），无图按书名哈希生成极光风渐变（与网页版同色算法） */
+/** 封面：有图用图（IO 线程解码、淡入），无图按书名哈希生成极光风渐变 */
 @Composable
 fun BookCover(book: BookMeta, modifier: Modifier = Modifier, radius: Dp = 14.dp, titleSize: Int = 15) {
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(radius)

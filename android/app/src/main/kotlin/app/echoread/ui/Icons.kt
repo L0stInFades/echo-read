@@ -8,7 +8,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.PathParser
 import androidx.compose.ui.unit.dp
 
-/** 线性图标集：与网页版 SVG 路径同源（24×24 viewBox），描边 1.8 圆头 */
+/** 线性图标集：24×24 viewBox，描边 1.8 圆头 */
 object EchoIcons {
     private fun stroke(name: String, width: Float, vararg paths: String): ImageVector {
         val b = ImageVector.Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)

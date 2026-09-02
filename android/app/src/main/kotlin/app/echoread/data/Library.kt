@@ -22,7 +22,7 @@ import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.File
 
-/** 书架仓库：导入归一化只发生在这里（章节限长 + 段落合成规范文本），对应网页版 store/library.ts */
+/** 书架仓库：导入归一化只发生在这里（章节限长 + 段落合成规范文本） */
 class LibraryRepo(
     private val context: Context,
     private val dao: BookDao,

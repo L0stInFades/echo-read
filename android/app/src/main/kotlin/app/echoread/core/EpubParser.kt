@@ -10,7 +10,7 @@ import java.io.File
 import java.net.URLDecoder
 import java.util.zip.ZipFile
 
-/** EPUB 解析（zip + OPF + spine，纯文本抽取）—— 对应网页版 lib/epub.ts；不依赖任何 Android API，可在 JVM 单测运行 */
+/** EPUB 解析（zip + OPF + spine，纯文本抽取）；不依赖任何 Android API，可在 JVM 单测运行 */
 object EpubParser {
     private val BLOCK_TAGS = setOf(
         "p", "div", "section", "article", "h1", "h2", "h3", "h4", "h5", "h6",

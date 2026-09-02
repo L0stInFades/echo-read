@@ -3,9 +3,9 @@ package app.echoread.core
 import java.text.BreakIterator
 import java.util.Locale
 
-/** 句子切分与合成片段（纯偏移，不持有文本副本）—— 对应网页版 lib/segment.ts */
+/** 句子切分与合成片段（纯偏移，不持有文本副本） */
 object Segmenter {
-    /** 句末标点二次切分：BreakIterator 在部分实现（如桌面 JVM）不认「；…」，与网页版兜底正则对齐 */
+    /** 句末标点二次切分：BreakIterator 在部分实现（如桌面 JVM）不认「；…」，用兜底正则补齐 */
     private val TAIL_SPLIT = Regex("[。！？!?；;…]+[\"'”’）)\\]]*\\s*")
 
     /** 句子切分：ICU 句子边界优先（Android 内置），再按中文句末标点细分。返回纯偏移区间。 */

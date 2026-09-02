@@ -1,6 +1,6 @@
 # Lector · 品牌资产
 
-新名字 **Lector**（/ˈlɛktər/，朗读者）与新标志。本目录只是资产，尚未接入应用；接入步骤见文末。
+新名字 **Lector**（/ˈlɛktər/，朗读者）与新标志。0.3.0-exp 起已接入应用：`android/app/src/main/res/drawable/` 下的四个 `ic_*.xml` 与本目录同源，改标志时两边一起改。
 
 ## 标志
 
@@ -26,9 +26,7 @@
 | `wordmark.svg` | 字标 Lector（Outfit Bold，已转轮廓） |
 | `logo-horizontal-{light,dark}.svg` | 横版组合，浅底 / 深底 |
 | `logo-vertical-{light,dark}.svg` | 竖版组合 |
-| `app-icon-{light,solid,dark}.svg` | 512 应用图标三种配色；`light` 为推荐 |
-| `favicon.svg` | 网页版站标（圆角 112） |
-| `pwa-logo.svg` | 网页版 PWA 图标源（替换 `public/logo.svg` 后跑 `npm run icons`） |
+| `app-icon-{light,solid,dark}.svg` | 512 应用图标三种配色；`light` 为采用方案 |
 | `ic_launcher_foreground.xml` | Android 自适应图标前景层（视口 512，圆形遮罩安全） |
 | `ic_launcher_background.xml` | 背景层，平铺 Lector 蓝 |
 | `ic_launcher_monochrome.xml` | 主题图标（API 33+）单色层 |
@@ -37,14 +35,8 @@
 
 字体：字标用 [Outfit](https://fonts.google.com/specimen/Outfit)（OFL），中文备注用 Noto Sans SC（OFL）；两者都已转成路径，资产不依赖字体安装。
 
-## 接入 Android 版
+## 同步到 Android 工程
 
-1. 用本目录的四个 `ic_*.xml` 覆盖 `android/app/src/main/res/drawable/` 下的同名文件。
-2. `android/app/src/main/res/values/strings.xml`：`app_name` 改为 `Lector`。
-3. `android/app/src/main/res/values/colors.xml`：`ic_launcher_background` 改为 `#7C9BFF`（旧启动器的纯色回退）。
-4. 包名若要一并改成 `app.lector`，需要同时改 `applicationId`、`namespace`、源码包路径与 `update.json` 的更新链路，属独立改动，建议单独提交。
-
-## 接入网页版
-
-1. `pwa-logo.svg` 覆盖 `public/logo.svg`，`favicon.svg` 覆盖 `public/favicon.svg`，然后 `npm run icons` 重新生成 PWA 图标。
-2. `index.html` 与 `vite.config.ts` 里的 `EchoRead` 改为 `Lector`；`theme-color` 可保持 `#0b0e14` 或改为 `#121318`。
+1. 四个 `ic_*.xml` 覆盖 `android/app/src/main/res/drawable/` 下的同名文件。
+2. 品牌色若变，同时改 `android/app/src/main/res/values/colors.xml` 的 `ic_launcher_background`（旧启动器的纯色回退）与 `values-v31/themes.xml` 的 `windowSplashScreenIconBackgroundColor`。
+3. 应用名在 `android/app/src/main/res/values/strings.xml` 的 `app_name`。
