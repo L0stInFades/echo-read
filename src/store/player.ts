@@ -41,8 +41,8 @@ export const usePlayerStore = defineStore('player', () => {
     if (!('mediaSession' in navigator)) return
     try {
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: s.chapterTitle || bookTitle.value || 'EchoRead',
-        artist: bookTitle.value || 'EchoRead',
+        title: s.chapterTitle || bookTitle.value || 'Lector',
+        artist: bookTitle.value || 'Lector',
         album: 'AI 听书'
       })
       navigator.mediaSession.playbackState =

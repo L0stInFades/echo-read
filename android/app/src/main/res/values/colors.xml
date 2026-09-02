@@ -4,5 +4,5 @@
          这样 Compose 首帧之前的那一闪与随后的主题一致，不会「先黑后白」 -->
     <color name="app_bg">#FAF8FF</color>
     <!-- 旧版启动器在没有自适应图标时的纯色回退（现在自适应图标用的是渐变 drawable） -->
-    <color name="ic_launcher_background">#344479</color>
+    <color name="ic_launcher_background">#7C9BFF</color>
 </resources>

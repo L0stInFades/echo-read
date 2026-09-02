@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- themed icon（API 33+）：与前景层同一套几何，系统会用壁纸取色重新着色 -->
+<!-- Lector · 主题图标（API 33+）：与前景层同一套几何，单色，由系统按壁纸重新着色。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
-    <path android:fillColor="#FFFFFFFF" android:pathData="M145,272 C179,252 214,253 256,275 C298,253 333,252 367,272 L367,362 C333,342 298,341 256,363 C214,341 179,342 145,362 Z" />
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="26" android:strokeLineCap="round" android:pathData="M204,212 A72,72 0 0 1 308,212" />
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="26" android:strokeLineCap="round" android:pathData="M176,168 A115,115 0 0 1 336,168" />
+    <group
+        android:translateX="148.0"
+        android:translateY="148.0"
+        android:scaleX="1.0800"
+        android:scaleY="1.0800">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M20,0 H192 A8,8 0 0 1 200,8 V32 A8,8 0 0 1 192,40 H46 A6,6 0 0 0 40,46 V192 A8,8 0 0 1 32,200 H8 A8,8 0 0 1 0,192 V20 A20,20 0 0 1 20,0 Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M102,72 H170 A30,30 0 0 1 200,102 V170 A30,30 0 0 1 170,200 H102 A30,30 0 0 1 72,170 V102 A30,30 0 0 1 102,72 Z" />
+    </group>
 </vector>

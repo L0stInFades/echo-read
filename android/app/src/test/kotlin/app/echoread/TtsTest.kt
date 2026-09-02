@@ -157,7 +157,7 @@ class TtsTest {
         val cfg = OpenAISpeechConfig(baseUrl = "https://openrouter.ai/api/v1", apiKey = "sk-or-test", model = "hexgrad/kokoro-82m", voice = "zf_xiaoxiao")
         val or = SpeechApi.buildHeaders(cfg)
         assertEquals("Bearer sk-or-test", or["Authorization"])
-        assertEquals("EchoRead", or["X-OpenRouter-Title"])
+        assertEquals("Lector", or["X-OpenRouter-Title"])
         assertTrue(or["HTTP-Referer"]!!.startsWith("https://"))
         val oa = SpeechApi.buildHeaders(cfg.copy(baseUrl = "https://api.openai.com/v1"))
         assertEquals("Bearer sk-or-test", oa["Authorization"])

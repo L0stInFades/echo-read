@@ -1,18 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!--
-  通知栏小图标：系统强制整体染白，只看剪影。
-  书的中缝比启动器图标刻意挖得更深 —— 24dp 下浅中缝会塌成一个矩形，读不出「书」。
--->
+<!-- Lector · 通知栏小图标：24dp 画布、20dp 内容区，系统整体染白只看剪影。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M2.6,12.4 C5.2,11.3 8.6,11.7 12,15.0 C15.4,11.7 18.8,11.3 21.4,12.4 L21.4,18.9 C18.8,17.8 15.4,18.2 12,21.2 C8.6,18.2 5.2,17.8 2.6,18.9 Z" />
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.1" android:strokeLineCap="round"
-        android:pathData="M8.0,8.4 A5.6,5.6 0 0 1 16.0,8.4" />
-    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.1" android:strokeLineCap="round"
-        android:pathData="M4.9,4.6 A10.0,10.0 0 0 1 19.1,4.6" />
+    <group android:translateX="2" android:translateY="2" android:scaleX="0.100" android:scaleY="0.100">
+        <path android:fillColor="#FFFFFFFF" android:pathData="M20,0 H192 A8,8 0 0 1 200,8 V32 A8,8 0 0 1 192,40 H46 A6,6 0 0 0 40,46 V192 A8,8 0 0 1 32,200 H8 A8,8 0 0 1 0,192 V20 A20,20 0 0 1 20,0 Z" />
+        <path android:fillColor="#FFFFFFFF" android:pathData="M102,72 H170 A30,30 0 0 1 200,102 V170 A30,30 0 0 1 170,200 H102 A30,30 0 0 1 72,170 V102 A30,30 0 0 1 102,72 Z" />
+    </group>
 </vector>

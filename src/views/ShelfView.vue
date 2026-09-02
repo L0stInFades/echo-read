@@ -122,7 +122,7 @@ function formatChars(n: number) {
     <header class="safe-top sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg)]/80 px-5 pb-3 pt-3" style="backdrop-filter: blur(20px)">
       <div class="mx-auto flex max-w-3xl items-center justify-between">
         <div>
-          <h1 class="gradient-text text-xl font-black tracking-wide">EchoRead</h1>
+          <h1 class="gradient-text text-xl font-black tracking-wide">Lector</h1>
           <p class="mt-0.5 text-[11px] tracking-[.2em] text-[var(--text-3)]">AI 听书 · 声临其境</p>
         </div>
         <div class="flex items-center gap-2">

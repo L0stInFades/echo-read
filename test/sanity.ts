@@ -341,7 +341,7 @@ import {
   }
   const or = buildHeaders(cfg)
   assert.equal(or.Authorization, 'Bearer sk-or-test')
-  assert.equal(or['X-OpenRouter-Title'], 'EchoRead')
+  assert.equal(or['X-OpenRouter-Title'], 'Lector')
   assert.ok(or['HTTP-Referer']?.startsWith('https://'), 'HTTP-Referer 缺失')
   const oa = buildHeaders({ ...cfg, baseUrl: 'https://api.openai.com/v1' })
   assert.equal(oa.Authorization, 'Bearer sk-or-test')

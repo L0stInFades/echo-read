@@ -1,5 +1,5 @@
 /**
- * EchoRead Playwright E2E（playwright-core + 本机 Chrome，无浏览器下载）。
+ * Lector Playwright E2E（playwright-core + 本机 Chrome，无浏览器下载）。
  * 自起 vite preview，跑完自动清理。运行：node e2e/run.mjs
  */
 import { spawn } from 'node:child_process'

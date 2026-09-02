@@ -1,37 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  自适应图标前景层（Material 3 Expressive 造型语言）。
-  构图：下方一本实心开卷，上方两道声弧 —— 「会说话的书」，一眼即读。
-
-  为什么不是 0.1.x 那种细描边书本 + 竖条声波：
-  · Expressive 要求单一焦点形状 + 大胆块面；1.8pt 的描边在 48dp 启动器与 24dp 通知栏会糊成灰团。
-  · 声波原本挖在书里，小尺寸下会被读成「书上有洞」而不是「声音」。挪到书的上方、做成弧线，
-    语义立刻清楚，弧线也是 Android 生态里最通用的「发声」符号。
-
-  画布 108dp / 视口 512。**安全区按圆形遮罩算，不是按方框**：
-  启动器可以把图标裁成圆形，其内切圆在 512 视口下半径仅约 170，
-  第一版按矩形安全区排的构图在真机圆形遮罩下书的下缘被切掉了（模拟器实测）。
-  现在所有着墨点距中心最远 153.5 < 158，圆形 / 方圆 / 圆角方三种遮罩下均无裁切。
+  Lector · 自适应图标前景层。
+  构图：「 引号 + 一个方块字 —— 正在被念出来的那个字。两块几何在 200 单位的设计盒内，
+  按 1.08 缩放居中于 512 视口；最远着墨点距中心约 147，圆形 / 方圆 / 圆角方遮罩下均无裁切。
 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="512"
     android:viewportHeight="512">
-    <!-- 开卷 -->
-    <path
-        android:fillColor="#FFFFFFFF"
-        android:pathData="M145,272 C179,252 214,253 256,275 C298,253 333,252 367,272 L367,362 C333,342 298,341 256,363 C214,341 179,342 145,362 Z" />
-    <!-- 内侧声弧 -->
-    <path
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="26"
-        android:strokeLineCap="round"
-        android:pathData="M204,212 A72,72 0 0 1 308,212" />
-    <!-- 外侧声弧 -->
-    <path
-        android:strokeColor="#FFFFFFFF"
-        android:strokeWidth="26"
-        android:strokeLineCap="round"
-        android:pathData="M176,168 A115,115 0 0 1 336,168" />
+    <group
+        android:translateX="148.0"
+        android:translateY="148.0"
+        android:scaleX="1.0800"
+        android:scaleY="1.0800">
+        <!-- 「 -->
+        <path android:fillColor="#FF111F55" android:pathData="M20,0 H192 A8,8 0 0 1 200,8 V32 A8,8 0 0 1 192,40 H46 A6,6 0 0 0 40,46 V192 A8,8 0 0 1 32,200 H8 A8,8 0 0 1 0,192 V20 A20,20 0 0 1 20,0 Z" />
+        <!-- ■ -->
+        <path android:fillColor="#FFFFFFFF" android:pathData="M102,72 H170 A30,30 0 0 1 200,102 V170 A30,30 0 0 1 170,200 H102 A30,30 0 0 1 72,170 V102 A30,30 0 0 1 102,72 Z" />
+    </group>
 </vector>
