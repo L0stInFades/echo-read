@@ -31,7 +31,7 @@ import app.echoread.ui.motion.EchoMotionScheme
 /**
  * 设计语言（0.2.0-exp）：**Material 3 Expressive**。
  *
- * 配色不再沿用网页版的手挑「暗夜极光」，而是用 Google 自己的色彩算法生成：
+ * 配色不再沿用 0.1.x 手挑的「暗夜极光」，而是用 Google 自己的色彩算法生成：
  * 以 #7C9BFF 为 seed、SchemeTonalSpot 变体、contrast 0.0，跑 material-color-utilities
  * （com.google.android.material:material:1.14.0 内附）产出完整 48 角色调色板，并用独立实现交叉校验。
  * TonalSpot 只保留 seed 的**色相**（H=273.2）而丢弃其彩度与明度，因此品牌辨识度还在，

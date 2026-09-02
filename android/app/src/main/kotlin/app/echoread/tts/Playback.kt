@@ -20,7 +20,7 @@ import java.io.File
 
 class AbortedException : RuntimeException("aborted")
 
-/** 一个正在播放的片段句柄（对应网页版 PlayHandle）：自然播完 awaitEnded 返回；被 stop/出错时抛出 */
+/** 一个正在播放的片段句柄：自然播完 awaitEnded 返回；被 stop/出错时抛出 */
 interface PlayHandle {
     suspend fun awaitEnded()
     fun pause()

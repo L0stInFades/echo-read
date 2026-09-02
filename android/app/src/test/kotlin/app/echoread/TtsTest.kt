@@ -282,7 +282,7 @@ class TtsTest {
 
     @Test
     fun cyrb53MatchesWeb() {
-        // 与网页版 cyrb53('hello') 输出逐位一致
+        // cyrb53('hello') 的参考输出，与原始 JS 实现逐位一致
         assertEquals("bfb06f3a63cd7226", Hash.cyrb53("hello"))
         assertEquals("501c2ba782c97901", Hash.cyrb53("a"))
         assertEquals("f511e1d83a006a07", Hash.cyrb53("深夜书屋（示例）"))

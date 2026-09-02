@@ -9,7 +9,7 @@ import java.io.File
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 
-/** EPUB 解析冒烟：内存构造最小 EPUB（移植自网页版 test/epub-sanity.ts） */
+/** EPUB 解析冒烟：内存构造最小 EPUB */
 class EpubTest {
     private fun buildEpub(): File {
         val f = File.createTempFile("test-", ".epub")

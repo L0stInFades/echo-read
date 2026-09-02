@@ -6,7 +6,7 @@ import java.nio.charset.CharacterCodingException
 import java.nio.charset.Charset
 import java.nio.charset.CodingErrorAction
 
-/** TXT 导入：编码探测与分章 —— 对应网页版 lib/txt.ts */
+/** TXT 导入：编码探测与分章 */
 object TxtParser {
     data class Decoded(val text: String, val encoding: String)
 

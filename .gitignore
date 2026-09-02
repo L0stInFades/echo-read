@@ -1,9 +1,20 @@
-node_modules/
-dist/
-dev-dist/
-*.tsbuildinfo
 .DS_Store
-*.local
-.env
-.env.*
 .serena/
+
+# Android / Gradle
+.gradle/
+build/
+local.properties
+.idea/
+*.iml
+.kotlin/
+captures/
+.cxx/
+.externalNativeBuild/
+
+# 发布签名与产物（私密，勿提交）
+*.keystore
+*.jks
+keystore/
+keystore.properties
+dist/

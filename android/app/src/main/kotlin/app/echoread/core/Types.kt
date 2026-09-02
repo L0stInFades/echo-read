@@ -1,6 +1,6 @@
 package app.echoread.core
 
-/** 字符偏移区间 [start, end) —— 段落/句子/合成片段/高亮的统一表达（UTF-16 码元偏移，与网页版一致） */
+/** 字符偏移区间 [start, end) —— 段落/句子/合成片段/高亮的统一表达（UTF-16 码元偏移） */
 data class Range(val start: Int, val end: Int) {
     val length: Int get() = end - start
     operator fun contains(offset: Int): Boolean = offset >= start && offset < end

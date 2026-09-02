@@ -38,7 +38,7 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 /**
- * OpenAI 兼容语音接口（对应网页版 tts/providers/openai-speech.ts）。
+ * OpenAI 兼容语音接口。
  * 兼容 OpenRouter、OpenAI 官方、SiliconFlow、FishAudio 等所有实现该格式的服务。
  *
  * OpenRouter 的 /audio/speech 与 OpenAI 官方有三处差异：

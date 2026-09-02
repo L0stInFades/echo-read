@@ -3,7 +3,7 @@ package app.echoread.core
 import java.security.SecureRandom
 
 object Hash {
-    /** cyrb53 字符串哈希 —— 与网页版逐位一致（音频缓存键、封面配色） */
+    /** cyrb53 字符串哈希（音频缓存键、封面配色） */
     fun cyrb53(str: String, seed: Int = 0): String {
         var h1 = 0xdeadbeefL.toInt() xor seed
         var h2 = 0x41c6ce57 xor seed

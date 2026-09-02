@@ -26,7 +26,7 @@ sealed interface SleepMode {
 }
 
 /**
- * 播放控制器（对应网页版 store/player.ts）：引擎桥接 + 设置同步 + 进度持久化 + 睡眠定时。
+ * 播放控制器：引擎桥接 + 设置同步 + 进度持久化 + 睡眠定时。
  * 进度写库放在这里而非界面层，锁屏后台连播时进度同样落库。
  */
 @OptIn(FlowPreview::class)
