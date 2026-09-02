@@ -1,14 +1,14 @@
 {
-  "versionCode": 13,
-  "versionName": "0.2.5-exp",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.5-exp/EchoRead-v0.2.5-exp.apk",
+  "versionCode": 14,
+  "versionName": "0.3.0-exp",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.3.0-exp/Lector-v0.3.0-exp.apk",
   "mirrors": [
-    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.5-exp/EchoRead-v0.2.5-exp.apk",
-    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.5-exp/EchoRead-v0.2.5-exp.apk",
-    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.2.5-exp/EchoRead-v0.2.5-exp.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.3.0-exp/Lector-v0.3.0-exp.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.3.0-exp/Lector-v0.3.0-exp.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.3.0-exp/Lector-v0.3.0-exp.apk"
   ],
-  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n修复：删除书籍后封面残留约半秒不消失（书架网格行级动画在给被删封面放遗照，已钉死根因并逐帧验证）",
-  "sha256": "7822aa603595b5a77c6f11779e277fcfce44c1a548b52bf11761405d9322baaa",
+  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n应用更名为 Lector，全新图标与启动画面。包名不变，覆盖安装即可，书架、进度、设置与语音缓存全部保留。其余功能与 0.2.5 相同。",
+  "sha256": "dd1b778b015e2b079804e85f63525f4af66d2560e22d8fb97f2288ddbd8e3d34",
   "minSdk": 26,
   "experimental": true
 }
