@@ -1,5 +1,6 @@
 package app.echoread.ui
 
+import app.echoread.core.i18n.S
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -44,15 +45,15 @@ import app.echoread.ui.motion.echoPress
  */
 
 /** 可选的种子色。覆盖色相环，第一个是品牌色 */
-val SEED_COLORS: List<Pair<String, Color>> = listOf(
-    "默认" to Color(0xFF7C9BFF),
-    "赤陶" to Color(0xFFB33B15),
-    "苔绿" to Color(0xFF63A002),
-    "紫罗兰" to Color(0xFF8C4190),
-    "海青" to Color(0xFF007FAC),
-    "琥珀" to Color(0xFFE8B931),
-    "玫红" to Color(0xFFC2185B),
-    "石板" to Color(0xFF4A6572)
+val SEED_COLORS: List<Pair<String, Color>> get() = listOf(
+    S.settings.default to Color(0xFF7C9BFF),
+    S.settings.terracotta to Color(0xFFB33B15),
+    S.settings.moss to Color(0xFF63A002),
+    S.settings.violet to Color(0xFF8C4190),
+    S.settings.ocean to Color(0xFF007FAC),
+    S.settings.amber to Color(0xFFE8B931),
+    S.settings.rose to Color(0xFFC2185B),
+    S.settings.slate to Color(0xFF4A6572)
 )
 
 /**

@@ -1,5 +1,6 @@
 package app.echoread.data
 
+import app.echoread.core.i18n.S
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -47,32 +48,32 @@ class LibraryRepo(
     suspend fun importUri(uri: Uri): BookMeta {
         _importing.value = true
         try {
-            val name = displayName(uri) ?: uri.lastPathSegment?.substringAfterLast('/') ?: "未命名.txt"
+            val name = displayName(uri) ?: uri.lastPathSegment?.substringAfterLast('/') ?: S.importer.untitledTxt
             val ext = name.substringAfterLast('.', "").lowercase()
             // 体积闸门：解析要把整个文件读进内存，上百 MB 的「.txt」（厂商 bugreport、聊天记录导出、
             // 数据库 dump）会直接 OOM。宁可明确拒绝，也不要让进程崩掉。
             val bytes = fileSize(uri)
             if (bytes > MAX_IMPORT_BYTES) {
-                throw IllegalArgumentException("文件过大（${bytes / 1024 / 1024} MB），无法导入；单本上限 ${MAX_IMPORT_BYTES / 1024 / 1024} MB")
+                throw IllegalArgumentException(S.importer.fileTooLarge(bytes / 1024 / 1024, MAX_IMPORT_BYTES / 1024 / 1024))
             }
             val parsed: ParsedBook = withContext(Dispatchers.IO) {
                 when (ext) {
                     "txt", "text" -> {
                         val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                            ?: throw IllegalArgumentException("无法读取文件")
+                            ?: throw IllegalArgumentException(S.importer.cantReadTheFile)
                         TxtParser.parse(name, bytes)
                     }
                     "epub" -> {
                         val tmp = File.createTempFile("import-", ".epub", context.cacheDir)
                         try {
                             context.contentResolver.openInputStream(uri)?.use { input -> tmp.outputStream().use { input.copyTo(it) } }
-                                ?: throw IllegalArgumentException("无法读取文件")
+                                ?: throw IllegalArgumentException(S.importer.cantReadTheFile)
                             EpubParser.parse(tmp, name, ::scaleCover)
                         } finally {
                             tmp.delete()
                         }
                     }
-                    else -> throw IllegalArgumentException("仅支持 TXT / EPUB 文件")
+                    else -> throw IllegalArgumentException(S.importer.onlyTxtAndEpub)
                 }
             }
             return store(parsed, if (ext == "epub") BookFormat.EPUB else BookFormat.TXT)
@@ -83,20 +84,21 @@ class LibraryRepo(
 
     /** 写入内置示例书（已存在则直接返回） */
     suspend fun importSample(): BookMeta {
-        _books.value.firstOrNull { it.title == Sample.BOOK_NAME }?.let { return it }
-        val parsed = withContext(Dispatchers.Default) { TxtParser.parse("${Sample.BOOK_NAME}.txt", Sample.TEXT.toByteArray()) }
+        val name = Sample.bookName
+        _books.value.firstOrNull { it.title == name }?.let { return it }
+        val parsed = withContext(Dispatchers.Default) { TxtParser.parse("$name.txt", Sample.text.toByteArray()) }
         return store(parsed, BookFormat.TXT)
     }
 
     private suspend fun store(parsed: ParsedBook, format: BookFormat): BookMeta {
         // 统一守卫：章节限长归一化 + 段落合成为规范纯文本（内存上限由此锁定）
         val normalized = withContext(Dispatchers.Default) { TextOps.boundChapters(parsed.chapters) }
-        if (normalized.isEmpty()) throw IllegalArgumentException("未能解析出任何章节")
+        if (normalized.isEmpty()) throw IllegalArgumentException(S.importer.noChaptersCouldBe)
         val bookId = Hash.nanoid()
         val entity = BookEntity(
             id = bookId,
             title = parsed.title,
-            author = parsed.author.ifBlank { "佚名" },
+            author = parsed.author.ifBlank { S.importer.unknownAuthor },
             format = format.label,
             cover = parsed.cover,
             intro = parsed.intro,

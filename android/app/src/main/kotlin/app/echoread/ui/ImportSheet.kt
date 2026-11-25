@@ -1,5 +1,6 @@
 package app.echoread.ui
 
+import app.echoread.core.i18n.S
 import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -46,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.echoread.AppGraph
+import app.echoread.core.i18n.I18n
 import app.echoread.data.AccessTier
 import app.echoread.data.BookCandidate
 import app.echoread.data.ScanSource
@@ -54,9 +56,17 @@ import app.echoread.ui.motion.echoPress
 import kotlinx.coroutines.flow.update
 import java.text.DateFormat
 import java.util.Date
-import java.util.Locale
 
-private enum class TypeFilter(val label: String) { ALL("全部"), TXT("TXT"), EPUB("EPUB") }
+private enum class TypeFilter {
+    ALL, TXT, EPUB;
+
+    // 文案必须是 getter：枚举常量只构造一次，写进构造参数会停在首次访问时的语言
+    val label: String get() = when (this) {
+        ALL -> S.common.all
+        TXT -> "TXT"
+        EPUB -> "EPUB"
+    }
+}
 
 /**
  * 应用内导入界面：自动扫描本机的 TXT / EPUB，选中即批量入库。
@@ -140,7 +150,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
     // 整表可滚 + 列表自带 heightIn 上界：与 TtsSettingsSheet 同一套已验证的组合。
     // 不能用 scrollable = false —— 访问引导卡片 + 已授权文件夹一多，底部的「导入选中」按钮
     // 就会被挤出弹层且没有任何办法滚到（弹层内容区在 scrollable=false 时不可滚动）。
-    EchoSheet(open = open, onDismiss = onClose, title = "导入书籍", maxHeightFraction = 0.92f) {
+    EchoSheet(open = open, onDismiss = onClose, title = S.common.importBooks, maxHeightFraction = 0.92f) {
         AccessCard(tier = tier, scanner = scanner, context = context,
             onGrantAllFiles = { scanner.allFilesAccessIntent()?.let { runCatching { context.startActivity(it) } } },
             onPickFolder = { runCatching { treePicker.launch(scanner.initialTreeUri()) } },
@@ -161,22 +171,23 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
             Column(Modifier.weight(1f)) {
                 Text(
                     when {
-                        busy -> "正在扫描…已发现 ${progress.first} 本"
-                        candidates.isEmpty() -> "尚未发现书籍"
-                        else -> "共发现 ${candidates.size} 本" + if (shown.size != candidates.size) "，筛选出 ${shown.size} 本" else ""
+                        busy -> S.importer.scanningFound(progress.first)
+                        candidates.isEmpty() -> S.importer.noBooksFoundYet
+                        else -> S.importer.foundBooks(candidates.size) +
+                            if (shown.size != candidates.size) S.importer.shown(shown.size) else ""
                     },
                     color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium
                 )
                 if (busy && progress.second > 0) {
-                    Text("已遍历 ${progress.second} 个文件", color = c.text3, style = MaterialTheme.typography.labelSmall)
+                    Text(S.importer.checkedFiles(progress.second), color = c.text3, style = MaterialTheme.typography.labelSmall)
                 } else if (!busy && truncated) {
                     // 触到遍历上限就如实说：把截断结果当完整结果展示，用户会以为「书就这些」
-                    Text("目录太多，只扫了一部分；可改为授权具体文件夹再扫", color = warningColor(c.isDark), style = MaterialTheme.typography.labelSmall, lineHeight = 15.sp)
+                    Text(S.importer.scanTruncated, color = warningColor(c.isDark), style = MaterialTheme.typography.labelSmall, lineHeight = 15.sp)
                 }
             }
             Spacer(Modifier.width(8.dp))
             if (busy) {
-                Text("停止", color = c.danger, style = MaterialTheme.typography.bodySmall,
+                Text(S.importer.stop, color = c.danger, style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { graph.cancelScan() }.padding(6.dp))
             } else {
                 Row(
@@ -188,7 +199,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
                 ) {
                     Icon(EchoIcons.Refresh, null, tint = c.accent, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.width(5.dp))
-                    Text("重新扫描", color = c.accent, style = MaterialTheme.typography.bodySmall)
+                    Text(S.importer.rescan, color = c.accent, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -216,13 +227,13 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
                 modifier = Modifier.weight(1f).height(22.dp),
                 decorationBox = { inner ->
                     Box(Modifier.fillMaxWidth().height(22.dp), contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty()) Text("搜索文件名或书名", style = style.copy(color = c.text3))
+                        if (query.isEmpty()) Text(S.importer.searchFileNameOr, style = style.copy(color = c.text3))
                         inner()
                     }
                 }
             )
             if (query.isNotEmpty()) {
-                Text("清除", color = c.text3, style = MaterialTheme.typography.labelSmall,
+                Text(S.common.clear, color = c.text3, style = MaterialTheme.typography.labelSmall,
                     modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { query = "" })
             }
         }
@@ -233,7 +244,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
             if (shown.isNotEmpty()) {
                 val allSelected = shown.all { it.uri.toString() in selected }
                 Text(
-                    if (allSelected) "取消全选" else "全选",
+                    if (allSelected) S.importer.deselectAll else S.importer.selectAll,
                     color = c.accent, style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.echoPress(pressedScale = PressScale.Chip) {
                         if (allSelected) shown.forEach { selected.remove(it.uri.toString()) }
@@ -266,7 +277,9 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
             if (shown.isEmpty()) {
                 item {
                     Text(
-                        if (busy) "扫描中…" else if (candidates.isEmpty()) "还没扫描到书。可以先授权访问，或用下面的「从文件管理器选择」。" else "没有符合条件的书",
+                        if (busy) S.importer.scanning
+                        else if (candidates.isEmpty()) S.importer.noBooksScannedHint
+                        else S.importer.noMatchingBooks,
                         color = c.text3, style = MaterialTheme.typography.bodySmall, lineHeight = 18.sp,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 28.dp, horizontal = 8.dp)
                     )
@@ -284,7 +297,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
             candidates.filter { it.uri.toString() in selected }
         }
         GradientButton(
-            if (picked.isEmpty()) "选择要导入的书" else "导入选中的 ${picked.size} 本",
+            if (picked.isEmpty()) S.importer.selectBooksToImport else S.importer.importSelected(picked.size),
             Modifier.fillMaxWidth(),
             icon = EchoIcons.Download,
             enabled = picked.isNotEmpty(),
@@ -298,7 +311,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
             }
         }
         Spacer(Modifier.height(8.dp))
-        OutlineButton("从文件管理器选择…", Modifier.fillMaxWidth()) {
+        OutlineButton(S.importer.browseFiles, Modifier.fillMaxWidth()) {
             filePicker.launch(arrayOf("text/plain", "application/epub+zip", "application/octet-stream", "*/*"))
         }
         Spacer(Modifier.height(8.dp))
@@ -328,8 +341,8 @@ private fun AccessCard(
             ) {
                 Icon(EchoIcons.CheckCircle, null, tint = c.accent, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
-                Text("已可扫描整机存储", color = c.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                Text("换文件夹", color = c.accent, style = MaterialTheme.typography.bodySmall,
+                Text(S.importer.readyToScanAll, color = c.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                Text(S.importer.changeFolder, color = c.accent, style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { onPickFolder() }.padding(4.dp))
             }
         }
@@ -341,32 +354,32 @@ private fun AccessCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(EchoIcons.Scan, null, tint = c.accent, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text("让 Lector 找到手机里的书", color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text(S.importer.letLectorFindBooks, color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
                     when {
-                        scanner.needsLegacyPermission() -> "授予存储读取权限后，可自动扫描整个手机里的 TXT / EPUB。"
+                        scanner.needsLegacyPermission() -> S.importer.grantAccessHint
                         scanner.allFilesAccessSupported ->
-                            "Android 11 起，系统只允许「所有文件访问权限」做全盘扫描；" +
-                                "不想开也可以只授权某个文件夹（书籍常放在 Download、Documents、Books 里）。"
-                        scanner.safCanGrantRoot -> "选择文件夹即可扫描。本系统版本还允许直接选中「内部存储」根目录，一次授权覆盖全机。"
-                        else -> "选择一个存放书籍的文件夹即可自动扫描。"
+                            S.importer.allFilesAccessHint +
+                                S.importer.ifYoudRatherNot
+                        scanner.safCanGrantRoot -> S.importer.chooseFolderOrRootHint
+                        else -> S.importer.chooseFolderHint
                     },
                     color = c.text2, style = MaterialTheme.typography.bodySmall, lineHeight = 18.sp
                 )
                 Spacer(Modifier.height(12.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (scanner.needsLegacyPermission()) {
-                        GradientButton("授予存储权限", Modifier.weight(1f), height = 42.dp, fontSize = 13) { onRequestLegacy() }
+                        GradientButton(S.importer.grantAccess, Modifier.weight(1f), height = 42.dp, fontSize = 13) { onRequestLegacy() }
                     } else if (scanner.allFilesAccessSupported) {
-                        GradientButton("开启全盘扫描", Modifier.weight(1f), height = 42.dp, fontSize = 13) { onGrantAllFiles() }
+                        GradientButton(S.importer.enableFullScan, Modifier.weight(1f), height = 42.dp, fontSize = 13) { onGrantAllFiles() }
                     }
-                    OutlineButton(if (scanner.safCanGrantRoot) "选择整个存储" else "选择文件夹", Modifier.weight(1f), height = 42.dp) { onPickFolder() }
+                    OutlineButton(if (scanner.safCanGrantRoot) S.importer.chooseStorage else S.importer.chooseFolder, Modifier.weight(1f), height = 42.dp) { onPickFolder() }
                 }
                 if (trees.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
-                    Text("已授权的文件夹", color = c.text3, style = MaterialTheme.typography.labelSmall)
+                    Text(S.importer.grantedFolders, color = c.text3, style = MaterialTheme.typography.labelSmall)
                     Spacer(Modifier.height(4.dp))
                     for (t in trees) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -375,7 +388,7 @@ private fun AccessCard(
                             Text(scanner.treeLabel(t), color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             // 授权会一直累积，每次扫描都要重走一遍；给一个撤销入口
                             Text(
-                                "移除", color = c.text3, style = MaterialTheme.typography.labelSmall,
+                                S.importer.remove, color = c.text3, style = MaterialTheme.typography.labelSmall,
                                 modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { onForgetTree(t) }.padding(horizontal = 6.dp, vertical = 2.dp)
                             )
                         }
@@ -414,7 +427,7 @@ private fun CandidateRow(cand: BookCandidate, checked: Boolean, imported: Boolea
                 )
                 if (imported) {
                     Text(
-                        "已在书架", color = c.text3, fontSize = 9.sp,
+                        S.importer.inLibrary, color = c.text3, fontSize = 9.sp,
                         modifier = Modifier.padding(start = 5.dp).background(c.text3.copy(alpha = 0.14f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp)
                     )
                 }
@@ -423,7 +436,7 @@ private fun CandidateRow(cand: BookCandidate, checked: Boolean, imported: Boolea
                 buildString {
                     append(if (cand.isEpub) "EPUB" else "TXT")
                     append(" · ").append(formatBytes(cand.size))
-                    if (cand.lastModified > 0) append(" · ").append(DateFormat.getDateInstance(DateFormat.SHORT, Locale.CHINA).format(Date(cand.lastModified)))
+                    if (cand.lastModified > 0) append(" · ").append(DateFormat.getDateInstance(DateFormat.SHORT, I18n.locale).format(Date(cand.lastModified)))
                     append(" · ").append(sourceLabel(cand.source))
                 },
                 color = c.text3, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis
@@ -444,7 +457,7 @@ private fun CandidateRow(cand: BookCandidate, checked: Boolean, imported: Boolea
 }
 
 private fun sourceLabel(s: ScanSource): String = when (s) {
-    ScanSource.FILES -> "本机"
-    ScanSource.MEDIA_STORE -> "媒体库"
-    ScanSource.FOLDER -> "授权文件夹"
+    ScanSource.FILES -> S.importer.device
+    ScanSource.MEDIA_STORE -> S.importer.mediaLibrary
+    ScanSource.FOLDER -> S.importer.grantedFolder
 }

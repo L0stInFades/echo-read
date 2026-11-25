@@ -1,5 +1,6 @@
 package app.echoread.ui
 
+import app.echoread.core.i18n.S
 import app.echoread.core.ReaderSettings
 import app.echoread.core.ColorStyle
 import android.os.Build
@@ -268,13 +269,13 @@ data class ReaderTheme(
     val isDark: Boolean
 )
 
-val READER_THEMES = listOf(
+val READER_THEMES: List<ReaderTheme> get() = listOf(
     // accent 一列（倒数第二个）是底栏强调色，取值保证在该主题对应的底栏底色上都 ≥ 6:1
-    ReaderTheme("dark", "暗夜", Color(0xFF0B0E14), Color(0xFFC9CDD8), Color(0xFFC9CDD8).copy(alpha = 0.60f), Color(0xFF344479).copy(alpha = 0.55f), Color(0xFFDBE1FF), Color(0xFFB5C4FF), true),
-    ReaderTheme("ink", "纯黑", Color(0xFF000000), Color(0xFF9AA0AE), Color(0xFF9AA0AE).copy(alpha = 0.75f), Color(0xFF344479).copy(alpha = 0.60f), Color(0xFFDBE1FF), Color(0xFFB5C4FF), true),
-    ReaderTheme("light", "明亮", Color(0xFFF7F5F0), Color(0xFF35322C), Color(0xFF35322C).copy(alpha = 0.70f), Color(0xFFB5C4FF).copy(alpha = 0.55f), Color(0xFF1C2D61), Color(0xFF4C5C92), false),
-    ReaderTheme("paper", "纸墨", Color(0xFFF2E8D5), Color(0xFF4A3F2F), Color(0xFF4A3F2F).copy(alpha = 0.78f), Color(0xFFB07C2C).copy(alpha = 0.22f), Color(0xFF5C3A00), Color(0xFF5C3A00), false),
-    ReaderTheme("eye", "护眼", Color(0xFFDCE8DD), Color(0xFF2F4234), Color(0xFF2F4234).copy(alpha = 0.78f), Color(0xFF2E7D32).copy(alpha = 0.20f), Color(0xFF1B5E20), Color(0xFF1B5E20), false)
+    ReaderTheme("dark", S.settings.dark, Color(0xFF0B0E14), Color(0xFFC9CDD8), Color(0xFFC9CDD8).copy(alpha = 0.60f), Color(0xFF344479).copy(alpha = 0.55f), Color(0xFFDBE1FF), Color(0xFFB5C4FF), true),
+    ReaderTheme("ink", S.settings.black, Color(0xFF000000), Color(0xFF9AA0AE), Color(0xFF9AA0AE).copy(alpha = 0.75f), Color(0xFF344479).copy(alpha = 0.60f), Color(0xFFDBE1FF), Color(0xFFB5C4FF), true),
+    ReaderTheme("light", S.settings.light, Color(0xFFF7F5F0), Color(0xFF35322C), Color(0xFF35322C).copy(alpha = 0.70f), Color(0xFFB5C4FF).copy(alpha = 0.55f), Color(0xFF1C2D61), Color(0xFF4C5C92), false),
+    ReaderTheme("paper", S.settings.paper, Color(0xFFF2E8D5), Color(0xFF4A3F2F), Color(0xFF4A3F2F).copy(alpha = 0.78f), Color(0xFFB07C2C).copy(alpha = 0.22f), Color(0xFF5C3A00), Color(0xFF5C3A00), false),
+    ReaderTheme("eye", S.settings.eyeCare, Color(0xFFDCE8DD), Color(0xFF2F4234), Color(0xFF2F4234).copy(alpha = 0.78f), Color(0xFF2E7D32).copy(alpha = 0.20f), Color(0xFF1B5E20), Color(0xFF1B5E20), false)
 )
 
 /**

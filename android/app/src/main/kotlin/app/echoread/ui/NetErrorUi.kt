@@ -1,5 +1,6 @@
 package app.echoread.ui
 
+import app.echoread.core.i18n.S
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -54,7 +55,7 @@ object ErrorDetails {
 
     /** 生成一个带「详情」行动点的错误提示 */
     fun toast(e: NetError) {
-        Toaster.error(e.headline(), action = ToastAction("详情") { show(e) })
+        Toaster.error(e.headline(), action = ToastAction(S.common.details) { show(e) })
     }
 }
 
@@ -79,7 +80,7 @@ fun BoxScope.ErrorDetailSheet(error: NetError?, onDismiss: () -> Unit) {
     if (error != null) last = error
     val e = error ?: last
 
-    EchoSheet(open = error != null, onDismiss = onDismiss, title = "错误详情", maxHeightFraction = 0.8f) {
+    EchoSheet(open = error != null, onDismiss = onDismiss, title = S.errors.errorDetails, maxHeightFraction = 0.8f) {
         if (e == null) return@EchoSheet
 
         StatusBadgeRow(e)
@@ -91,26 +92,26 @@ fun BoxScope.ErrorDetailSheet(error: NetError?, onDismiss: () -> Unit) {
 
         e.providerMessage?.takeIf { it.isNotBlank() }?.let { msg ->
             Spacer(Modifier.height(16.dp))
-            SectionLabel("服务商原话")
+            SectionLabel(S.errors.labelProviderMessage)
             Text(msg, color = c.text, style = MaterialTheme.typography.bodyMedium)
             e.providerCode?.takeIf { it.isNotBlank() }?.let {
                 Spacer(Modifier.height(4.dp))
-                Text("代码：$it", color = c.text3, style = MaterialTheme.typography.bodySmall)
+                Text(S.errors.labelCode(it), color = c.text3, style = MaterialTheme.typography.bodySmall)
             }
         }
 
         Spacer(Modifier.height(16.dp))
-        SectionLabel("请求")
-        KeyValue("端点", if (e.endpoint.isEmpty()) "—" else "${e.method} ${e.endpoint}")
-        e.model?.takeIf { it.isNotBlank() }?.let { KeyValue("模型", it) }
-        e.transport?.let { KeyValue("传输层", it) }
-        if (e.maxAttempts > 1) KeyValue("尝试", "第 ${e.attempt} / ${e.maxAttempts} 次")
-        if (e.elapsedMs > 0) KeyValue("耗时", "${e.elapsedMs} ms")
-        e.retryAfterSec?.let { KeyValue("Retry-After", "${it} 秒") }
+        SectionLabel(S.errors.labelRequest)
+        KeyValue(S.errors.labelEndpoint, if (e.endpoint.isEmpty()) "—" else "${e.method} ${e.endpoint}")
+        e.model?.takeIf { it.isNotBlank() }?.let { KeyValue(S.common.model, it) }
+        e.transport?.let { KeyValue(S.errors.labelTransport, it) }
+        if (e.maxAttempts > 1) KeyValue(S.errors.labelAttempt, S.errors.attemptOf(e.attempt, e.maxAttempts))
+        if (e.elapsedMs > 0) KeyValue(S.errors.labelElapsed, "${e.elapsedMs} ms")
+        e.retryAfterSec?.let { KeyValue("Retry-After", S.errors.seconds(it)) }
 
         e.bodySnippet?.takeIf { it.isNotBlank() }?.let { snippet ->
             Spacer(Modifier.height(16.dp))
-            SectionLabel("响应体片段")
+            SectionLabel(S.errors.labelBodySnippet)
             Box(
                 Modifier
                     .fillMaxWidth()
@@ -126,11 +127,11 @@ fun BoxScope.ErrorDetailSheet(error: NetError?, onDismiss: () -> Unit) {
 
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlineButton("复制诊断信息", Modifier.weight(1f)) {
+            OutlineButton(S.errors.copyDiagnostics, Modifier.weight(1f)) {
                 copyToClipboard(context, e.detail())
-                Toaster.success("已复制")
+                Toaster.success(S.errors.copied)
             }
-            GradientButton("知道了", Modifier.weight(1f)) { onDismiss() }
+            GradientButton(S.errors.gotIt, Modifier.weight(1f)) { onDismiss() }
         }
     }
 }
@@ -172,6 +173,6 @@ private fun KeyValue(k: String, v: String) {
 fun copyToClipboard(context: Context, text: String) {
     runCatching {
         val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        cm.setPrimaryClip(ClipData.newPlainText("Lector 诊断", text))
+        cm.setPrimaryClip(ClipData.newPlainText(S.errors.lectorDiagnostics, text))
     }
 }

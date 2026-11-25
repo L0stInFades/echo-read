@@ -1,5 +1,6 @@
 package app.echoread.ui
 
+import app.echoread.core.i18n.S
 import androidx.compose.ui.graphics.toArgb
 import app.echoread.core.ColorStyle
 import androidx.compose.ui.semantics.semantics
@@ -56,6 +57,7 @@ import app.echoread.AppGraph
 import app.echoread.core.TtsModelInfo
 import app.echoread.core.TtsProvider
 import kotlinx.coroutines.delay
+import app.echoread.tts.GeminiTts
 import app.echoread.tts.SpeechApi
 import app.echoread.tts.Voices
 import kotlinx.coroutines.launch
@@ -78,7 +80,7 @@ fun BoxScope.ChapterListSheet(open: Boolean, titles: List<String>, current: Int,
     LaunchedEffect(open) {
         if (open && titles.isNotEmpty()) state.scrollToItem((current - 4).coerceIn(0, maxOf(titles.size - 1, 0)))
     }
-    EchoSheet(open = open, onDismiss = onClose, title = "目录", scrollable = false) {
+    EchoSheet(open = open, onDismiss = onClose, title = S.common.contents, scrollable = false) {
         LazyColumn(state = state, modifier = Modifier.fillMaxWidth()) {
             itemsIndexed(titles) { i, t ->
                 val active = i == current
@@ -110,12 +112,12 @@ fun BoxScope.ChapterListSheet(open: Boolean, titles: List<String>, current: Int,
 fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: () -> Unit = {}, onClose: () -> Unit) {
     val c = echo
     val reader by graph.settings.reader.collectAsState()
-    EchoSheet(open = open, onDismiss = onClose, title = "阅读样式") {
+    EchoSheet(open = open, onDismiss = onClose, title = S.common.readingStyle) {
         // 翻页手势单独开一层：内容多且带实时预览，塞进本表会把主题/字号挤到看不见。
         // 与其余各行同构：副标题就是当前设置的摘要，不点进去也知道现在是什么配置。
         SettingsSection {
             row(
-                "翻页手势",
+                S.common.pageTurnGestures,
                 value = gestureSummary(reader.gestures),
                 icon = EchoIcons.SwipeH,
                 trailing = { ChevronEnd() },
@@ -128,16 +130,16 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: ()
          * 整套 48 个角色由 Google 的 material-color-utilities 按「种子色 × 风格」现算，
          * 不是几套写死的常量。跟随壁纸时直接用系统算好的那份。 */
         val dynAvailable = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
-        SettingsSection("应用配色") {
+        SettingsSection(S.settings.appColors) {
             switch(
-                "跟随壁纸取色",
-                value = if (dynAvailable) "用系统从壁纸提取的颜色" else "需要 Android 12 及以上",
+                S.settings.useWallpaperColors,
+                value = if (dynAvailable) S.settings.wallpaperColorsHint else S.settings.requiresAndroid12Or,
                 checked = reader.dynamicColor && dynAvailable,
                 enabled = dynAvailable
             ) { on -> graph.settings.updateReader { r -> r.copy(dynamicColor = on) } }
             if (!(reader.dynamicColor && dynAvailable)) {
                 customFullBleed {
-                    Text("主色", color = c.text, style = MaterialTheme.typography.bodyLarge,
+                    Text(S.settings.mainColor, color = c.text, style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.padding(horizontal = 16.dp))
                     Spacer(Modifier.height(10.dp))
                     LabeledSwatchRow {
@@ -153,7 +155,7 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: ()
                     }
                 }
                 customFullBleed {
-                    Text("风格", color = c.text, style = MaterialTheme.typography.bodyLarge,
+                    Text(S.settings.style, color = c.text, style = MaterialTheme.typography.bodyLarge,
                         modifier = Modifier.padding(horizontal = 16.dp))
                     Spacer(Modifier.height(10.dp))
                     LabeledSwatchRow {
@@ -170,9 +172,9 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: ()
                 }
             }
             custom {
-                Text("对比度", color = c.text, style = MaterialTheme.typography.bodyLarge)
+                Text(S.settings.contrast, color = c.text, style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(10.dp))
-                val levels = listOf(0f to "标准", 0.5f to "中", 1f to "高")
+                val levels = listOf(0f to S.common.standard, 0.5f to S.settings.medium, 1f to S.settings.high)
                 EchoSegmented(
                     items = levels.map { SegmentItem(it.second) },
                     selectedIndex = levels.indexOfFirst { kotlin.math.abs(it.first - reader.contrast) < 0.01f }.coerceAtLeast(0)
@@ -184,9 +186,9 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: ()
         /* ---- 阅读：与「应用配色」同一套分组结构 ----
          * 主题 / 字号 / 行距 / 段距 / 字体 归为一组：它们共同决定书页长什么样，
          * 原来是五个平铺的小节标签，扫读时看到的是五个标签而不是五个当前值。 */
-        SettingsSection("阅读") {
+        SettingsSection(S.settings.reading) {
             customFullBleed {
-                Text("主题", color = c.text, style = MaterialTheme.typography.bodyLarge,
+                Text(S.settings.theme, color = c.text, style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(horizontal = 16.dp))
                 Spacer(Modifier.height(10.dp))
                 Row(
@@ -204,7 +206,7 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: ()
                                     .border(if (selected) 2.dp else 1.dp, if (selected) c.accent else c.border, RoundedCornerShape(Radius.md))
                                     .echoPress(pressedScale = PressScale.Chip) { graph.settings.updateReader { r -> r.copy(theme = t.id) } },
                                 contentAlignment = Alignment.Center
-                            ) { Text("文", color = t.text, style = MaterialTheme.typography.titleSmallEmphasized) }
+                            ) { Text(S.settings.themePreviewGlyph, color = t.text, style = MaterialTheme.typography.titleSmallEmphasized) }
                             Spacer(Modifier.height(6.dp))
                             SwatchLabel(t.label, selected)
                         }
@@ -212,22 +214,22 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: ()
                 }
             }
             custom {
-                SettingsSlider("字号", "${reader.fontSize}sp", reader.fontSize.toFloat(), 14f..28f, steps = 13) { v ->
+                SettingsSlider(S.settings.fontSize, "${reader.fontSize}sp", reader.fontSize.toFloat(), 14f..28f, steps = 13) { v ->
                     graph.settings.updateReader { r -> r.copy(fontSize = v.toInt()) }
                 }
             }
             custom {
-                SettingsSlider("行距", String.format(java.util.Locale.ROOT, "%.1f", reader.lineHeight), reader.lineHeight, 1.4f..2.6f, steps = 11) { v ->
+                SettingsSlider(S.settings.lineSpacing, String.format(java.util.Locale.ROOT, "%.1f", reader.lineHeight), reader.lineHeight, 1.4f..2.6f, steps = 11) { v ->
                     graph.settings.updateReader { r -> r.copy(lineHeight = (Math.round(v * 10) / 10f)) }
                 }
             }
             custom {
-                SettingsSlider("段距", String.format(java.util.Locale.ROOT, "%.1f", reader.paraSpacing), reader.paraSpacing, 0.4f..2f, steps = 15) { v ->
+                SettingsSlider(S.settings.paragraphSpacing, String.format(java.util.Locale.ROOT, "%.1f", reader.paraSpacing), reader.paraSpacing, 0.4f..2f, steps = 15) { v ->
                     graph.settings.updateReader { r -> r.copy(paraSpacing = (Math.round(v * 10) / 10f)) }
                 }
             }
             custom {
-                Text("字体", color = c.text, style = MaterialTheme.typography.bodyLarge)
+                Text(S.settings.font, color = c.text, style = MaterialTheme.typography.bodyLarge)
                 Spacer(Modifier.height(10.dp))
                 // 二选一 → 连接式按钮组。字体名各自用对应字族渲染，选项本身就是预览。
                 Row(
@@ -241,23 +243,24 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: ()
                         modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
                         shapes = connectedShapesAt(0, 2),
                         border = if (serif) null else BorderStroke(1.dp, c.border)
-                    ) { Text("宋体 / 衬线", fontFamily = FontFamily.Serif, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
+                    ) { Text(S.settings.serif, fontFamily = FontFamily.Serif, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
                     androidx.compose.material3.ToggleButton(
                         checked = !serif,
                         onCheckedChange = { if (it) graph.settings.updateReader { r -> r.copy(fontFamily = "sans") } },
                         modifier = Modifier.weight(1f).semantics { role = Role.RadioButton },
                         shapes = connectedShapesAt(1, 2),
                         border = if (!serif) null else BorderStroke(1.dp, c.border)
-                    ) { Text("黑体 / 无衬线", fontFamily = FontFamily.SansSerif, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
+                    ) { Text(S.settings.sansSerif, fontFamily = FontFamily.SansSerif, style = MaterialTheme.typography.labelLarge, maxLines = 1) }
                 }
             }
         }
         Spacer(Modifier.height(20.dp))
 
-        SettingsSection("其他") {
-            switch("触觉反馈", value = "翻页、吸附与返回时的轻微震动", checked = reader.haptics) { on ->
+        SettingsSection(S.common.other) {
+            switch(S.settings.haptics, value = S.settings.hapticsHint, checked = reader.haptics) { on ->
                 graph.settings.updateReader { r -> r.copy(haptics = on) }
             }
+            custom { LanguagePicker(graph) }
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -279,22 +282,22 @@ private sealed interface SyncState {
     data class Failed(val error: app.echoread.core.net.NetError) : SyncState
 }
 
-private val VENDOR_LABELS = mapOf(
-    "hexgrad" to "Hexgrad", "qwen" to "通义", "minimax" to "MiniMax", "fish-audio" to "Fish Audio", "google" to "Google",
+private val VENDOR_LABELS: Map<String, String> get() = mapOf(
+    "hexgrad" to "Hexgrad", "qwen" to S.settings.vendorQwen, "minimax" to "MiniMax", "fish-audio" to "Fish Audio", "google" to "Google",
     "x-ai" to "xAI", "microsoft" to "Microsoft", "deepgram" to "Deepgram", "zyphra" to "Zyphra", "canopylabs" to "Canopy",
     "sesame" to "Sesame", "mistralai" to "Mistral", "openai" to "OpenAI"
 )
 
 private fun vendorOf(id: String): String = id.substringBefore('/', missingDelimiterValue = "")
-private fun vendorLabel(id: String): String = VENDOR_LABELS[vendorOf(id)] ?: vendorOf(id).replaceFirstChar { it.uppercase() }.ifEmpty { "自定义" }
+private fun vendorLabel(id: String): String = VENDOR_LABELS[vendorOf(id)] ?: vendorOf(id).replaceFirstChar { it.uppercase() }.ifEmpty { S.settings.vendorCustom }
 
 /** 单价（$/百万字符）或「按 token」/「免费」 */
 private fun priceLabel(info: TtsModelInfo?, id: String): String? = when {
-    id.contains(":free") -> "免费"
-    info?.completionPrice != null && info.completionPrice > 0 -> "按 token 计费"
+    id.contains(":free") -> S.common.free
+    info?.completionPrice != null && info.completionPrice > 0 -> S.common.perTokenPricing
     info?.promptPrice != null && info.promptPrice > 0 -> {
         val perM = info.promptPrice * 1e6
-        "$" + (if (perM >= 10) Math.round(perM).toString() else String.format(java.util.Locale.ROOT, "%.2f", perM).trimEnd('0').trimEnd('.')) + " / 百万字"
+        "$" + (if (perM >= 10) Math.round(perM).toString() else String.format(java.util.Locale.ROOT, "%.2f", perM).trimEnd('0').trimEnd('.')) + S.settings.perMillionChars
     }
     else -> null
 }
@@ -330,7 +333,54 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
     LaunchedEffect(model) { voiceLang = "" }
     val shownGroups = if (voiceLang.isEmpty()) voiceGroups else voiceGroups.filter { it.lang == voiceLang }
     val modelMeta = remember(model, models) { Voices.formatModelMeta(models.firstOrNull { it.id == model }, model) }
-    val showInstructions = !isOpenRouter
+    // OpenRouter 现在接受顶层 instructions，但只有 Gemini TTS 与 Fish Audio 真的用它（其余模型忽略）：
+    // 只在用得上的模型上露出这个输入框，免得填了却毫无作用
+    val showInstructions = !isOpenRouter || hints?.instructions == true
+
+    /* ---- Gemini 原生引擎的状态：音色目录同步（顺带验证 Key） ---- */
+    var geminiSync by remember { mutableStateOf<GeminiSyncState>(GeminiSyncState.Idle) }
+    val geminiVoices by settings.geminiVoices.collectAsState()
+    // 自建音色属于 Key 所在的项目：换了 Key、新目录还没拉回来之前，不把上一个项目的私有音色摆出来
+    val geminiRemote = if (settings.geminiVoicesFingerprint == settings.geminiFingerprintOf(tts.gemini)) geminiVoices
+        else geminiVoices.filterNot { Voices.isGeminiCustom(it) }
+    val geminiCatalog = remember(geminiRemote) { Voices.geminiCatalog(geminiRemote) }
+
+    suspend fun syncGeminiVoices(cfg: app.echoread.core.GeminiTtsConfig, silent: Boolean) {
+        if (cfg.apiKey.isBlank()) return
+        geminiSync = GeminiSyncState.Syncing
+        try {
+            val list = GeminiTts.listVoices(cfg)
+            settings.setGeminiVoices(list, settings.geminiFingerprintOf(cfg))
+            geminiSync = GeminiSyncState.Ok(Voices.geminiCatalog(list).size, list.count { Voices.isGeminiCustom(it) })
+            if (!silent) Toaster.success(S.settings.syncedGeminiVoices(list.size))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            val err = app.echoread.core.net.NetErrors.fromThrowable(
+                e, endpoint = GeminiTts.voicesUrl(), method = "GET",
+                kind = app.echoread.core.net.CallKind.MODEL_LIST, model = GeminiTts.modelOf(cfg)
+            )
+            geminiSync = GeminiSyncState.Failed(err)
+            if (!silent) ErrorDetails.toast(err)
+        }
+    }
+
+    // 自动连接：面板打开且选中 Gemini、Key 变化（去抖 800ms），或目录超过 24 小时未刷新
+    LaunchedEffect(open, tts.provider, tts.gemini.apiKey) {
+        if (!open || tts.provider != TtsProvider.GEMINI) return@LaunchedEffect
+        if (tts.gemini.apiKey.isBlank()) {
+            geminiSync = GeminiSyncState.Idle
+            return@LaunchedEffect
+        }
+        delay(800)
+        val fp = settings.geminiFingerprintOf(tts.gemini)
+        val stale = geminiVoices.isEmpty() || settings.geminiVoicesFingerprint != fp ||
+            System.currentTimeMillis() - settings.geminiVoicesSyncedAt > 24 * 3600_000L
+        if (stale) syncGeminiVoices(tts.gemini, silent = true)
+        else if (geminiSync !is GeminiSyncState.Ok) {
+            geminiSync = GeminiSyncState.Ok(Voices.geminiCatalog(geminiVoices).size, geminiVoices.count { Voices.isGeminiCustom(it) })
+        }
+    }
 
     /** 同步模型列表（+ OpenRouter 余额）；silent 时失败不弹 toast */
     suspend fun syncModels(cfg: app.echoread.core.OpenAISpeechConfig, silent: Boolean) {
@@ -350,7 +400,10 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                 },
                 suspiciousAuth = r.suspiciousAuth
             )
-            if (!silent) Toaster.success(if (r.models.isNotEmpty()) "已同步 ${r.models.size} 个语音模型" else "该服务未列出语音模型，可手动输入模型名")
+            if (!silent) Toaster.success(
+                if (r.models.isNotEmpty()) S.settings.syncedModels(r.models.size)
+                else S.settings.noModelsListed
+            )
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Throwable) {
@@ -382,14 +435,18 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
     }
 
     fun runTest() {
-        if (tts.openai.apiKey.isBlank()) {
-            Toaster.error("请先填写 API Key")
+        val gemini = tts.provider == TtsProvider.GEMINI
+        if (if (gemini) tts.gemini.apiKey.isBlank() else tts.openai.apiKey.isBlank()) {
+            Toaster.error(S.settings.enterApiKeyFirst)
             return
         }
         testing = true
         testResult = ""
+        // 入口快照：合成期间改了设置，试的仍是按下按钮那一刻的配置
+        val geminiCfg = tts.gemini
+        val openaiCfg = tts.openai
         scope.launch {
-            val r = SpeechApi.testConfig(tts.openai)
+            val r = if (gemini) GeminiTts.testConfig(geminiCfg) else SpeechApi.testConfig(openaiCfg)
             if (!r.ok || r.audio == null) {
                 testing = false
                 testResult = r.message
@@ -397,7 +454,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                 return@launch
             }
             // 试听就得真的响：合成成功后立刻播出来（占用同一个播放器，先暂停正在朗读的引擎）
-            testResult = "试听中…"
+            testResult = S.settings.playing
             try {
                 graph.engine.pause()
                 val f = withContext(Dispatchers.IO) {
@@ -405,9 +462,9 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                 }
                 graph.playback.setActive(true)
                 graph.playback.play(f, 1f, deleteAfter = true).awaitEnded()
-                Toaster.success("试听完成")
+                Toaster.success(S.settings.previewFinished)
             } catch (e: Exception) {
-                Toaster.error(e.message ?: "播放失败")
+                Toaster.error(e.message ?: S.common.playbackFailed)
             } finally {
                 graph.playback.setActive(false)
                 testing = false
@@ -431,37 +488,82 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
      */
     var showModelPicker by remember { mutableStateOf(false) }
     var showVoicePicker by remember { mutableStateOf(false) }
+    var showGeminiModelPicker by remember { mutableStateOf(false) }
+    var showGeminiVoicePicker by remember { mutableStateOf(false) }
     var showCredentials by remember { mutableStateOf(false) }
     // 没填 Key 时凭据默认展开 —— 那是此刻唯一要做的事
-    LaunchedEffect(open) { if (open) showCredentials = tts.openai.apiKey.isBlank() }
+    LaunchedEffect(open, tts.provider) {
+        if (open) showCredentials = if (tts.provider == TtsProvider.GEMINI) tts.gemini.apiKey.isBlank() else tts.openai.apiKey.isBlank()
+    }
 
     val currentModelInfo = models.firstOrNull { it.id == model }
     val modelLabel = when {
-        model.isBlank() -> "未选择"
+        model.isBlank() -> S.settings.notSelected
         currentModelInfo != null -> currentModelInfo.name.substringAfter(": ").ifEmpty { model }
         else -> model
     }
     val currentVoice = tts.openai.voice
     val voiceLabel = when {
-        currentVoice.isBlank() -> if (hints?.voiceOptional == true) "服务默认" else "未设置"
+        currentVoice.isBlank() -> if (hints?.voiceOptional == true) S.common.serviceDefault else S.settings.notSet
         else -> voiceCatalog.firstOrNull { it.id == currentVoice }?.let { v ->
             buildString { append(v.label); v.note?.let { append(" · ").append(it) } }
         } ?: currentVoice
     }
 
-    EchoSheet(open = open, onDismiss = onClose, title = "AI 朗读设置") {
-        SettingsSection("朗读引擎") {
+    /** 两个 AI 引擎共用的「高级」：影响成本与延迟的旋钮，以及语音缓存 */
+    @Composable
+    fun AdvancedSection(note: String? = null) {
+        SettingsSection(S.settings.advanced) {
             custom {
-                EchoSegmented(
-                    items = listOf(SegmentItem("AI 语音"), SegmentItem("系统语音")),
-                    selectedIndex = if (tts.provider == TtsProvider.OPENAI) 0 else 1
-                ) { i ->
-                    settings.updateTts { it.copy(provider = if (i == 0) TtsProvider.OPENAI else TtsProvider.SYSTEM) }
+                SettingsSlider(S.settings.charactersPerSegment, "${tts.maxChunkChars}", tts.maxChunkChars.toFloat(), 80f..400f, steps = 31) { v ->
+                    settings.updateTts { it.copy(maxChunkChars = (Math.round(v / 10) * 10)) }
                 }
+                Spacer(Modifier.height(4.dp))
+                Text(S.settings.chunkHint, color = c.text3, style = MaterialTheme.typography.bodySmall)
+                if (note != null) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(note, color = c.text3, style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            custom {
+                SettingsSlider(S.settings.prefetchSegments, "${tts.prefetch}", tts.prefetch.toFloat(), 0f..5f, steps = 4) { v ->
+                    settings.updateTts { it.copy(prefetch = Math.round(v)) }
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(S.settings.prefetchHint, color = c.text3, style = MaterialTheme.typography.bodySmall)
+            }
+            row(
+                S.settings.audioCache,
+                value = cacheStats?.let { S.settings.cacheStats(it.count, formatBytes(it.bytes)) } ?: S.settings.calculating,
+                trailing = {
+                    Text(S.settings.clear, color = c.danger, style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.echoPress(pressedScale = PressScale.Chip) {
+                            scope.launch {
+                                graph.audioCache.clear()
+                                cacheStats = graph.audioCache.stats()
+                                Toaster.success(S.settings.audioCacheCleared)
+                            }
+                        })
+                }
+            )
+        }
+    }
+
+    EchoSheet(open = open, onDismiss = onClose, title = S.settings.voiceSettingsTitle) {
+        SettingsSection(S.settings.voiceEngine) {
+            custom {
+                val engines = listOf(TtsProvider.OPENAI, TtsProvider.GEMINI, TtsProvider.SYSTEM)
+                EchoSegmented(
+                    items = listOf(SegmentItem(S.settings.aiVoice), SegmentItem("Gemini"), SegmentItem(S.settings.systemTts)),
+                    selectedIndex = engines.indexOf(tts.provider).coerceAtLeast(0)
+                ) { i -> settings.updateTts { it.copy(provider = engines[i]) } }
                 Spacer(Modifier.height(6.dp))
                 Text(
-                    if (tts.provider == TtsProvider.OPENAI) "OpenRouter / OpenAI 兼容接口，音质最好"
-                    else "系统内置语音，免费离线，音质取决于设备",
+                    when (tts.provider) {
+                        TtsProvider.OPENAI -> S.settings.engineOpenAiDesc
+                        TtsProvider.GEMINI -> S.settings.engineGeminiDesc
+                        TtsProvider.SYSTEM -> S.settings.engineSystemDesc
+                    },
                     color = c.text2, style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -470,22 +572,22 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
 
         if (tts.provider == TtsProvider.OPENAI) {
             /* ---- 服务：状态即入口。点状态行展开凭据，试听就在旁边 ---- */
-            SettingsSection("服务") {
+            SettingsSection(S.common.service) {
                 custom {
                     val st = sync
                     val (dot, statusText) = when (st) {
-                        SyncState.Idle -> c.text3 to (if (tts.openai.apiKey.isBlank()) "填入 API Key 后自动同步模型与音色" else "等待同步…")
-                        SyncState.Syncing -> c.accent to "正在同步模型列表…"
+                        SyncState.Idle -> c.text3 to (if (tts.openai.apiKey.isBlank()) S.settings.keyHintAutoSync else S.settings.waitingToSync)
+                        SyncState.Syncing -> c.accent to S.settings.syncingModelList
                         is SyncState.Ok -> {
                             // 有任何可疑信号就不给绿灯：一个「已连接」的绿点如果建立在未验证的字节上，
                             // 比没有指示器更糟。
                             val warn = st.suspiciousAuth != null || st.creditsError != null
                             (if (warn) warningColor(c.isDark) else Color(0xFF34C759)) to buildString {
-                                append(if (isOpenRouter) "已连接 OpenRouter" else "已连接")
-                                append(" · ${st.count} 个语音模型")
-                                st.credits?.let { append(" · 余额 $" + String.format(java.util.Locale.ROOT, "%.2f", it.remaining)) }
-                                st.creditsError?.let { append(" · 余额获取失败（${it.badge()}）") }
-                                st.suspiciousAuth?.let { append(" · 鉴权可疑（${it.badge()}）") }
+                                append(if (isOpenRouter) S.settings.connectedToOpenrouter else S.settings.connectedShort)
+                                append(S.settings.voiceModelsSuffix(st.count))
+                                st.credits?.let { append(S.settings.balanceSuffix + String.format(java.util.Locale.ROOT, "%.2f", it.remaining)) }
+                                st.creditsError?.let { append(S.settings.balanceFailedSuffix(it.badge())) }
+                                st.suspiciousAuth?.let { append(S.settings.suspiciousAuthSuffix(it.badge())) }
                             }
                         }
                         is SyncState.Failed -> c.danger to st.error.headline()
@@ -498,7 +600,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                         Spacer(Modifier.width(10.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                if (tts.openai.apiKey.isBlank()) "未配置" else if (isOpenRouter) "OpenRouter" else "自定义接口",
+                                if (tts.openai.apiKey.isBlank()) S.common.notSetUp else if (isOpenRouter) "OpenRouter" else S.settings.customEndpoint,
                                 color = c.text, style = MaterialTheme.typography.bodyLarge
                             )
                             Text(
@@ -509,7 +611,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                         }
                         Icon(
                             if (showCredentials) EchoIcons.ChevronUp else EchoIcons.ChevronDown,
-                            if (showCredentials) "收起" else "展开",
+                            if (showCredentials) S.common.collapse else S.common.expand,
                             tint = c.text3, modifier = Modifier.size(20.dp)
                         )
                     }
@@ -523,16 +625,16 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         // 试听验证的就是这条连接，所以放在这里，而不是隔着三个小节的表单中段
                         OutlineButton(
-                            if (testing) (testResult.ifEmpty { "正在合成…" }) else "试听",
+                            if (testing) (testResult.ifEmpty { S.common.generating }) else S.common.preview,
                             Modifier.weight(1f), color = c.accent, height = 40.dp
                         ) { if (!testing) runTest() }
                         if (tts.openai.apiKey.isNotBlank()) {
-                            OutlineButton("刷新", Modifier.weight(1f), height = 40.dp) {
+                            OutlineButton(S.common.refresh, Modifier.weight(1f), height = 40.dp) {
                                 scope.launch { syncModels(tts.openai, silent = false) }
                             }
                         }
                         if (detailFor != null) {
-                            OutlineButton("详情", Modifier.weight(1f), color = c.danger, height = 40.dp) { ErrorDetails.show(detailFor) }
+                            OutlineButton(S.common.details, Modifier.weight(1f), color = c.danger, height = 40.dp) { ErrorDetails.show(detailFor) }
                         }
                     }
                     AnimatedVisibility(showCredentials, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut) {
@@ -550,7 +652,7 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
                             if (isOpenRouter) {
                                 Spacer(Modifier.height(8.dp))
                                 Text(
-                                    "去 OpenRouter 创建 Key →", color = c.accent,
+                                    S.settings.createOpenRouterKey, color = c.accent,
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.echoPress(pressedScale = PressScale.Chip) {
                                         runCatching { uriHandler.openUri("https://openrouter.ai/settings/keys") }
@@ -564,23 +666,23 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
             Spacer(Modifier.height(20.dp))
 
             /* ---- 声音：每行的副标题就是当前值，一眼扫完全部配置 ---- */
-            SettingsSection("声音") {
-                row("模型", value = modelLabel, onClick = { showModelPicker = true }, trailing = { ChevronEnd() })
-                row("音色", value = voiceLabel, onClick = { showVoicePicker = true }, trailing = { ChevronEnd() })
+            SettingsSection(S.common.speech) {
+                row(S.common.model, value = modelLabel, onClick = { showModelPicker = true }, trailing = { ChevronEnd() })
+                row(S.common.voice, value = voiceLabel, onClick = { showVoicePicker = true }, trailing = { ChevronEnd() })
                 if (showInstructions) {
                     custom {
-                        Text("语气指令", color = c.text, style = MaterialTheme.typography.bodyLarge)
+                        Text(S.settings.deliveryInstructions, color = c.text, style = MaterialTheme.typography.bodyLarge)
                         Spacer(Modifier.height(8.dp))
                         EchoTextField(
                             tts.openai.instructions,
                             { v -> settings.updateOpenAI { it.copy(instructions = v) } },
-                            placeholder = "如：用温暖沉静的女声朗读"
+                            placeholder = S.settings.instructionsPlaceholder
                         )
                     }
                 }
                 custom {
                     SettingsSlider(
-                        "语速", String.format(java.util.Locale.ROOT, "%.2f×", tts.rate),
+                        S.common.speed, String.format(java.util.Locale.ROOT, "%.2f×", tts.rate),
                         tts.rate, 0.5f..2.5f, steps = 39
                     ) { v -> settings.updateTts { it.copy(rate = (Math.round(v * 20) / 20f)) } }
                 }
@@ -588,42 +690,40 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
             Spacer(Modifier.height(20.dp))
 
             /* ---- 高级：影响成本与延迟的旋钮，以及缓存 ---- */
-            SettingsSection("高级") {
-                custom {
-                    SettingsSlider("单片段字数", "${tts.maxChunkChars}", tts.maxChunkChars.toFloat(), 80f..400f, steps = 31) { v ->
-                        settings.updateTts { it.copy(maxChunkChars = (Math.round(v / 10) * 10)) }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text("每次请求合成多少字。调大更省请求次数，但换段更慢。", color = c.text3, style = MaterialTheme.typography.bodySmall)
-                }
-                custom {
-                    SettingsSlider("预取段数", "${tts.prefetch}", tts.prefetch.toFloat(), 0f..5f, steps = 4) { v ->
-                        settings.updateTts { it.copy(prefetch = Math.round(v)) }
-                    }
-                    Spacer(Modifier.height(4.dp))
-                    Text("提前合成几段。调大更不容易断，但弱网下可能白花钱。", color = c.text3, style = MaterialTheme.typography.bodySmall)
-                }
-                row(
-                    "语音缓存",
-                    value = cacheStats?.let { "${it.count} 条 · ${formatBytes(it.bytes)}" } ?: "统计中…",
-                    trailing = {
-                        Text("清空", color = c.danger, style = MaterialTheme.typography.labelLarge,
-                            modifier = Modifier.echoPress(pressedScale = PressScale.Chip) {
-                                scope.launch {
-                                    graph.audioCache.clear()
-                                    cacheStats = graph.audioCache.stats()
-                                    Toaster.success("语音缓存已清空")
-                                }
-                            })
-                    }
-                )
-            }
+            AdvancedSection()
+        } else if (tts.provider == TtsProvider.GEMINI) {
+            /* ---- Gemini 原生：同一套组织方式，内容换成 Gemini API 自己的概念 ---- */
+            GeminiServiceSection(
+                cfg = tts.gemini,
+                sync = geminiSync,
+                testing = testing,
+                testLabel = testResult,
+                showCredentials = showCredentials,
+                onToggleCredentials = { showCredentials = !showCredentials },
+                onTest = { runTest() },
+                onRefresh = { scope.launch { syncGeminiVoices(tts.gemini, silent = false) } },
+                onKeyChange = { v -> settings.updateGemini { it.copy(apiKey = v) } }
+            )
+            Spacer(Modifier.height(20.dp))
+            GeminiVoiceSection(
+                cfg = tts.gemini,
+                voiceLabel = geminiVoiceLabel(tts.gemini.voice, geminiCatalog),
+                rate = tts.rate,
+                onOpenModel = { showGeminiModelPicker = true },
+                onOpenVoice = { showGeminiVoicePicker = true },
+                onStyleChange = { v -> settings.updateGemini { it.copy(style = v) } },
+                onRateChange = { v -> settings.updateTts { it.copy(rate = v) } }
+            )
+            Spacer(Modifier.height(20.dp))
+            AdvancedSection(
+                note = S.settings.geminiChunkNote
+            )
         } else {
             /* ---- 系统语音：只有语速可调 ---- */
-            SettingsSection("声音") {
+            SettingsSection(S.common.speech) {
                 custom {
                     SettingsSlider(
-                        "语速", String.format(java.util.Locale.ROOT, "%.2f×", tts.rate),
+                        S.common.speed, String.format(java.util.Locale.ROOT, "%.2f×", tts.rate),
                         tts.rate, 0.5f..2.5f, steps = 39
                     ) { v -> settings.updateTts { it.copy(rate = (Math.round(v * 20) / 20f)) } }
                 }
@@ -640,11 +740,25 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
         open = showVoicePicker, graph = graph, model = model, current = currentVoice,
         onClose = { showVoicePicker = false }
     )
+    GeminiModelPickerSheet(
+        open = showGeminiModelPicker, current = GeminiTts.modelOf(tts.gemini),
+        onPick = { id -> settings.updateGemini { it.copy(model = id) } },
+        onClose = { showGeminiModelPicker = false }
+    )
+    GeminiVoicePickerSheet(
+        open = showGeminiVoicePicker, catalog = geminiCatalog, current = tts.gemini.voice,
+        hasKey = tts.gemini.apiKey.isNotBlank(),
+        syncing = geminiSync is GeminiSyncState.Syncing,
+        libraryLoaded = geminiRemote.isNotEmpty(),
+        onRefresh = { scope.launch { syncGeminiVoices(tts.gemini, silent = false) } },
+        onPick = { v -> settings.updateGemini { it.copy(voice = v) } },
+        onClose = { showGeminiVoicePicker = false }
+    )
 }
 
 /** 尾部的「进入」箭头，所有可点进子界面的行共用 */
 @Composable
-private fun ChevronEnd() {
+internal fun ChevronEnd() {
     Icon(EchoIcons.ChevronRight, null, tint = echo.text3, modifier = Modifier.size(20.dp))
 }
 
@@ -657,10 +771,10 @@ private fun Tag(text: String, color: Color) {
     )
 }
 
-private fun genderMark(g: String?): String? = when (g) { "f" -> "♀"; "m" -> "♂"; else -> null }
+internal fun genderMark(g: String?): String? = when (g) { "f" -> "♀"; "m" -> "♂"; else -> null }
 
 @Composable
-private fun genderColor(g: String?): Color? = when (g) { "f" -> Color(0xFFF472B6); "m" -> Color(0xFF38BDF8); else -> null }
+internal fun genderColor(g: String?): Color? = when (g) { "f" -> Color(0xFFF472B6); "m" -> Color(0xFF38BDF8); else -> null }
 
 fun formatBytes(n: Long): String = when {
     n > 1024 * 1024 -> String.format(java.util.Locale.ROOT, "%.1f MB", n / 1024.0 / 1024.0)
@@ -679,7 +793,7 @@ fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Un
     val c = echo
     val scope = rememberCoroutineScope()
     var checking by remember { mutableStateOf(false) }
-    EchoSheet(open = open, onDismiss = onClose, title = "怎么用") {
+    EchoSheet(open = open, onDismiss = onClose, title = S.common.howToUse) {
         if (graph != null) {
             Row(
                 Modifier
@@ -691,10 +805,10 @@ fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Un
                             val r = runCatching { graph.updater.check(force = true) }.getOrNull()
                             checking = false
                             when (r) {
-                                is app.echoread.data.UpdateState.UpToDate -> Toaster.success("已是最新版本 v${graph.updater.currentVersionName}")
-                                is app.echoread.data.UpdateState.Available, is app.echoread.data.UpdateState.Ready -> { Toaster.show("发现新版本，见书架顶部"); onClose() }
+                                is app.echoread.data.UpdateState.UpToDate -> Toaster.success(S.settings.youreUpToDate(graph.updater.currentVersionName))
+                                is app.echoread.data.UpdateState.Available, is app.echoread.data.UpdateState.Ready -> { Toaster.show(S.settings.updateFoundSeeLibrary); onClose() }
                                 is app.echoread.data.UpdateState.Error -> r.error?.let { ErrorDetails.toast(it) } ?: Toaster.error(r.message)
-                                else -> Toaster.error("检查更新失败")
+                                else -> Toaster.error(S.settings.couldntCheckForUpdates)
                             }
                         }
                     }
@@ -702,22 +816,30 @@ fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Un
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(if (checking) "正在检查更新…" else "检查更新", color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                    Text("当前版本 v${graph.updater.currentVersionName}", color = c.text3, style = MaterialTheme.typography.labelSmall)
+                    Text(if (checking) S.settings.checkingForUpdates else S.settings.checkForUpdates, color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text(S.settings.currentVersion(graph.updater.currentVersionName), color = c.text3, style = MaterialTheme.typography.labelSmall)
                 }
                 Icon(EchoIcons.ChevronRight, null, tint = c.text3, modifier = Modifier.size(16.dp))
             }
+            Spacer(Modifier.height(10.dp))
+            // 书架上就能找到的地方：中文系统的用户想用英文界面，不必先打开一本书
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .background(c.cardAlt, RoundedCornerShape(Radius.md))
+                    .padding(horizontal = 14.dp, vertical = 12.dp)
+            ) { LanguagePicker(graph) }
             Spacer(Modifier.height(18.dp))
         }
         val sections = listOf(
-            "导入书籍" to "点底部「导入书籍」会自动扫描本机所有 TXT / EPUB，勾选后批量入库，已在书架的会标出来。" +
-                "首次使用需要授权：Android 11 起系统只允许「所有文件访问权限」做全盘扫描，不想开也可以只授权某个文件夹（书常放在 Download、Documents、Books 里）。" +
-                "也可以随时用「从文件管理器选择」，或在文件管理器里用「打开方式」发给 Lector。",
-            "点读" to "打开书籍后，轻点正文任意位置，AI 就从那个字开始朗读。底栏可以暂停、切章、调倍速，月亮按钮是睡眠定时。锁屏与通知栏可控制播放、切章。",
-            "翻页手势" to "阅读页 → T 图标 → 「翻页手势」可以改：左右滑 / 上下滑 / 关闭滑动，点击翻页热区放在左右还是上下、各占多宽，以及要不要保留「轻点朗读」。" +
-                "顶部有实时预览，拖滑块就能看到热区变化。提示：系统手势导航会吃掉屏幕左右边缘起手的横滑，改成「上下滑」可以完全避开这个冲突。",
-            "声音" to "齿轮里填入 OpenRouter / OpenAI 兼容接口的 API Key，拉取模型后选音色即可。没有 Key 时切到「系统语音」，用手机自带的离线朗读引擎。",
-            "离线" to "书架和已经听过的片段缓存在本机（最多 300MB，自动淘汰最旧）。断网也能继续读、继续听缓存过的句子。"
+            S.common.importBooks to S.settings.helpImport1 +
+                S.settings.helpImport2 +
+                S.settings.helpImport3,
+            S.settings.helpTapToReadTitle to S.settings.helpTapToRead,
+            S.common.pageTurnGestures to S.settings.helpGestures1 +
+                S.settings.helpGestures2,
+            S.common.speech to S.settings.tapTheGearAnd,
+            S.settings.helpOfflineTitle to S.settings.helpOffline
         )
         for ((h, p) in sections) {
             Text(h, color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
@@ -731,16 +853,16 @@ fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Un
 /** 手势设置一行摘要，显示在「阅读样式」的入口行上 */
 private fun gestureSummary(g: app.echoread.core.GestureSettings): String {
     val swipe = when (g.axis) {
-        app.echoread.core.PageAxis.HORIZONTAL -> "左右滑"
-        app.echoread.core.PageAxis.VERTICAL -> "上下滑"
-        app.echoread.core.PageAxis.OFF -> "不滑动"
+        app.echoread.core.PageAxis.HORIZONTAL -> S.settings.swipeSideways
+        app.echoread.core.PageAxis.VERTICAL -> S.settings.swipeUpDown
+        app.echoread.core.PageAxis.OFF -> S.settings.noSwiping
     }
     val tap = when {
-        !g.zonesActive -> "无点击热区"
-        g.tapAxis == app.echoread.core.PageAxis.VERTICAL -> "上下热区 ${(g.prevZone * 100).toInt()}/${(g.nextZone * 100).toInt()}%"
-        else -> "左右热区 ${(g.prevZone * 100).toInt()}/${(g.nextZone * 100).toInt()}%"
+        !g.zonesActive -> S.settings.noTapZones
+        g.tapAxis == app.echoread.core.PageAxis.VERTICAL -> S.settings.zonesSummaryTopBottom((g.prevZone * 100).toInt(), (g.nextZone * 100).toInt())
+        else -> S.settings.zonesSummaryLeftRight((g.prevZone * 100).toInt(), (g.nextZone * 100).toInt())
     }
-    return "$swipe · $tap" + if (g.tapToRead) " · 轻点朗读" else ""
+    return "$swipe · $tap" + if (g.tapToRead) S.settings.tapToReadSuffix else ""
 }
 
 /* ---------------- 模型 / 音色选择器 ----------------
@@ -765,10 +887,10 @@ fun BoxScope.ModelPickerSheet(
     var filter by remember { mutableStateOf("") }
     LaunchedEffect(open) { if (open) filter = "" }
 
-    EchoSheet(open = open, onDismiss = onClose, title = "选择模型", maxHeightFraction = 0.88f, scrollable = false) {
+    EchoSheet(open = open, onDismiss = onClose, title = S.settings.chooseModel, maxHeightFraction = 0.88f, scrollable = false) {
         if (models.isEmpty()) {
             Text(
-                "还没有同步到模型列表。填入 API Key 后会自动同步；也可以先用下面的推荐模型。",
+                S.settings.noModelsSyncedHint,
                 color = c.text2, style = MaterialTheme.typography.bodyMedium
             )
             Spacer(Modifier.height(12.dp))
@@ -778,11 +900,11 @@ fun BoxScope.ModelPickerSheet(
                 }
             }
             Spacer(Modifier.height(16.dp))
-            EchoTextField(current, { v -> settings.setModel(v.trim()) }, label = "或手动填写模型 ID", placeholder = "如 hexgrad/kokoro-82m")
+            EchoTextField(current, { v -> settings.setModel(v.trim()) }, label = S.common.orEnterAModel, placeholder = S.settings.modelIdPlaceholder)
             return@EchoSheet
         }
 
-        EchoTextField(filter, { filter = it }, placeholder = "筛选模型（名称 / 厂商 / 中文 / 免费）")
+        EchoTextField(filter, { filter = it }, placeholder = S.settings.filterModels)
         Spacer(Modifier.height(10.dp))
         val recommendedIds = Voices.RECOMMENDED_MODELS.map { it.id }
         val q = filter.trim().lowercase()
@@ -793,7 +915,7 @@ fun BoxScope.ModelPickerSheet(
             if (q.isEmpty()) list else list.filter { m ->
                 val h = Voices.modelHints(m.id)
                 m.id.lowercase().contains(q) || m.name.lowercase().contains(q) || vendorLabel(m.id).lowercase().contains(q) ||
-                    (h?.langs?.contains(q) == true) || (q == "免费" && m.id.contains(":free")) || (q == "中文" && (h?.langs?.contains("中") == true))
+                    (h?.langs?.lowercase()?.contains(q) == true) || ((q == "免费" || q == "free") && m.id.contains(":free")) || ((q == "中文" || q == "chinese") && h?.zh == true)
             }
         }
         LazyColumn(
@@ -830,13 +952,13 @@ fun BoxScope.ModelPickerSheet(
                                 style = MaterialTheme.typography.bodyLargeEmphasized,
                                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
                             )
-                            if (m.id.contains(":free")) Tag("免费", Color(0xFF34C759))
-                            if (h?.langs?.contains("中") == true) Tag("中文", c.accent)
-                            if (h?.cloning == true) Tag("克隆", Color(0xFFB47CFF))
+                            if (m.id.contains(":free")) Tag(S.common.free, Color(0xFF34C759))
+                            if (h?.zh == true) Tag(S.common.chinese, c.accent)
+                            if (h?.cloning == true) Tag(S.settings.cloning, Color(0xFFB47CFF))
                         }
                         val meta = listOfNotNull(
                             priceLabel(m, m.id), h?.langs,
-                            if (voicesN > 0) "$voicesN 音色" else if (h?.freeVoice != null) "开放音色 ID" else null
+                            if (voicesN > 0) S.settings.voiceCount(voicesN) else if (h?.freeVoice != null) S.settings.anyVoiceId else null
                         ).joinToString(" · ")
                         if (meta.isNotEmpty()) {
                             Text(meta, color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -845,16 +967,16 @@ fun BoxScope.ModelPickerSheet(
                     }
                     if (selected) {
                         Spacer(Modifier.width(8.dp))
-                        Icon(EchoIcons.Check, "已选中", tint = c.accent, modifier = Modifier.size(20.dp))
+                        Icon(EchoIcons.Check, S.common.selected, tint = c.accent, modifier = Modifier.size(20.dp))
                     }
                 }
             }
             if (ordered.isEmpty()) {
-                item { Text("没有匹配的模型", color = c.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(12.dp)) }
+                item { Text(S.settings.noMatchingModels, color = c.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(12.dp)) }
             }
         }
         Spacer(Modifier.height(12.dp))
-        EchoTextField(current, { v -> settings.setModel(v.trim()) }, label = "或手动填写列表外的模型 ID", placeholder = "如 hexgrad/kokoro-82m")
+        EchoTextField(current, { v -> settings.setModel(v.trim()) }, label = S.settings.orEnterAnUnlisted, placeholder = S.settings.modelIdPlaceholder)
     }
 }
 
@@ -880,16 +1002,16 @@ fun BoxScope.VoicePickerSheet(
     val groups = remember(catalog) { Voices.groupVoices(catalog) }
     val shown = if (lang.isEmpty()) groups else groups.filter { it.lang == lang }
 
-    EchoSheet(open = open, onDismiss = onClose, title = "选择音色", maxHeightFraction = 0.88f, scrollable = false) {
+    EchoSheet(open = open, onDismiss = onClose, title = S.common.chooseVoice, maxHeightFraction = 0.88f, scrollable = false) {
         when {
             freeVoice != null -> {
                 Text(freeVoice.hint, color = c.text2, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(12.dp))
-                EchoTextField(current, { v -> settings.setVoice(v.trim()) }, label = "音色 ID", placeholder = freeVoice.placeholder)
+                EchoTextField(current, { v -> settings.setVoice(v.trim()) }, label = S.settings.voiceId, placeholder = freeVoice.placeholder)
                 if (hints.voiceOptional || freeVoice.suggestions.isNotEmpty()) {
                     Spacer(Modifier.height(12.dp))
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (hints.voiceOptional) Chip("服务默认", selected = current.isEmpty()) { settings.setVoice(""); onClose() }
+                        if (hints.voiceOptional) Chip(S.common.serviceDefault, selected = current.isEmpty()) { settings.setVoice(""); onClose() }
                         for (v in freeVoice.suggestions) {
                             Chip(v.label, selected = current == v.id, trailing = genderMark(v.gender), trailingColor = genderColor(v.gender)) {
                                 settings.setVoice(v.id); onClose()
@@ -901,7 +1023,7 @@ fun BoxScope.VoicePickerSheet(
             catalog.isNotEmpty() -> {
                 if (groups.size > 1) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Chip("全部", selected = lang.isEmpty()) { lang = "" }
+                        Chip(S.common.all, selected = lang.isEmpty()) { lang = "" }
                         for (g in groups) Chip(g.label, selected = lang == g.lang, trailing = "${g.voices.size}") { lang = g.lang }
                     }
                     Spacer(Modifier.height(12.dp))
@@ -924,14 +1046,33 @@ fun BoxScope.VoicePickerSheet(
                     }
                 }
                 Spacer(Modifier.height(12.dp))
-                EchoTextField(current, { v -> settings.setVoice(v.trim()) }, label = "或手动填写音色 ID", placeholder = "音色 ID")
+                EchoTextField(current, { v -> settings.setVoice(v.trim()) }, label = S.settings.orEnterAVoice, placeholder = S.settings.voiceId)
             }
             else -> {
-                Text("该模型未提供音色列表，可手动填写；留空则试用服务默认音色。",
+                Text(S.settings.noVoiceListHint,
                     color = c.text2, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(12.dp))
-                EchoTextField(current, { v -> settings.setVoice(v.trim()) }, label = "音色 ID", placeholder = "留空 = 服务默认")
+                EchoTextField(current, { v -> settings.setVoice(v.trim()) }, label = S.settings.voiceId, placeholder = S.settings.blankServiceDefault)
             }
         }
     }
+}
+
+/**
+ * 界面语言：跟随系统 / 中文 / English。选中后 MainActivity 重建，整页按新语言重画。
+ * 「跟随系统」也认 Android 13 起的「应用语言」设置（系统设置 → 应用 → Lector → 语言）。
+ */
+@Composable
+internal fun LanguagePicker(graph: AppGraph) {
+    val c = echo
+    val reader by graph.settings.reader.collectAsState()
+    val options = listOf(app.echoread.core.i18n.AppLanguage.SYSTEM, app.echoread.core.i18n.AppLanguage.ZH, app.echoread.core.i18n.AppLanguage.EN)
+    Text(S.settings.language, color = c.text, style = MaterialTheme.typography.bodyLarge)
+    Spacer(Modifier.height(10.dp))
+    EchoSegmented(
+        items = listOf(SegmentItem(S.settings.languageSystem), SegmentItem(S.settings.languageZh), SegmentItem(S.settings.languageEn)),
+        selectedIndex = options.indexOf(reader.language).coerceAtLeast(0)
+    ) { i -> graph.settings.updateReader { r -> r.copy(language = options[i]) } }
+    Spacer(Modifier.height(6.dp))
+    Text(S.settings.languageHint, color = c.text3, style = MaterialTheme.typography.bodySmall)
 }

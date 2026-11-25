@@ -1,5 +1,6 @@
 package app.echoread.tts
 
+import app.echoread.core.i18n.S
 import android.content.Context
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
@@ -30,11 +31,11 @@ class SystemTts(private val context: Context) {
 
         @Deprecated("Deprecated in Java")
         override fun onError(utteranceId: String?) {
-            utteranceId?.let { pending.remove(it)?.completeExceptionally(IllegalStateException("系统语音合成出错")) }
+            utteranceId?.let { pending.remove(it)?.completeExceptionally(IllegalStateException(S.playback.systemTtsError)) }
         }
 
         override fun onError(utteranceId: String?, errorCode: Int) {
-            utteranceId?.let { pending.remove(it)?.completeExceptionally(IllegalStateException("系统语音合成出错（$errorCode）")) }
+            utteranceId?.let { pending.remove(it)?.completeExceptionally(IllegalStateException(S.playback.systemTtsErrorCode(errorCode))) }
         }
     }
 
@@ -49,7 +50,10 @@ class SystemTts(private val context: Context) {
                     tts?.let { t ->
                         t.setOnUtteranceProgressListener(listener)
                         val zh = t.isLanguageAvailable(Locale.SIMPLIFIED_CHINESE)
-                        if (zh >= TextToSpeech.LANG_AVAILABLE) t.language = Locale.SIMPLIFIED_CHINESE
+                        if (zh >= TextToSpeech.LANG_AVAILABLE) {
+                            t.language = Locale.SIMPLIFIED_CHINESE
+                            currentLocale = Locale.SIMPLIFIED_CHINESE
+                        }
                         t.setSpeechRate(1f)
                     }
                 }
@@ -61,15 +65,23 @@ class SystemTts(private val context: Context) {
 
     /** 合成一段文本到 WAV 文件（挂起直到写完；协程取消即停止合成） */
     suspend fun synthesizeToFile(text: String, file: File) {
-        if (!ensureReady()) throw IllegalStateException("系统语音不可用，请在系统设置中安装语音引擎")
-        val engine = tts ?: throw IllegalStateException("系统语音不可用")
+        if (!ensureReady()) throw IllegalStateException(S.playback.systemTtsMissingEngine)
+        val engine = tts ?: throw IllegalStateException(S.playback.systemTtsUnavailable)
+        val loc = localeFor(text)
+        if (loc != currentLocale) {
+            // 引擎没有这门语言就不切，保持原样（比报错停播强）
+            val ok = withContext(Dispatchers.Main) {
+                engine.isLanguageAvailable(loc) >= TextToSpeech.LANG_AVAILABLE && engine.setLanguage(loc) >= TextToSpeech.LANG_AVAILABLE
+            }
+            if (ok) currentLocale = loc
+        }
         val id = UUID.randomUUID().toString()
         val done = CompletableDeferred<Unit>()
         pending[id] = done
         val r = withContext(Dispatchers.Main) { engine.synthesizeToFile(text, Bundle(), file, id) }
         if (r != TextToSpeech.SUCCESS) {
             pending.remove(id)
-            throw IllegalStateException("系统语音合成请求失败")
+            throw IllegalStateException(S.playback.systemTtsRequestFailed)
         }
         try {
             done.await()
@@ -78,12 +90,34 @@ class SystemTts(private val context: Context) {
             runCatching { engine.stop() }
             throw e
         }
-        if (!file.isFile || file.length() < 64) throw IllegalStateException("系统语音未生成音频")
+        if (!file.isFile || file.length() < 64) throw IllegalStateException(S.playback.systemTtsProducedNo)
     }
 
     fun release() {
         runCatching { tts?.shutdown() }
         tts = null
         ready = null
+        currentLocale = null
+    }
+
+    /** 引擎当前设置的语言（null = 未知，下一段必定重新设置） */
+    @Volatile
+    private var currentLocale: Locale? = null
+
+    companion object {
+        /**
+         * 按这一段正文的文字挑朗读语言：汉字为主用简体中文，拉丁字母为主（英文书）用英语。
+         * 0.3.x 只要设备有中文语音就一律强制中文，英文书会被中文语音硬读。
+         * 汉字一个字就是一个词，拉丁字母约五个才是一个词，所以按 1 : 3 比较，中文里夹几个英文单词仍判为中文。
+         */
+        fun localeFor(text: String): Locale {
+            var han = 0
+            var latin = 0
+            for (ch in text) {
+                if (ch in '\u4e00'..'\u9fff' || ch in '\u3400'..'\u4dbf') han++
+                else if (ch in 'A'..'Z' || ch in 'a'..'z') latin++
+            }
+            return if (latin > 0 && han * 3 < latin) Locale.US else Locale.SIMPLIFIED_CHINESE
+        }
     }
 }

@@ -1,6 +1,5 @@
 package app.echoread.tts
 
-import app.echoread.core.OpenAISpeechConfig
 import app.echoread.core.net.NetError
 import app.echoread.core.net.NetErrors
 import kotlinx.coroutines.CancellationException
@@ -88,28 +87,28 @@ class SynthPipeline(
     }
 
     /** 取得片段音频：热表 → 在途 → 磁盘 → 新请求（单次尝试，失败抛出，由调用方决定重试） */
-    suspend fun obtain(key: String, cfg: OpenAISpeechConfig, text: String): File {
+    suspend fun obtain(key: String, target: SynthTarget, text: String): File {
         readyFile(key)?.let { return it }
         liveInflight(key)?.let { return it.await() }
         audioCache.get(key)?.let {
             ready[key] = it
             return it
         }
-        return start(key, cfg, text).await()
+        return start(key, target, text).await()
     }
 
     /** 预取：已就绪/在途/冷却中则跳过；返回是否新发起了请求 */
-    fun prefetch(key: String, cfg: OpenAISpeechConfig, text: String): Boolean {
+    fun prefetch(key: String, target: SynthTarget, text: String): Boolean {
         if (readyFile(key) != null || liveInflight(key) != null || isCoolingDown(key)) return false
-        start(key, cfg, text)
+        start(key, target, text)
         return true
     }
 
-    private fun start(key: String, cfg: OpenAISpeechConfig, text: String): Deferred<File> {
+    private fun start(key: String, target: SynthTarget, text: String): Deferred<File> {
         val t0 = System.currentTimeMillis()
         val d = scope.async(Dispatchers.IO) {
             audioCache.get(key)?.let { return@async it }
-            val bytes = SpeechApi.synthesize(cfg, text)
+            val bytes = target.synthesize(text)
             audioCache.put(key, bytes)
         }
         inflight[key] = d
@@ -129,7 +128,7 @@ class SynthPipeline(
                     cooldownUntil[key] = System.currentTimeMillis() + min(1000.0 * 2.0.pow(n - 1), 60_000.0).toLong()
                     onFailure?.invoke(
                         key,
-                        NetErrors.fromThrowable(cause, endpoint = cfg.baseUrl, model = cfg.model, attempt = n)
+                        NetErrors.fromThrowable(cause, endpoint = target.endpoint, model = target.model, attempt = n)
                     )
                 }
                 onChanged?.invoke()

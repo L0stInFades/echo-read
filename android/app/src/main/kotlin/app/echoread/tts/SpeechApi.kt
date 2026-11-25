@@ -1,5 +1,6 @@
 package app.echoread.tts
 
+import app.echoread.core.i18n.S
 import app.echoread.core.OpenAISpeechConfig
 import app.echoread.core.TtsModelInfo
 import app.echoread.core.net.CallKind
@@ -21,7 +22,6 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonObject
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
@@ -40,11 +40,14 @@ import kotlin.coroutines.resumeWithException
 /**
  * OpenAI 兼容语音接口。
  * 兼容 OpenRouter、OpenAI 官方、SiliconFlow、FishAudio 等所有实现该格式的服务。
+ * （Gemini 原生接口不走这里，见 [GeminiTts]。）
  *
- * OpenRouter 的 /audio/speech 与 OpenAI 官方有三处差异：
- * ① response_format 仅支持 mp3 / pcm；
- * ② instructions 不是顶层参数，须经 provider.options.openai 透传；
- * ③ Gemini TTS 仅回 pcm 裸流（Content-Type 携带 rate/channels），需客户端封 WAV。
+ * OpenRouter 的 /audio/speech 与 OpenAI 官方的差异，以 OpenRouter 官方 TTS 文档为准（2026-11 复核）：
+ * ① response_format 仅支持 mp3 / pcm；Gemini TTS 与 HeyGen Voice **只回 pcm，请求 mp3 直接 400**
+ *    （0.3.x 只给 Gemini 3.1 标了 pcm，后来上架的 Gemini 3.8 / 2.5 与 HeyGen 全部 400）；
+ * ② instructions 现在是顶层参数：Gemini 3.8 会被转成 `speech_metadata.style`，Fish Audio 转成句首的
+ *    方括号指示，其余模型忽略。0.3.x 经 provider.options.openai 透传的写法只对已下架的 OpenAI 模型生效；
+ * ③ pcm 是裸流（Content-Type 携带 rate/channels），需客户端封 WAV。
  *
  * 错误约定（0.2.0 重写）：本文件抛出的**每一个**失败都是 [NetException]，其中的
  * [NetError.status] 只可能是服务端真实回的码。以前这里会为「没填 Base URL」伪造 400、
@@ -120,23 +123,22 @@ object SpeechApi {
             put("input", text)
             if (voice.isNotEmpty()) put("voice", voice)
             put("response_format", format)
-            if (instructions.isNotEmpty()) {
-                if (or) {
-                    putJsonObject("provider") { putJsonObject("options") { putJsonObject("openai") { put("instructions", instructions) } } }
-                } else {
-                    put("instructions", instructions)
-                }
-            }
+            // OpenAI 官方与 OpenRouter 都是顶层 instructions；OpenRouter 对不支持它的模型直接忽略
+            if (instructions.isNotEmpty()) put("instructions", instructions)
         }
     }
 
     data class PcmParams(val rate: Int, val channels: Int)
 
-    /** 从 Content-Type（如 audio/pcm;rate=24000;channels=1）解析采样参数 */
-    fun parsePcmParams(contentType: String): PcmParams {
+    /**
+     * 从 Content-Type（如 audio/pcm;rate=24000;channels=1）解析采样参数。
+     * 头里没写采样率时用 [defaultRate]：不同模型的裸流采样率并不相同（HeyGen 是 44.1 kHz），
+     * 一律按 24 kHz 封头会让 44.1 kHz 的声音慢放、变调。
+     */
+    fun parsePcmParams(contentType: String, defaultRate: Int = 24000): PcmParams {
         val rate = Regex("(?:^|[;\\s])rate=(\\d+)", RegexOption.IGNORE_CASE).find(contentType)?.groupValues?.get(1)?.toIntOrNull()
         val channels = Regex("(?:^|[;\\s])channels=(\\d+)", RegexOption.IGNORE_CASE).find(contentType)?.groupValues?.get(1)?.toIntOrNull()
-        return PcmParams(rate?.takeIf { it > 0 } ?: 24000, channels?.takeIf { it > 0 } ?: 1)
+        return PcmParams(rate?.takeIf { it > 0 } ?: defaultRate, channels?.takeIf { it > 0 } ?: 1)
     }
 
     /** 16-bit LE PCM 裸流封 WAV 头 */
@@ -160,6 +162,13 @@ object SpeechApi {
     }
 
     private fun trimBase(baseUrl: String): String = baseUrl.trim().trimEnd('/')
+
+    /**
+     * 错误体最多偷看多少字节。512 → 4096：Google 的错误体把 reason（API_KEY_INVALID）、
+     * 配额种类（QuotaFailure）、等待时长（RetryInfo）放在长长的 message 之后，512 字节经常截在它们前面。
+     * 仍然只是偷看（peekBody），不消费 body；展示用的片段由 [NetErrors.redact] 另行截到 512。
+     */
+    private const val ERROR_PEEK_BYTES = 4096L
 
     /**
      * 响应体看起来像音频吗？
@@ -210,8 +219,9 @@ object SpeechApi {
      * 执行一次请求，把任何失败都归一成 [NetException]。
      * 传输层异常按类型分类（超时 / DNS / TLS / 断链），HTTP 错误按真实状态码分类，
      * 两者都保留服务商原文，不再压成一句我们自己编的话。
+     * （internal：[GeminiTts] 复用同一套超时预算与错误归一，两条接口的报错口径一致。）
      */
-    private suspend fun call(
+    internal suspend fun call(
         req: Request,
         kind: CallKind,
         model: String? = null
@@ -237,12 +247,12 @@ object SpeechApi {
 
     /**
      * 非 2xx → [NetException]。
-     * 用 `peekBody(512)` 而非 `body.string().take(500)`：后者会把整个错误体（可能是几百 KB 的
-     * 网关 HTML）先读进内存再截断。峰值只读 512 字节，且不消费 body。
+     * 用 `peekBody` 而非 `body.string().take(500)`：后者会把整个错误体（可能是几百 KB 的
+     * 网关 HTML）先读进内存再截断。峰值只读 [ERROR_PEEK_BYTES] 字节，且不消费 body。
      */
-    private fun ensureOk(res: Response, kind: CallKind, model: String? = null, startedAt: Long = 0L) {
+    internal fun ensureOk(res: Response, kind: CallKind, model: String? = null, startedAt: Long = 0L) {
         if (res.isSuccessful) return
-        val raw = try { res.peekBody(512).string() } catch (_: Throwable) { null }
+        val raw = try { res.peekBody(ERROR_PEEK_BYTES).string() } catch (_: Throwable) { null }
         throw NetException(
             NetErrors.fromHttp(
                 status = res.code,
@@ -285,13 +295,13 @@ object SpeechApi {
                         method = "POST",
                         kind = CallKind.SYNTHESIS,
                         model = cfg.model,
-                        providerMessage = "Content-Type=$ctype, ${bytes.size} 字节",
+                        providerMessage = S.playback.emptyAudioBody(ctype, bytes.size),
                         elapsedMs = System.currentTimeMillis() - t0
                     )
                 )
             }
             if (Regex("audio/(x-)?pcm|audio/l16", RegexOption.IGNORE_CASE).containsMatchIn(ctype)) {
-                val (rate, channels) = parsePcmParams(ctype)
+                val (rate, channels) = parsePcmParams(ctype, Voices.modelHints(cfg.model)?.pcmRate ?: 24000)
                 pcmToWav(bytes, rate, channels)
             } else if (!looksLikeAudio(bytes, ctype)) {
                 // 200 但内容不是音频：按真实状态码报 PARSE，绝不落盘 —— 落盘会让这段永久损坏
@@ -306,7 +316,7 @@ object SpeechApi {
                         elapsedMs = System.currentTimeMillis() - t0
                     ).copy(
                         category = NetCategory.PARSE,
-                        providerMessage = "Content-Type=$ctype，${bytes.size} 字节，不是可识别的音频"
+                        providerMessage = S.playback.notAudioBody(ctype, bytes.size)
                     )
                 )
             } else if (Mp3Fix.looksLikeMp3(bytes)) {
@@ -380,7 +390,7 @@ object SpeechApi {
         if (!res.isSuccessful) {
             firstFailure = NetErrors.fromHttp(
                 status = res.code,
-                bodyRaw = try { res.peekBody(512).string() } catch (_: Throwable) { null },
+                bodyRaw = try { res.peekBody(ERROR_PEEK_BYTES).string() } catch (_: Throwable) { null },
                 retryAfterHeader = res.header("Retry-After"),
                 endpoint = res.request.url.toString(),
                 method = "GET",
@@ -453,8 +463,8 @@ object SpeechApi {
 
     /** 试听：合成「你好」，成功时把音频一并返回（调用方负责播放） */
     suspend fun testConfig(cfg: OpenAISpeechConfig): TestResult = try {
-        val bytes = synthesize(cfg, "你好")
-        TestResult(true, "连接成功", bytes)
+        val bytes = synthesize(cfg, S.playback.testPhrase)
+        TestResult(true, S.common.connectionOk, bytes)
     } catch (e: CancellationException) {
         throw e
     } catch (e: Throwable) {

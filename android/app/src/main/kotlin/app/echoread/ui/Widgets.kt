@@ -1,5 +1,6 @@
 package app.echoread.ui
 
+import app.echoread.core.i18n.S
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
@@ -570,7 +571,7 @@ fun BoxScope.EchoSheet(
                     .align(Alignment.CenterHorizontally)
                     .height(28.dp)
                     .width(72.dp)
-                    .echoPress(pressedScale = PressScale.Chip, onClickLabel = "关闭", onClick = onDismiss),
+                    .echoPress(pressedScale = PressScale.Chip, onClickLabel = S.common.close, onClick = onDismiss),
                 contentAlignment = Alignment.Center
             ) {
                 Box(Modifier.width(36.dp).height(4.dp).background(c.text3.copy(alpha = 0.5f), CircleShape))
@@ -580,7 +581,7 @@ fun BoxScope.EchoSheet(
             Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 10.dp, top = 4.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 // 弹层标题是这块面的主角，用 Expressive 的强调级字体 —— 这正是 Emphasized 阶梯存在的意义
                 Text(title, color = c.text, style = MaterialTheme.typography.titleMediumEmphasized, modifier = Modifier.weight(1f))
-                IconButtonEcho(EchoIcons.Close, "关闭", size = 36.dp, iconSize = 18.dp, onClick = onDismiss)
+                IconButtonEcho(EchoIcons.Close, S.common.close, size = 36.dp, iconSize = 18.dp, onClick = onDismiss)
             }
         }
         val scroll = rememberScrollState()

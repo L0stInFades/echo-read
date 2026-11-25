@@ -1,10 +1,22 @@
 package app.echoread.core
 
-/** 内置示例书：让新用户不导入文件也能立即体验任意字点读 */
-object Sample {
-    const val BOOK_NAME = "深夜书屋（示例）"
+import app.echoread.core.i18n.I18n
 
-    val TEXT = """深夜书屋
+/**
+ * 内置示例书：让新用户不导入文件也能立即体验任意字点读。
+ * 英文界面给英文版（同一个故事），英文章节标题写成「Chapter One: …」，正好走英文章节识别。
+ */
+object Sample {
+    const val BOOK_NAME_ZH = "深夜书屋（示例）"
+    const val BOOK_NAME_EN = "The Night Bookshop (Sample)"
+
+    /** 当前界面语言对应的书名（书架按它判断示例书是否已导入） */
+    val bookName: String get() = if (I18n.english) BOOK_NAME_EN else BOOK_NAME_ZH
+
+    /** 当前界面语言对应的正文 */
+    val text: String get() = if (I18n.english) TEXT_EN else TEXT_ZH
+
+    val TEXT_ZH = """深夜书屋
 
 一段为 Lector 准备的示例文字，轻点任意字，让 AI 从那里开始读给你听。
 
@@ -49,4 +61,50 @@ object Sample {
 而此刻，这盏灯也为你亮着。
 
 —— 全文完 ——"""
+
+    val TEXT_EN = """The Night Bookshop
+
+A short sample written for Lector. Tap any word and the AI starts reading aloud from right there.
+
+Chapter One: A Visitor on a Rainy Night
+
+The rain began at dusk: a few hesitant drops against the glass at first, then a dense white curtain of water. One by one the lamps of the old street came on, each blooming into a soft amber glow behind the rain.
+
+The bookshop's wooden door swung open and the wind chime gave a gentle ring. In came an old man under a black umbrella, his trouser cuffs soaked through, yet in his arms he held a stack of books wrapped tightly in brown paper.
+
+"These," the old man said, setting the books on the counter, his voice hoarse, "are a lifetime's collection. After tonight, they are yours."
+
+Lin Wan stared at the stack. She had inherited this late-night bookshop only three months ago, and nothing this strange had ever happened to her.
+
+Chapter Two: The Book That Breathed
+
+After the old man left, Lin Wan untied the string around the brown paper. The book on top had no title. Its deep blue cover bore a single line in small gold letters: For everyone who reads late into the night.
+
+She opened it to the first page, and the paper rose and fell, ever so slightly, as if it were breathing.
+
+"You must be surprised," said a voice that drifted up from the page, gentle and clear. "Don't be afraid. Every book that has been truly read remembers its reader's voice."
+
+Lin Wan's hand froze in midair. The rain outside suddenly seemed very far away.
+
+The page went on: "From today on, you will read aloud for us. Read to those who cannot sleep, to those who have lost their way, and to yourself."
+
+Chapter Three: The First Listener
+
+That night, the bookshop had its first listener: a young man who had worked until late. He lingered at the door for a long time before asking quietly, "Excuse me, is it true someone reads aloud here?"
+
+Lin Wan nodded and opened the deep blue book.
+
+Her voice was soft but steady. The young man sat on the old sofa by the window, and as he listened, the shoulders he had held tense all day slowly eased. The rain, the turning pages and the reading voice wove a soft net in the dark.
+
+As he left, he turned back and said, "I'll come again tomorrow."
+
+Lin Wan smiled. She suddenly understood that what the old man had left her was not a stack of books, but a lamp.
+
+Epilogue: The Light Stays On
+
+From then on, the lights of the Night Bookshop always stayed on until dawn. People said it was the warmest window on the old street.
+
+And right now, that light is on for you, too.
+
+— The End —"""
 }

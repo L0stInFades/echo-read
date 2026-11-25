@@ -1,5 +1,6 @@
 package app.echoread.tts
 
+import app.echoread.core.i18n.S
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -52,7 +53,7 @@ class Playback(private val context: Context) {
                     }
 
                     override fun onPlayerError(error: PlaybackException) {
-                        current?.fail(IllegalStateException("音频播放出错：${error.errorCodeName}"))
+                        current?.fail(IllegalStateException(S.playback.playbackError(error.errorCodeName)))
                     }
                 })
             }

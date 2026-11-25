@@ -132,4 +132,6 @@ dependencies {
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    // 只用于单测：在本机起一个假的 Gemini API，端到端验证真实的 OkHttp 请求/响应路径
+    testImplementation(libs.okhttp.mockwebserver)
 }

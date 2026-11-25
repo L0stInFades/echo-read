@@ -1,5 +1,6 @@
 package app.echoread.core.net
 
+import app.echoread.core.i18n.S
 import java.io.IOException
 import java.io.InterruptedIOException
 import java.net.ConnectException
@@ -32,6 +33,11 @@ enum class NetCategory {
     RATE_LIMIT,
     /** 400 / 413 / 422 / 451：这次请求本身不被接受 */
     BAD_REQUEST,
+    /**
+     * 400 FAILED_PRECONDITION：账户或地区层面的前置条件不满足（Gemini API 不对所在地区开放、
+     * 项目未开通结算…）。与 [BAD_REQUEST] 分开：换下一段文字照样失败，跳段只会把整本书跳空
+     */
+    PRECONDITION,
     /** 404：端点或模型不存在 */
     NOT_FOUND,
     /** 5xx */
@@ -101,11 +107,15 @@ data class NetError(
     val isConfig: Boolean
         get() = category == NetCategory.CONFIG_MISSING_KEY || category == NetCategory.CONFIG_MISSING_BASE_URL
 
+    /** 是否 Google 的 Gemini API（建议文案因此不同：没有 Base URL 可改，配额按天重置） */
+    val isGoogleApi: Boolean
+        get() = hostOf(endpoint).let { it == "generativelanguage.googleapis.com" || it.endsWith(".googleapis.com") }
+
     /** 状态徽标：一眼区分 4xx / 5xx / 无响应 —— 这是「报错要展现出来」的最小单位 */
     fun badge(): String = when {
-        isConfig -> "未配置"
+        isConfig -> S.errors.badgeNotSet
         status != null -> status.toString()
-        else -> "无响应"
+        else -> S.errors.badgeNoResponse
     }
 
     /**
@@ -115,41 +125,51 @@ data class NetError(
     fun headline(): String {
         val host = hostOf(endpoint)
         return when (category) {
-            NetCategory.CONFIG_MISSING_KEY -> "未填写 API Key"
-            NetCategory.CONFIG_MISSING_BASE_URL -> "未填写 Base URL"
-            NetCategory.AUTH -> "API Key 被拒绝（${badge()}）"
-            NetCategory.QUOTA -> "账户额度不足（${badge()}）"
+            NetCategory.CONFIG_MISSING_KEY -> S.errors.apiKeyNotSet
+            NetCategory.CONFIG_MISSING_BASE_URL -> S.errors.baseUrlNotSet
+            NetCategory.AUTH -> S.errors.apiKeyRejected(badge())
+            NetCategory.QUOTA -> S.errors.outOfQuota(badge())
             NetCategory.RATE_LIMIT ->
-                "请求过于频繁（${badge()}）" + (retryAfterSec?.let { "，服务商要求等 ${it}s" } ?: "")
-            NetCategory.NOT_FOUND -> "接口或模型不存在（${badge()}）"
-            NetCategory.BAD_REQUEST -> "请求被拒绝（${badge()}）"
-            NetCategory.SERVER -> "服务商故障（${badge()}）"
-            NetCategory.TIMEOUT -> "请求超时（无响应）"
+                S.errors.rateLimited(badge()) +
+                    (retryAfterSec?.let { S.errors.retryAfterSuffix(it) } ?: "")
+            NetCategory.NOT_FOUND -> S.errors.notFound(badge())
+            NetCategory.BAD_REQUEST -> S.errors.requestRejected(badge())
+            NetCategory.PRECONDITION -> S.errors.precondition(badge())
+            NetCategory.SERVER -> S.errors.providerError(badge())
+            NetCategory.TIMEOUT -> S.errors.requestTimedOut
             NetCategory.CONNECTIVITY ->
-                if (host.isEmpty()) "网络连接失败（无响应）" else "连不上 $host（无响应）"
-            NetCategory.TLS -> "安全连接失败（无响应）"
-            NetCategory.PARSE -> "返回内容无法解析（${badge()}）"
-            NetCategory.EMPTY_AUDIO -> "返回的音频为空（${badge()}）"
-            NetCategory.UNKNOWN -> "请求失败（${badge()}）"
+                if (host.isEmpty()) S.errors.networkConnectionFailed
+                else S.errors.cantReach(host)
+            NetCategory.TLS -> S.errors.secureConnectionFailed
+            NetCategory.PARSE -> S.errors.unreadableResponse(badge())
+            NetCategory.EMPTY_AUDIO -> S.errors.emptyAudioReturned(badge())
+            NetCategory.UNKNOWN -> S.errors.requestFailed(badge())
         }
     }
 
     /** 用户能据此行动的一句话建议 */
     fun advice(): String = when (category) {
-        NetCategory.CONFIG_MISSING_KEY -> "去「朗读设置」填入 API Key。"
-        NetCategory.CONFIG_MISSING_BASE_URL -> "去「朗读设置」填入 Base URL。"
-        NetCategory.AUTH -> "检查 Key 是否填错、过期或被服务商停用。"
-        NetCategory.QUOTA -> "给账户充值，或换一个服务商。"
-        NetCategory.RATE_LIMIT -> "等一会儿再试；频繁触发可调低「预取段数」。"
-        NetCategory.NOT_FOUND -> "检查 Base URL 结尾是否为 /v1，以及模型名是否存在。"
-        NetCategory.BAD_REQUEST -> "多为模型不支持该音色/格式，或本段文字过长。"
-        NetCategory.SERVER -> "是服务商侧的问题，通常稍后自动恢复。"
-        NetCategory.TIMEOUT -> "网络较慢；换个网络或稍后再试。"
-        NetCategory.CONNECTIVITY -> "检查设备网络、代理与 Base URL 的域名是否正确。"
-        NetCategory.TLS -> "检查系统时间是否准确，以及是否有网络中间人代理。"
-        NetCategory.PARSE -> "该地址可能不是 OpenAI 兼容接口，或被网关拦截返回了网页。"
-        NetCategory.EMPTY_AUDIO -> "换一个音色或模型再试。"
-        NetCategory.UNKNOWN -> "可展开详情复制后反馈。"
+        NetCategory.CONFIG_MISSING_KEY -> S.errors.adviceMissingKey
+        NetCategory.CONFIG_MISSING_BASE_URL -> S.errors.adviceMissingBaseUrl
+        NetCategory.AUTH -> S.errors.adviceAuth
+        NetCategory.QUOTA ->
+            if (isGoogleApi) S.errors.adviceGeminiQuota
+            else S.errors.adviceQuota
+        NetCategory.RATE_LIMIT ->
+            if (isGoogleApi) S.errors.adviceGeminiRateLimit
+            else S.errors.adviceRateLimit
+        NetCategory.NOT_FOUND ->
+            if (isGoogleApi) S.errors.adviceGeminiNotFound
+            else S.errors.adviceNotFound
+        NetCategory.BAD_REQUEST -> S.errors.adviceBadRequest
+        NetCategory.PRECONDITION -> S.errors.advicePrecondition
+        NetCategory.SERVER -> S.errors.adviceServer
+        NetCategory.TIMEOUT -> S.errors.adviceTimeout
+        NetCategory.CONNECTIVITY -> S.errors.adviceConnectivity
+        NetCategory.TLS -> S.errors.adviceTls
+        NetCategory.PARSE -> S.errors.adviceParse
+        NetCategory.EMPTY_AUDIO -> S.errors.adviceEmptyAudio
+        NetCategory.UNKNOWN -> S.errors.adviceUnknown
     }
 
     /** 多行详情（详情面板 / 复制到剪贴板），已脱敏 */
@@ -157,47 +177,48 @@ data class NetError(
         appendLine(headline())
         appendLine()
         providerMessage?.takeIf { it.isNotBlank() }?.let {
-            appendLine("服务商原话：$it")
-            providerCode?.takeIf { c -> c.isNotBlank() }?.let { c -> appendLine("服务商代码：$c") }
+            appendLine(S.errors.detailProviderMessage(it))
+            providerCode?.takeIf { c -> c.isNotBlank() }?.let { c -> appendLine(S.errors.detailProviderCode(c)) }
             appendLine()
         }
-        appendLine("类别：${categoryLabel()}（${statusClassLabel()}）")
-        if (endpoint.isNotEmpty()) appendLine("端点：$method $endpoint")
-        model?.takeIf { it.isNotBlank() }?.let { appendLine("模型：$it") }
-        transport?.let { appendLine("传输层：$it") }
-        if (maxAttempts > 1) appendLine("尝试：第 $attempt / $maxAttempts 次")
-        if (elapsedMs > 0) appendLine("耗时：${elapsedMs}ms")
+        appendLine(S.errors.detailCategory(categoryLabel(), statusClassLabel()))
+        if (endpoint.isNotEmpty()) appendLine(S.errors.detailEndpoint(method, endpoint))
+        model?.takeIf { it.isNotBlank() }?.let { appendLine(S.errors.detailModel(it)) }
+        transport?.let { appendLine(S.errors.detailTransport(it)) }
+        if (maxAttempts > 1) appendLine(S.errors.detailAttempt(attempt, maxAttempts))
+        if (elapsedMs > 0) appendLine(S.errors.detailElapsed(elapsedMs))
         retryAfterSec?.let { appendLine("Retry-After：${it}s") }
         bodySnippet?.takeIf { it.isNotBlank() }?.let {
             appendLine()
-            appendLine("响应体片段：")
+            appendLine(S.errors.detailBody)
             appendLine(it)
         }
         appendLine()
-        append("建议：${advice()}")
+        append(S.errors.detailSuggestion(advice()))
     }
 
     fun categoryLabel(): String = when (category) {
-        NetCategory.AUTH -> "鉴权失败"
-        NetCategory.QUOTA -> "额度不足"
-        NetCategory.RATE_LIMIT -> "被限流"
-        NetCategory.BAD_REQUEST -> "请求不被接受"
-        NetCategory.NOT_FOUND -> "端点/模型不存在"
-        NetCategory.SERVER -> "服务端故障"
-        NetCategory.TIMEOUT -> "超时"
-        NetCategory.CONNECTIVITY -> "链路不通"
-        NetCategory.TLS -> "TLS 失败"
-        NetCategory.PARSE -> "响应无法解析"
-        NetCategory.EMPTY_AUDIO -> "音频为空"
-        NetCategory.CONFIG_MISSING_KEY -> "缺少 API Key"
-        NetCategory.CONFIG_MISSING_BASE_URL -> "缺少 Base URL"
-        NetCategory.UNKNOWN -> "未知错误"
+        NetCategory.AUTH -> S.errors.catAuth
+        NetCategory.QUOTA -> S.errors.catQuota
+        NetCategory.RATE_LIMIT -> S.errors.catRateLimit
+        NetCategory.BAD_REQUEST -> S.errors.catBadRequest
+        NetCategory.PRECONDITION -> S.errors.catPrecondition
+        NetCategory.NOT_FOUND -> S.errors.catNotFound
+        NetCategory.SERVER -> S.errors.catServer
+        NetCategory.TIMEOUT -> S.errors.catTimeout
+        NetCategory.CONNECTIVITY -> S.errors.catConnectivity
+        NetCategory.TLS -> S.errors.catTls
+        NetCategory.PARSE -> S.errors.catParse
+        NetCategory.EMPTY_AUDIO -> S.errors.catEmptyAudio
+        NetCategory.CONFIG_MISSING_KEY -> S.errors.catMissingKey
+        NetCategory.CONFIG_MISSING_BASE_URL -> S.errors.catMissingBaseUrl
+        NetCategory.UNKNOWN -> S.errors.catUnknown
     }
 
     fun statusClassLabel(): String = when (statusClass) {
-        StatusClass.CLIENT -> "4xx 客户端错误"
-        StatusClass.SERVER -> "5xx 服务端错误"
-        StatusClass.NONE -> if (isConfig) "本地配置" else "无响应"
+        StatusClass.CLIENT -> S.errors.class4xx
+        StatusClass.SERVER -> S.errors.class5xx
+        StatusClass.NONE -> if (isConfig) S.errors.classLocal else S.errors.badgeNoResponse
     }
 
     /** 单行日志，与 detail 同样脱敏 */
@@ -216,7 +237,7 @@ data class NetError(
      */
     fun disposition(online: Boolean = true): Disposition = when (category) {
         NetCategory.CONFIG_MISSING_KEY, NetCategory.CONFIG_MISSING_BASE_URL -> Disposition.STOP_SESSION
-        NetCategory.AUTH, NetCategory.QUOTA, NetCategory.NOT_FOUND -> Disposition.STOP_SESSION
+        NetCategory.AUTH, NetCategory.QUOTA, NetCategory.NOT_FOUND, NetCategory.PRECONDITION -> Disposition.STOP_SESSION
         // 400 类：这一段不被接受（太长 / 被审核 / 音色不支持），跳过它继续读整本书
         NetCategory.BAD_REQUEST -> Disposition.SKIP_SEGMENT
         NetCategory.EMPTY_AUDIO -> if (attempt >= 2) Disposition.SKIP_SEGMENT else Disposition.RETRY
@@ -284,12 +305,17 @@ object NetErrors {
     ): NetError {
         val parsed = parseProviderError(bodyRaw)
         val category = when {
+            // Gemini API 对无效 Key 回的是 400 INVALID_ARGUMENT + reason=API_KEY_INVALID，不是 401（实测）。
+            // 只看状态码会把它当成「这一段不被接受」逐段跳过，用户永远看不到「Key 填错了」
+            status in 400..403 && googleKeyRejected(bodyRaw) -> NetCategory.AUTH
             status == 401 -> NetCategory.AUTH
             status == 403 -> if (looksAuthy(parsed.first, parsed.second)) NetCategory.AUTH else NetCategory.BAD_REQUEST
             status == 402 -> NetCategory.QUOTA
             status == 404 -> NetCategory.NOT_FOUND
             status == 408 -> NetCategory.TIMEOUT
-            status == 429 -> NetCategory.RATE_LIMIT
+            // 同是 429，「每分钟太快」值得退避重试，「今天的额度用完了 / 账户没钱了」重试到明天也不会好
+            status == 429 -> if (hardQuota(parsed.second, bodyRaw)) NetCategory.QUOTA else NetCategory.RATE_LIMIT
+            status == 400 && precondition(parsed.second, bodyRaw) -> NetCategory.PRECONDITION
             status in 400..499 -> NetCategory.BAD_REQUEST
             status in 500..599 -> NetCategory.SERVER
             else -> NetCategory.UNKNOWN
@@ -303,7 +329,7 @@ object NetErrors {
             method = method,
             kind = kind,
             model = model,
-            retryAfterSec = parseRetryAfter(retryAfterHeader),
+            retryAfterSec = parseRetryAfter(retryAfterHeader) ?: parseRetryDelay(bodyRaw),
             bodySnippet = redact(bodyRaw),
             attempt = attempt,
             maxAttempts = maxAttempts,
@@ -365,16 +391,47 @@ object NetErrors {
     fun parseRetryAfter(h: String?): Long? =
         h?.trim()?.toLongOrNull()?.takeIf { it in 0..3600 }
 
+    /**
+     * Google RPC 的 RetryInfo：`"retryDelay": "41s"`。Gemini API 的 429 常常只把等待时长写在响应体里，
+     * 不发 Retry-After 头；读出来才能「服务商要求等多久就等多久」。
+     */
+    fun parseRetryDelay(raw: String?): Long? =
+        raw?.let { Regex("\"retryDelay\"\\s*:\\s*\"(\\d+)(?:\\.\\d+)?s\"").find(it) }
+            ?.groupValues?.get(1)?.toLongOrNull()?.takeIf { it in 0..3600 }
+
     private fun looksAuthy(msg: String?, code: String?): Boolean {
         val s = "${msg.orEmpty()} ${code.orEmpty()}".lowercase()
         return listOf("key", "auth", "token", "credential", "permission", "unauthor", "forbidden").any { it in s }
     }
 
+    /** Google RPC ErrorInfo 的 reason 以 API_KEY_ 开头：无效 / 被限制 / 未开通该服务的 Key */
+    private fun googleKeyRejected(raw: String?): Boolean =
+        raw != null && Regex("\"reason\"\\s*:\\s*\"API_KEY_[A-Z_]+\"").containsMatchIn(raw)
+
     /**
-     * 宽容地取出服务商的错误描述。真实世界里至少有五种形状：
+     * 不可自愈的 429：Interactions API 的 `quota_exceeded`（当日配额耗尽）、OpenAI 的 `insufficient_quota`（没余额），
+     * 以及 Google RPC 的按天配额（QuotaFailure 的 quotaId 带 PerDay）。
+     */
+    private fun hardQuota(code: String?, raw: String?): Boolean {
+        val c = code?.lowercase()
+        if (c == "quota_exceeded" || c == "insufficient_quota") return true
+        return raw != null && Regex("\"quotaId\"\\s*:\\s*\"[^\"]*PerDay").containsMatchIn(raw)
+    }
+
+    /** Interactions API 的 `failed_precondition`，或 Google RPC 的 status=FAILED_PRECONDITION */
+    private fun precondition(code: String?, raw: String?): Boolean =
+        code.equals("failed_precondition", ignoreCase = true) ||
+            (raw != null && Regex("\"status\"\\s*:\\s*\"FAILED_PRECONDITION\"").containsMatchIn(raw))
+
+    /**
+     * 宽容地取出服务商的错误描述。真实世界里至少有六种形状：
      * OpenAI/OpenRouter `{"error":{"message":…,"code":…}}`、`{"error":"…"}`、
-     * `{"message":…}`、FastAPI/SiliconFlow `{"detail":…}` 或 `{"detail":[{"msg":…}]}`。
-     * 旧实现只认第一种，于是另外四种一律显示空白。
+     * `{"message":…}`、FastAPI/SiliconFlow `{"detail":…}` 或 `{"detail":[{"msg":…}]}`，
+     * 以及 Google RPC `[{"error":{"code":400,"message":…,"status":…,"details":[{"reason":…}]}}]`
+     * （POST 时外面还包着一层数组，实测）。旧实现只认第一种，于是另外几种一律显示空白。
+     *
+     * 代码优先取字符串型 `code`（Interactions API 的 `quota_exceeded`），其次是 Google 的
+     * `reason`（`API_KEY_INVALID`）与 `status`（`FAILED_PRECONDITION`）—— Google 的 `code` 是数字。
      *
      * 用手写扫描而非 kotlinx.serialization：错误体经常是半截 JSON 或干脆是 HTML，
      * 解析器抛异常的概率高于成功，而我们要的只是那一句话。
@@ -392,7 +449,7 @@ object NetErrors {
             // {"error":"字符串形式"}
             Regex("\"error\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"").find(s)?.groupValues?.get(1)
         }
-        val code = firstStringField(s, listOf("code", "type"))
+        val code = firstStringField(s, listOf("code", "reason", "status", "type"))
         return unescape(msg)?.take(400) to unescape(code)?.take(80)
     }
 

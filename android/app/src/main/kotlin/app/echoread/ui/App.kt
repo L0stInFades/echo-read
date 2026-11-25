@@ -1,5 +1,6 @@
 package app.echoread.ui
 
+import app.echoread.core.i18n.S
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -41,15 +42,15 @@ private fun androidx.compose.foundation.layout.BoxScope.ConfigConfirmSheet(graph
     var last by androidx.compose.runtime.remember { mutableStateOf<AppGraph.PendingConfig?>(null) }
     if (pending != null) last = pending
     val p = pending ?: last
-    EchoSheet(open = pending != null, onDismiss = { graph.configRequests.value = null }, title = "应用外部传入的配置？", maxHeightFraction = 0.6f) {
+    EchoSheet(open = pending != null, onDismiss = { graph.configRequests.value = null }, title = S.settings.externalConfigTitle, maxHeightFraction = 0.6f) {
         if (p != null) {
             val rows = listOfNotNull(
                 p.apiKey?.takeIf { it.isNotBlank() }?.let { "API Key" to (it.take(10) + "…" + it.takeLast(4)) },
                 p.baseUrl?.takeIf { it.isNotBlank() }?.let { "Base URL" to it },
-                p.model?.takeIf { it.isNotBlank() }?.let { "模型" to it },
-                p.voice?.takeIf { it.isNotBlank() }?.let { "音色" to it }
+                p.model?.takeIf { it.isNotBlank() }?.let { S.common.model to it },
+                p.voice?.takeIf { it.isNotBlank() }?.let { S.common.voice to it }
             )
-            androidx.compose.material3.Text("来自深链 / 命令行的配置，只有你确认后才会写入。", color = c.text2, fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            androidx.compose.material3.Text(S.settings.externalConfigHint, color = c.text2, fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
             androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
             for ((k, v) in rows) {
                 androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
@@ -59,8 +60,8 @@ private fun androidx.compose.foundation.layout.BoxScope.ConfigConfirmSheet(graph
             }
             androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
             androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
-                OutlineButton("取消", Modifier.weight(1f)) { graph.configRequests.value = null }
-                GradientButton("使用", Modifier.weight(1f)) {
+                OutlineButton(S.settings.cancel, Modifier.weight(1f)) { graph.configRequests.value = null }
+                GradientButton(S.settings.apply, Modifier.weight(1f)) {
                     graph.settings.updateOpenAI { cfg ->
                         cfg.copy(
                             apiKey = p.apiKey?.takeIf { it.isNotBlank() } ?: cfg.apiKey,
@@ -71,7 +72,7 @@ private fun androidx.compose.foundation.layout.BoxScope.ConfigConfirmSheet(graph
                     p.voice?.takeIf { it.isNotBlank() }?.let { graph.settings.setVoice(it) }
                     graph.settings.updateTts { it.copy(provider = app.echoread.core.TtsProvider.OPENAI) }
                     graph.configRequests.value = null
-                    Toaster.success("配置已应用")
+                    Toaster.success(S.settings.settingsApplied)
                 }
             }
         }

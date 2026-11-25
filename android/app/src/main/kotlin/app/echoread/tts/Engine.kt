@@ -1,7 +1,7 @@
 package app.echoread.tts
 
+import app.echoread.core.i18n.S
 import app.echoread.core.Hash
-import app.echoread.core.OpenAISpeechConfig
 import app.echoread.core.PlayerState
 import app.echoread.core.Range
 import app.echoread.core.Segmenter
@@ -40,8 +40,8 @@ data class RetryStatus(
     /** dock 状态行：**必定**带上状态码或「无响应」 */
     fun note(): String {
         val secs = (nextInMs / 1000.0).roundToInt().coerceAtLeast(1)
-        val why = if (error.retryAfterSec != null) "，服务商要求等 ${error.retryAfterSec}s" else ""
-        return "${error.headline()} · $secs 秒后重试（$attempt/$maxAttempts）$why"
+        val why = if (error.retryAfterSec != null) S.playback.providerAskedToWait(error.retryAfterSec) else ""
+        return S.playback.retryNote(error.headline(), secs, attempt, maxAttempts, why)
     }
 }
 
@@ -57,13 +57,13 @@ sealed interface EngineFailure {
         override val net: NetError get() = error
         override fun headline(): String =
             if (segmentsFailed <= 1) error.headline()
-            else "连续 $segmentsFailed 段失败 · ${error.headline()}"
+            else S.playback.segmentsFailedInRow(segmentsFailed, error.headline())
     }
 
     /** 已跳过若干段但仍在读。这条状态必须活过下一段的成功，否则用户永远不知道书缺了内容 */
     data class SkippedSegments(val last: NetError, val count: Int, val firstSegmentIndex: Int) : EngineFailure {
         override val net: NetError get() = last
-        override fun headline(): String = "已跳过 $count 段（${last.badge()}）"
+        override fun headline(): String = S.playback.skippedSegments(count, last.badge())
     }
 
     data class Chapter(val reason: String) : EngineFailure {
@@ -210,12 +210,11 @@ class TtsEngine(
     /** 当前片段之后连续已就绪的片段数（最多数 8 段） */
     private fun bufferedAhead(): Int {
         val d = derived ?: return 0
-        if (settings.provider == TtsProvider.SYSTEM) return 0
-        val cfg = settings.openai
+        val target = SynthTarget.of(settings) ?: return 0
         var n = 0
         var i = segmentIndex + 1
         while (i < d.segments.size && n < 8) {
-            if (!pipeline.isReady(cacheKey(slice(d.segments[i]), cfg))) break
+            if (!pipeline.isReady(cacheKey(slice(d.segments[i]), target))) break
             n++
             i++
         }
@@ -262,7 +261,7 @@ class TtsEngine(
         if (gen != generation) return false
         if (d == null) {
             state = PlayerState.ERROR
-            failure = EngineFailure.Chapter("章节内容缺失")
+            failure = EngineFailure.Chapter(S.playback.chapterContentMissing)
             emit()
             return false
         }
@@ -466,7 +465,7 @@ class TtsEngine(
                 if (state == PlayerState.PLAYING) {
                     state = PlayerState.ERROR
                     // Playback 已经把 Media3 的 errorCodeName 编进 message，别再压成「播放中断」
-                    failure = EngineFailure.Playback(e.message?.takeIf { it.isNotBlank() } ?: "播放中断")
+                    failure = EngineFailure.Playback(e.message?.takeIf { it.isNotBlank() } ?: S.playback.playbackInterrupted)
                     emit()
                 }
                 return
@@ -486,24 +485,28 @@ class TtsEngine(
         if (settings.provider == TtsProvider.SYSTEM) {
             return NetError(
                 category = NetCategory.UNKNOWN,
-                providerMessage = e.message ?: "系统语音合成失败",
+                providerMessage = e.message ?: S.playback.systemTtsFailed,
                 endpoint = "system-tts",
                 method = "LOCAL",
                 transport = e.javaClass.simpleName
             )
         }
+        val target = SynthTarget.of(settings)
         return NetErrors.fromThrowable(
             e,
-            endpoint = settings.openai.baseUrl,
-            model = settings.openai.model,
+            endpoint = target?.endpoint ?: "",
+            model = target?.model,
             maxAttempts = MAX_ATTEMPTS
             // fromThrowable 遇到 NetException 时原样保留它自带的 NetError，
             // 而本地前置校验（缺 Key / 缺 Base URL）构造时并不知道模型名 —— 这里补上
-        ).let { if (it.model == null) it.copy(model = settings.openai.model) else it }
+        ).let { if (it.model == null) it.copy(model = target?.model) else it }
     }
 
-    private fun cacheKey(text: String, c: OpenAISpeechConfig): String =
-        Hash.cyrb53("v2|${settings.provider}|${c.model}|${c.voice}|${c.format}|${c.instructions}|$text") // v2：MP3 清洗后落盘，旧缓存作废
+    /**
+     * v2：MP3 清洗后落盘，旧缓存作废。OpenAI 兼容接口的键与 0.3.x 逐字一致（见 [SynthTarget.OpenAI.cacheTag]）；
+     * 键里带上服务商，同一段文字在两条接口之间来回切换各自命中、互不串音。
+     */
+    private fun cacheKey(text: String, t: SynthTarget): String = cacheKeyOf(text, t)
 
     /** 合成一个片段并返回可播放句柄（带缓存、指数退避重试；协程取消即中止） */
     private suspend fun createHandle(text: String, gen: Int): PlayHandle {
@@ -524,8 +527,8 @@ class TtsEngine(
         }
 
         // 退避重试窗口可达分钟级，期间改音色/模型不换代：缓存键与全部重试锚定入口配置快照
-        val cfg = settings.openai
-        val key = cacheKey(text, cfg)
+        val target = SynthTarget.of(settings) ?: throw IllegalStateException(S.playback.noAiVoiceService)
+        val key = cacheKey(text, target)
         // 热表 / 磁盘命中：无需 Key 也可离线回放已缓存片段
         val hot = pipeline.readyFile(key) ?: runCatching { audioCache.get(key) }.getOrNull()
         if (gen != generation) throw AbortedException()
@@ -539,7 +542,7 @@ class TtsEngine(
             if (gen != generation) throw AbortedException()
             try {
                 // 流水线去重：若预取已在途则直接等它，绝不重复请求
-                val file = pipeline.obtain(key, cfg, text)
+                val file = pipeline.obtain(key, target, text)
                 if (gen != generation) throw AbortedException()
                 setRetry(null, gen)
                 pipeline.clearCooldown(key)
@@ -551,8 +554,8 @@ class TtsEngine(
             } catch (e: Exception) {
                 val err = NetErrors.fromThrowable(
                     e,
-                    endpoint = cfg.baseUrl,
-                    model = cfg.model,
+                    endpoint = target.endpoint,
+                    model = target.model,
                     attempt = attempt + 1,
                     maxAttempts = MAX_ATTEMPTS
                 )
@@ -562,9 +565,9 @@ class TtsEngine(
             }
             if (attempt < MAX_ATTEMPTS - 1) {
                 val err = NetErrors.fromThrowable(
-                    lastErr ?: IllegalStateException("合成失败"),
-                    endpoint = cfg.baseUrl,
-                    model = cfg.model,
+                    lastErr ?: IllegalStateException(S.playback.synthesisFailed),
+                    endpoint = target.endpoint,
+                    model = target.model,
                     attempt = attempt + 1,
                     maxAttempts = MAX_ATTEMPTS
                 )
@@ -575,7 +578,7 @@ class TtsEngine(
                 delay(d)
             }
         }
-        throw lastErr ?: IllegalStateException("合成失败")
+        throw lastErr ?: IllegalStateException(S.playback.synthesisFailed)
     }
 
     /** 更新自愈状态并广播；换代后（暂停/跳转）静默忽略，防僵尸 loop 污染新状态 */
@@ -593,10 +596,9 @@ class TtsEngine(
      */
     private fun ensureLookahead() {
         val d = derived ?: return
-        if (settings.provider == TtsProvider.SYSTEM) return
         if (state != PlayerState.PLAYING && state != PlayerState.PAUSED) return
-        val cfg = settings.openai
-        if (cfg.apiKey.isBlank()) return
+        val target = SynthTarget.of(settings) ?: return
+        if (!target.hasKey) return
         val want = pipeline.lookaheadCount(
             avgSegChars = settings.maxChunkChars.coerceAtLeast(40),
             min = settings.prefetch.coerceIn(1, MAX_LOOKAHEAD),
@@ -607,10 +609,10 @@ class TtsEngine(
         var i = segmentIndex + 1
         while (i < segments.size && covered < want) {
             val text = slice(segments[i])
-            val key = cacheKey(text, cfg)
+            val key = cacheKey(text, target)
             if (!pipeline.isReady(key) && !pipeline.isPending(key) && !pipeline.isCoolingDown(key)) {
                 if (pipeline.inflightCount >= MAX_PARALLEL) return
-                pipeline.prefetch(key, cfg, text)
+                pipeline.prefetch(key, target, text)
             }
             covered++
             i++
@@ -626,13 +628,16 @@ class TtsEngine(
                 for (j in 0 until min(need, nd.segments.size)) {
                     if (pipeline.inflightCount >= MAX_PARALLEL) break
                     val text = nd.text.substring(nd.segments[j].start, nd.segments[j].end)
-                    pipeline.prefetch(cacheKey(text, cfg), cfg, text)
+                    pipeline.prefetch(cacheKey(text, target), target, text)
                 }
             }
         }
     }
 
     companion object {
+        /** 缓存键（纯函数，单测锁定它与 0.3.x 逐字一致） */
+        internal fun cacheKeyOf(text: String, t: SynthTarget): String = Hash.cyrb53("v2|${t.provider}|${t.cacheTag}|$text")
+
         /**
          * 单个片段的合成尝试总数上限（含首次）。
          * 8 → 4：配合 75s 的 callTimeout，最坏 4×75s + 退避 ≈ 5 分钟，而旧值在没有 callTimeout 时

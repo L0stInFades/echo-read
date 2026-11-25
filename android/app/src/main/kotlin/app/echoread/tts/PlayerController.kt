@@ -1,5 +1,6 @@
 package app.echoread.tts
 
+import app.echoread.core.i18n.S
 import app.echoread.core.BookMeta
 import app.echoread.core.PlayerState
 import app.echoread.data.LibraryRepo
@@ -67,7 +68,7 @@ class PlayerController(
 
     /** 装载书籍到引擎，成功返回 true（供调用方决定是否起播） */
     suspend fun loadBook(bookId: String, chapterIndex: Int, offset: Int): Boolean {
-        val meta = library.book(bookId) ?: throw IllegalStateException("书籍不存在")
+        val meta = library.book(bookId) ?: throw IllegalStateException(S.playback.bookNotFound)
         if (_book.value?.id != bookId) {
             _book.value = meta
             _titles.value = library.chapterTitles(bookId)
@@ -125,7 +126,7 @@ class PlayerController(
             return
         }
         setSleepTimer(SleepMode.Off)
-        Toaster.show("睡眠定时结束，已暂停")
+        Toaster.show(S.playback.sleepTimerEnded)
     }
 
     fun setSleepTimer(mode: SleepMode) {

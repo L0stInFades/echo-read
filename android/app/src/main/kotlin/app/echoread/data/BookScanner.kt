@@ -1,5 +1,6 @@
 package app.echoread.data
 
+import app.echoread.core.i18n.S
 import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
@@ -182,7 +183,7 @@ class BookScanner(private val context: Context) {
 
     /** 目录树的可读名字（取最后一段 documentId） */
     fun treeLabel(uri: Uri): String {
-        val id = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return uri.lastPathSegment ?: "目录"
+        val id = runCatching { DocumentsContract.getTreeDocumentId(uri) }.getOrNull() ?: return uri.lastPathSegment ?: S.importer.folder
         return id.substringAfterLast(':').ifEmpty { id }.substringAfterLast('/').ifEmpty { id }
     }
 

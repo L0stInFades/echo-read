@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 13+ 的「应用语言」设置（系统设置 → 应用 → Lector → 语言）。界面文案在 core/i18n 的语言包里，
+     「跟随系统」会读取这里选中的语言。新增语言包时在这里补一行。 -->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="zh-CN" />
+    <locale android:name="en" />
+</locale-config>

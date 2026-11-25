@@ -1,5 +1,6 @@
 package app.echoread.core
 
+import app.echoread.core.i18n.S
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -230,11 +231,11 @@ object EpubParser {
      */
     fun parse(file: File, fallbackName: String, coverScaler: ((ByteArray) -> ByteArray?)? = null): ParsedBook {
         ZipFile(file).use { zip ->
-            val containerXml = zip.readText("META-INF/container.xml") ?: throw IllegalArgumentException("无效的 EPUB：缺少 container.xml")
+            val containerXml = zip.readText("META-INF/container.xml") ?: throw IllegalArgumentException(S.importer.epubMissingContainer)
             val containerDoc = Jsoup.parse(containerXml, "", Parser.xmlParser())
             val opfPath = containerDoc.allElements.firstOrNull { it.localName() == "rootfile" }?.attr("full-path")
-            if (opfPath.isNullOrEmpty()) throw IllegalArgumentException("无效的 EPUB：找不到 OPF 路径")
-            val opfXml = zip.readText(opfPath) ?: throw IllegalArgumentException("无效的 EPUB：缺少 OPF 文件")
+            if (opfPath.isNullOrEmpty()) throw IllegalArgumentException(S.importer.epubMissingOpfPath)
+            val opfXml = zip.readText(opfPath) ?: throw IllegalArgumentException(S.importer.epubMissingOpf)
             val opf = parseOpf(opfXml, opfPath)
             if (opf.title == "未命名") opf.title = fallbackName.replace(Regex("\\.epub$", RegexOption.IGNORE_CASE), "")
 
@@ -259,12 +260,12 @@ object EpubParser {
                 var title = navTitles[path]
                 if (title == null) {
                     val heading = doc.selectFirst("h1,h2,h3,h4")?.text()?.trim()
-                    title = if (!heading.isNullOrEmpty() && heading.length <= 60) heading else "第 ${chapters.size + 1} 节"
+                    title = if (!heading.isNullOrEmpty() && heading.length <= 60) heading else (chapters.size + 1).let { part -> S.importer.partTitle(part) }
                 }
                 val body = if (paragraphs[0] == title) paragraphs.drop(1) else paragraphs
                 chapters.add(ParsedChapter(title, if (body.isNotEmpty()) body else paragraphs))
             }
-            if (chapters.isEmpty()) throw IllegalArgumentException("EPUB 中没有可用的文本章节")
+            if (chapters.isEmpty()) throw IllegalArgumentException(S.importer.epubNoText)
             return ParsedBook(opf.title, opf.author, opf.intro, cover, chapters)
         }
     }

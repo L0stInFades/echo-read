@@ -1,5 +1,6 @@
 package app.echoread.ui
 
+import app.echoread.core.i18n.S
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.material3.IconButtonDefaults
@@ -131,9 +132,11 @@ import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 private val RATE_STEPS = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
-private val SLEEP_OPTIONS: List<Pair<String, SleepMode>> = listOf(
-    "15分" to SleepMode.Minutes(15), "30分" to SleepMode.Minutes(30), "60分" to SleepMode.Minutes(60),
-    "90分" to SleepMode.Minutes(90), "播完本章" to SleepMode.Chapter, "关闭" to SleepMode.Off
+// getter 而非普通 val：文案要随界面语言重新求值（切换语言只重建 Activity，不重启进程）。
+// SleepMode 是 data class / data object，每次新建的实例与已选中的模式照样按值相等。
+private val SLEEP_OPTIONS: List<Pair<String, SleepMode>> get() = listOf(
+    S.reader.sleep15 to SleepMode.Minutes(15), S.reader.sleep30 to SleepMode.Minutes(30), S.reader.sleep60 to SleepMode.Minutes(60),
+    S.reader.sleep90 to SleepMode.Minutes(90), S.reader.sleepEndOfChapter to SleepMode.Chapter, S.reader.off to SleepMode.Off
 )
 
 /** 切章请求：offset < 0 表示定位到该章末页 */
@@ -228,7 +231,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
             val ready = window.chapterCount > 0 && window.pagesOf(pager.anchor.chapter) != null
             val atEdge = ready && (if (d > 0) pager.anchor.chapter >= window.chapterCount - 1 else pager.anchor.chapter <= 0)
             if (atEdge) Haptics.reject(view)
-            if (d > 0 && atEdge) Toaster.show("已经是最后一页", durationMs = 1200)
+            if (d > 0 && atEdge) Toaster.show(S.reader.thisIsTheLast, durationMs = 1200)
         }
     }
 
@@ -330,7 +333,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                         laying = false
                     }
                     if (laid == null) {
-                        Toaster.error("章节内容缺失")
+                        Toaster.error(S.reader.chapterContentIsMissing)
                         request = null
                         return@collectLatest
                     }
@@ -501,7 +504,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
         val m = meta ?: return@LaunchedEffect
         if (!m.started()) {
             delay(700)
-            Toaster.show("轻点正文任意字，从那里开始朗读", ToastKind.INFO, 3800)
+            Toaster.show(S.reader.tapAnyWordTo, ToastKind.INFO, 3800)
         }
     }
 
@@ -558,7 +561,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                 }
                 engine.play()
             } catch (e: Exception) {
-                Toaster.error(e.message ?: "播放失败")
+                Toaster.error(e.message ?: S.common.playbackFailed)
             }
         }
     }
@@ -600,7 +603,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     }
                 }
             } catch (e: Exception) {
-                Toaster.error(e.message ?: "播放失败")
+                Toaster.error(e.message ?: S.common.playbackFailed)
             }
         }
     }
@@ -618,7 +621,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                 try {
                     if (player.loadBook(bookId, index, 0)) engine.play()
                 } catch (e: Exception) {
-                    Toaster.error(e.message ?: "章节加载失败")
+                    Toaster.error(e.message ?: S.reader.couldntLoadChapter)
                 }
             }
         }
@@ -665,7 +668,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
         val cur = tts.rate
         val next = RATE_STEPS.firstOrNull { it > cur + 0.01f } ?: RATE_STEPS[0]
         settings.updateTts { it.copy(rate = next) }
-        Toaster.show("${formatRate(next)}× 倍速", durationMs = 1200)
+        Toaster.show(S.reader.speedLabel(formatRate(next)), durationMs = 1200)
     }
 
     fun leave() {
@@ -752,9 +755,9 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
     Box(Modifier.fillMaxSize().background(theme.bg)) {
         if (loadFailed) {
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                Text("书籍不存在或已被删除", color = theme.dim, style = MaterialTheme.typography.bodyMedium)
+                Text(S.reader.thisBookDoesntExist, color = theme.dim, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(16.dp))
-                OutlineButton("返回书架", color = theme.text) { onBack() }
+                OutlineButton(S.reader.backToLibrary, color = theme.text) { onBack() }
             }
             return@Box
         }
@@ -769,7 +772,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     .padding(horizontal = 6.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButtonEcho(EchoIcons.Back, "返回", modifier = Modifier.testTag("reader.back"), tint = theme.text) { leave() }
+                IconButtonEcho(EchoIcons.Back, S.reader.back, modifier = Modifier.testTag("reader.back"), tint = theme.text) { leave() }
                 Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
                     Text(
                         window.pagesOf(shown.chapter)?.chapter?.title ?: "…",
@@ -777,9 +780,9 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     )
                     Text(meta?.title ?: "", color = theme.dim, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                IconButtonEcho(EchoIcons.Toc, "目录", tint = theme.text) { showChapters = true }
-                IconButtonEcho(EchoIcons.TextStyle, "阅读样式", tint = theme.text) { showStyle = true }
-                IconButtonEcho(EchoIcons.Waves, "朗读设置", tint = theme.text) { showTts = true }
+                IconButtonEcho(EchoIcons.Toc, S.common.contents, tint = theme.text) { showChapters = true }
+                IconButtonEcho(EchoIcons.TextStyle, S.common.readingStyle, tint = theme.text) { showStyle = true }
+                IconButtonEcho(EchoIcons.Waves, S.common.voiceSettings, tint = theme.text) { showTts = true }
             }
             // 排版中的细进度线（固定占位，不改变正文高度）
             Box(Modifier.fillMaxWidth().height(2.dp)) {
@@ -863,9 +866,9 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     // 页脚：页码/章号读「呈现页」，翻页期间与画面严格一致
                     Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
                         if (shownPages != null) {
-                            Text("${shown.page + 1} / ${shownPages.pageCount} 页", color = theme.dim, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
+                            Text(S.reader.pageOf(shown.page + 1, shownPages.pageCount), color = theme.dim, style = MaterialTheme.typography.labelSmall, modifier = Modifier.weight(1f))
                         } else Spacer(Modifier.weight(1f))
-                        if (m != null) Text("第 ${shown.chapter + 1} / ${m.chapterCount} 章", color = theme.dim, style = MaterialTheme.typography.labelSmall)
+                        if (m != null) Text(S.reader.chapterOf(shown.chapter + 1, m.chapterCount), color = theme.dim, style = MaterialTheme.typography.labelSmall)
                     }
                 }
 
@@ -898,8 +901,8 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                                 // 「回到朗读位置」压过「正在合成…」：后者是环境噪声，前者是用户的待办动作。
                                 // 反过来排的话（实测踩过）：系统 TTS 每段要合成 1~2 秒，播放中约一半时间
                                 // 状态行被合成提示占着且不可点 —— 返回入口一闪一闪、时点时不点。
-                                returnable -> "回到朗读位置 ↩"
-                                busySynth -> "正在合成…"
+                                returnable -> S.reader.backToPlaybackButton
+                                busySynth -> S.common.generating
                                 else -> ""
                             }
                             Text(
@@ -916,14 +919,14 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                                     .widthIn(max = 300.dp)
                                     .then(
                                         if (returnable && failure == null && retryNote == null)
-                                            Modifier.echoPress(pressedScale = PressScale.Chip, onClickLabel = "回到朗读位置") { followSpeech = true }
+                                            Modifier.echoPress(pressedScale = PressScale.Chip, onClickLabel = S.reader.backToPlaybackPosition) { followSpeech = true }
                                         else Modifier
                                     )
                             )
                             val detail = failure?.net ?: snap.retry?.error?.takeIf { snap.bookId == bookId }
                             if (detail != null) {
                                 Text(
-                                    "详情",
+                                    S.common.details,
                                     color = theme.accent,
                                     style = MaterialTheme.typography.labelMediumEmphasized,
                                     modifier = Modifier
@@ -1021,10 +1024,10 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     ) {
                         DockSlot {
                             if (sleepMode === SleepMode.Off) {
-                                IconButtonEcho(EchoIcons.Moon, "睡眠定时", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp) { showSleep = !showSleep }
+                                IconButtonEcho(EchoIcons.Moon, S.reader.sleepTimer, tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp) { showSleep = !showSleep }
                             } else {
                                 Text(
-                                    if (sleepMode === SleepMode.Chapter) "本章" else "%d:%02d".format(java.util.Locale.ROOT, sleepRemaining / 60, sleepRemaining % 60),
+                                    if (sleepMode === SleepMode.Chapter) S.reader.sleepChapterShort else "%d:%02d".format(java.util.Locale.ROOT, sleepRemaining / 60, sleepRemaining % 60),
                                     color = theme.accent,
                                     style = MaterialTheme.typography.labelSmallEmphasized,
                                     modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showSleep = !showSleep }.padding(horizontal = 6.dp, vertical = 8.dp)
@@ -1032,7 +1035,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                             }
                         }
                         DockSlot {
-                            IconButtonEcho(EchoIcons.SkipPrev, "上一章", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = pager.anchor.chapter > 0) { gotoChapter(pager.anchor.chapter - 1) }
+                            IconButtonEcho(EchoIcons.SkipPrev, S.reader.previousChapter, tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = pager.anchor.chapter > 0) { gotoChapter(pager.anchor.chapter - 1) }
                         }
                         DockSlot {
                             PlayButton(
@@ -1042,7 +1045,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                             ) { togglePlay() }
                         }
                         DockSlot {
-                            IconButtonEcho(EchoIcons.SkipNext, "下一章", tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = meta?.let { pager.anchor.chapter < it.chapterCount - 1 } ?: false) { gotoChapter(pager.anchor.chapter + 1) }
+                            IconButtonEcho(EchoIcons.SkipNext, S.reader.nextChapter, tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = meta?.let { pager.anchor.chapter < it.chapterCount - 1 } ?: false) { gotoChapter(pager.anchor.chapter + 1) }
                         }
                         DockSlot {
                             Text(
@@ -1242,7 +1245,7 @@ private fun PlayButton(playing: Boolean, accent: Color, onAccent: Color, onClick
         // 48dp：与其余槽位的触控区等高。原来 52dp 比同行的 36dp 图标高出一截，
         // 撑爆行高并把上下的留白吃掉（实测上下间隙只剩 1.7dp 与 0.3dp）
         modifier = Modifier.size(48.dp).semantics {
-            contentDescription = if (playing) "暂停" else "播放"
+            contentDescription = if (playing) S.reader.pause else S.reader.play
         },
         colors = IconButtonDefaults.filledIconToggleButtonColors(
             containerColor = accent,

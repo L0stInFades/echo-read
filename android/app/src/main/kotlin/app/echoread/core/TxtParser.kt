@@ -1,5 +1,6 @@
 package app.echoread.core
 
+import app.echoread.core.i18n.S
 import org.mozilla.universalchardet.UniversalDetector
 import java.nio.ByteBuffer
 import java.nio.charset.CharacterCodingException
@@ -77,10 +78,24 @@ object TxtParser {
 
     private const val TAIL = "[^\\n。！？!?；;…]{0,30}[ \\t]*$"
 
+    /**
+     * 英文书的章号：阿拉伯数字、罗马数字（CHAPTER XII）、英文数词（Chapter Twenty-One）。
+     * 0.3.x 只认阿拉伯数字，于是古登堡计划里大量「CHAPTER I」式的英文 TXT 整本只剩一章。
+     */
+    private const val EN_NUMBER = "[IVXLCDM]+\\b|(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|" +
+        "sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)(?:[- ](?:one|two|three|four|five|six|seven|eight|nine))?\\b"
+
     /** 候选章节标题正则（取匹配数最多者）；标题行不允许以句末标点结尾；min 为采纳所需的最少匹配数 */
     private val CHAPTER_PATTERNS = listOf(
         Pattern(Regex("^[ \\t]*第[0-9零〇一二三四五六七八九十百千万两]+[章节卷回部集篇幕]$TAIL", RegexOption.MULTILINE), 1),
-        Pattern(Regex("^[ \\t]*(?:Chapter|CHAPTER|chap)[ \\t]*[0-9零〇一二三四五六七八九十]+$TAIL", setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE)), 1),
+        // 英文：Chapter 12 / CHAPTER XII / Chapter Twenty-One，以及与章节同级的序章、尾声
+        Pattern(
+            Regex(
+                "^[ \\t]*(?:(?:Chapter|chap\\.?)(?:[ \\t]*[0-9零〇一二三四五六七八九十]+|[ \\t]+(?:$EN_NUMBER))|" +
+                    "Prologue|Epilogue|Preface|Foreword|Afterword|Introduction)$TAIL",
+                setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE)
+            ), 1
+        ),
         Pattern(Regex("^[ \\t]*(?:楔子|序言?|前言|序章|引子|终章|尾声|后记|番外篇?)$TAIL", RegexOption.MULTILINE), 1),
         Pattern(Regex("^[ \\t]*[0-9]{1,5}[、.．][ \\t]?[^\\n。！？!?；;…]{1,30}[ \\t]*$", RegexOption.MULTILINE), 3),
         Pattern(Regex("^[ \\t]*卷[0-9零〇一二三四五六七八九十]+$TAIL", RegexOption.MULTILINE), 1)
@@ -105,7 +120,7 @@ object TxtParser {
             val matches = best
             // 第一章之前的内容（封面/简介等），再短也不丢字
             val head = content.substring(0, matches[0].index).trim()
-            if (head.isNotEmpty()) chapters.add(MutableChapter("开篇", toParagraphs(head).toMutableList()))
+            if (head.isNotEmpty()) chapters.add(MutableChapter(S.importer.opening, toParagraphs(head).toMutableList()))
             for (i in matches.indices) {
                 val start = matches[i].index + matches[i].rawLen
                 val end = if (i + 1 < matches.size) matches[i + 1].index else content.length
@@ -114,7 +129,7 @@ object TxtParser {
                     paragraphs.isNotEmpty() -> chapters.add(MutableChapter(matches[i].title, paragraphs.toMutableList()))
                     // 空体“标题”（编号正文等幻影匹配）：降级为上一章的正文行，内容不丢
                     chapters.isNotEmpty() -> chapters.last().paragraphs.add(matches[i].title)
-                    else -> chapters.add(MutableChapter("开篇", mutableListOf(matches[i].title)))
+                    else -> chapters.add(MutableChapter(S.importer.opening, mutableListOf(matches[i].title)))
                 }
             }
         }
@@ -126,7 +141,7 @@ object TxtParser {
             var part = 1
             for (p in toParagraphs(content)) {
                 if (len + p.length > TextOps.CHAPTER_MAX_CHARS && buf.isNotEmpty()) {
-                    chapters.add(MutableChapter("第 $part 节", buf))
+                    chapters.add(MutableChapter(S.importer.partTitle(part), buf))
                     buf = ArrayList()
                     len = 0
                     part++
@@ -134,7 +149,7 @@ object TxtParser {
                 buf.add(p)
                 len += p.length
             }
-            if (buf.isNotEmpty()) chapters.add(MutableChapter("第 $part 节", buf))
+            if (buf.isNotEmpty()) chapters.add(MutableChapter(S.importer.partTitle(part), buf))
         }
         return chapters.map { ParsedChapter(it.title, it.paragraphs) }
     }
@@ -145,7 +160,7 @@ object TxtParser {
     fun parse(fileName: String, bytes: ByteArray): ParsedBook {
         val (text, _) = decodeText(bytes)
         val chapters = splitChapters(text).toMutableList()
-        val title = fileName.replace(Regex("\\.(txt|text)$", RegexOption.IGNORE_CASE), "").trim().ifEmpty { "未命名" }
+        val title = fileName.replace(Regex("\\.(txt|text)$", RegexOption.IGNORE_CASE), "").trim().ifEmpty { S.importer.untitled }
         // TXT 常见约定：首行即书名，去掉以免重复出现在正文
         val first = chapters.firstOrNull()
         if (first != null && first.paragraphs.isNotEmpty() && first.paragraphs[0].trim() == title) {

@@ -2,12 +2,15 @@ package app.echoread.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import app.echoread.core.GeminiTtsConfig
+import app.echoread.core.GeminiVoiceEntry
 import app.echoread.core.GestureSettings
 import app.echoread.core.OpenAISpeechConfig
 import app.echoread.core.ReaderSettings
 import app.echoread.core.TtsModelInfo
 import app.echoread.core.TtsProvider
 import app.echoread.core.TtsSettings
+import app.echoread.tts.GeminiTts
 import app.echoread.tts.SpeechApi
 import app.echoread.tts.Voices
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +38,10 @@ class SettingsStore(context: Context) {
     private val _models = MutableStateFlow(load(KEY_MODELS, ListSerializer(TtsModelInfo.serializer())) ?: emptyList())
     val models: StateFlow<List<TtsModelInfo>> = _models
 
+    /** Gemini 音色目录（`GET /v1beta/voices` 的缓存，离线可用；空列表表示未拉取过） */
+    private val _geminiVoices = MutableStateFlow(load(KEY_GEMINI_VOICES, ListSerializer(GeminiVoiceEntry.serializer())) ?: emptyList())
+    val geminiVoices: StateFlow<List<GeminiVoiceEntry>> = _geminiVoices
+
     private fun <T> load(key: String, serializer: kotlinx.serialization.KSerializer<T>): T? {
         val raw = prefs.getString(key, null) ?: return null
         return try {
@@ -50,6 +57,8 @@ class SettingsStore(context: Context) {
     }
 
     fun updateOpenAI(block: (OpenAISpeechConfig) -> OpenAISpeechConfig) = updateTts { it.copy(openai = block(it.openai)) }
+
+    fun updateGemini(block: (GeminiTtsConfig) -> GeminiTtsConfig) = updateTts { it.copy(gemini = block(it.gemini)) }
 
     fun updateReader(block: (ReaderSettings) -> ReaderSettings) {
         _reader.update { sanitizeReader(block(it)) }
@@ -71,6 +80,23 @@ class SettingsStore(context: Context) {
     fun fingerprintOf(cfg: OpenAISpeechConfig): String = app.echoread.core.Hash.cyrb53("${cfg.baseUrl.trim()}|${cfg.apiKey.trim()}")
 
     fun serverVoicesFor(modelId: String): List<String>? = _models.value.firstOrNull { it.id == modelId }?.voices
+
+    /**
+     * 缓存 Gemini 音色目录。自建音色（voice_…）归属于 Key 所在的项目，所以指纹只认 Key：
+     * 换了 Key 必须重拉，否则会把上一个项目的私有音色摆给新项目选。
+     */
+    fun setGeminiVoices(list: List<GeminiVoiceEntry>, fingerprint: String) {
+        _geminiVoices.value = list
+        prefs.edit()
+            .putString(KEY_GEMINI_VOICES, json.encodeToString(ListSerializer(GeminiVoiceEntry.serializer()), list))
+            .putLong(KEY_GEMINI_VOICES_AT, System.currentTimeMillis())
+            .putString(KEY_GEMINI_VOICES_FP, fingerprint)
+            .apply()
+    }
+
+    val geminiVoicesSyncedAt: Long get() = prefs.getLong(KEY_GEMINI_VOICES_AT, 0)
+    val geminiVoicesFingerprint: String get() = prefs.getString(KEY_GEMINI_VOICES_FP, "") ?: ""
+    fun geminiFingerprintOf(cfg: GeminiTtsConfig): String = app.echoread.core.Hash.cyrb53("gemini|${cfg.apiKey.trim()}")
 
     /** 切换模型：恢复该模型记忆的音色，否则用目录默认音色（中文优先） */
     fun setModel(id: String) {
@@ -96,6 +122,9 @@ class SettingsStore(context: Context) {
         private const val KEY_MODELS = "tts-models"
         private const val KEY_MODELS_AT = "tts-models-at"
         private const val KEY_MODELS_FP = "tts-models-fp"
+        private const val KEY_GEMINI_VOICES = "gemini-voices"
+        private const val KEY_GEMINI_VOICES_AT = "gemini-voices-at"
+        private const val KEY_GEMINI_VOICES_FP = "gemini-voices-fp"
 
         /** OpenRouter 已下架的历史 TTS 模型：存量配置迁移到现役默认模型 */
         private val REMOVED_OR_MODELS = setOf(
@@ -116,7 +145,9 @@ class SettingsStore(context: Context) {
             if (SpeechApi.isOpenRouterBase(out.openai.baseUrl) && out.openai.model in REMOVED_OR_MODELS) {
                 out = out.copy(openai = out.openai.copy(model = fb.openai.model, voice = fb.openai.voice))
             }
-            if (out.provider != TtsProvider.OPENAI && out.provider != TtsProvider.SYSTEM) out = out.copy(provider = fb.provider)
+            // 白名单写全：漏掉 GEMINI 的话，每次读档都会把用户选好的 Gemini 引擎悄悄打回 OpenRouter
+            if (out.provider !in setOf(TtsProvider.OPENAI, TtsProvider.GEMINI, TtsProvider.SYSTEM)) out = out.copy(provider = fb.provider)
+            if (out.gemini.model.isBlank()) out = out.copy(gemini = out.gemini.copy(model = GeminiTts.MODEL_FLASH))
             return out
         }
 

@@ -1,5 +1,6 @@
 package app.echoread.ui
 
+import app.echoread.core.i18n.S
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -63,43 +64,43 @@ fun BoxScope.GestureSettingsSheet(open: Boolean, graph: AppGraph, onClose: () ->
         graph.settings.updateReader { r: ReaderSettings -> r.copy(gestures = block(r.gestures)) }
     }
 
-    EchoSheet(open = open, onDismiss = onClose, title = "翻页手势") {
+    EchoSheet(open = open, onDismiss = onClose, title = S.common.pageTurnGestures) {
         GesturePreview(g)
         Spacer(Modifier.height(18.dp))
 
-        SectionLabel("滑动翻页") {
-            if (g.axis == PageAxis.VERTICAL) Text("不与系统返回手势冲突", color = c.text3, style = MaterialTheme.typography.labelSmall)
+        SectionLabel(S.reader.swipeToTurn) {
+            if (g.axis == PageAxis.VERTICAL) Text(S.reader.wontConflictWithBack, color = c.text3, style = MaterialTheme.typography.labelSmall)
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AxisToggle("左右", EchoIcons.SwipeH, g.axis == PageAxis.HORIZONTAL, Modifier.weight(1f), index = 0, count = 3) { edit { it.copy(axis = PageAxis.HORIZONTAL) } }
-            AxisToggle("上下", EchoIcons.SwipeV, g.axis == PageAxis.VERTICAL, Modifier.weight(1f), index = 1, count = 3) { edit { it.copy(axis = PageAxis.VERTICAL) } }
-            AxisToggle("关闭", EchoIcons.Close, g.axis == PageAxis.OFF, Modifier.weight(1f), index = 2, count = 3) { edit { it.copy(axis = PageAxis.OFF) } }
+            AxisToggle(S.reader.leftRight, EchoIcons.SwipeH, g.axis == PageAxis.HORIZONTAL, Modifier.weight(1f), index = 0, count = 3) { edit { it.copy(axis = PageAxis.HORIZONTAL) } }
+            AxisToggle(S.reader.upDown, EchoIcons.SwipeV, g.axis == PageAxis.VERTICAL, Modifier.weight(1f), index = 1, count = 3) { edit { it.copy(axis = PageAxis.VERTICAL) } }
+            AxisToggle(S.reader.off, EchoIcons.Close, g.axis == PageAxis.OFF, Modifier.weight(1f), index = 2, count = 3) { edit { it.copy(axis = PageAxis.OFF) } }
         }
         if (g.axis == PageAxis.HORIZONTAL) {
             Spacer(Modifier.height(6.dp))
             Text(
-                "提示：系统手势导航会先吃掉屏幕左右边缘约 20~40dp 内起手的横滑，那一带只能返回、翻不了页。改成「上下」可以完全避开。",
+                S.reader.tipWithGestureNavigation,
                 color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp
             )
         }
         Spacer(Modifier.height(20.dp))
 
-        SectionLabel("点击翻页热区")
+        SectionLabel(S.reader.tapToTurnZones)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AxisToggle("左右两侧", EchoIcons.TapZone, g.tapTurn && g.tapAxis == PageAxis.HORIZONTAL, Modifier.weight(1f), index = 0, count = 3) {
+            AxisToggle(S.reader.zonesLeftRight, EchoIcons.TapZone, g.tapTurn && g.tapAxis == PageAxis.HORIZONTAL, Modifier.weight(1f), index = 0, count = 3) {
                 edit { it.copy(tapTurn = true, tapAxis = PageAxis.HORIZONTAL) }
             }
-            AxisToggle("上下两端", EchoIcons.SwipeV, g.tapTurn && g.tapAxis == PageAxis.VERTICAL, Modifier.weight(1f), index = 1, count = 3) {
+            AxisToggle(S.reader.zonesTopBottom, EchoIcons.SwipeV, g.tapTurn && g.tapAxis == PageAxis.VERTICAL, Modifier.weight(1f), index = 1, count = 3) {
                 // 上下热区会吃掉首尾几行的点读，默认收窄一些
                 edit { it.copy(tapTurn = true, tapAxis = PageAxis.VERTICAL, prevZone = minOf(it.prevZone, 0.12f), nextZone = minOf(it.nextZone, 0.12f)) }
             }
-            AxisToggle("关闭", EchoIcons.Close, !g.tapTurn, Modifier.weight(1f), index = 2, count = 3) { edit { it.copy(tapTurn = false) } }
+            AxisToggle(S.reader.off, EchoIcons.Close, !g.tapTurn, Modifier.weight(1f), index = 2, count = 3) { edit { it.copy(tapTurn = false) } }
         }
 
         if (g.tapTurn) {
             Spacer(Modifier.height(16.dp))
-            val startLabel = if (g.tapAxis == PageAxis.VERTICAL) "顶部热区" else "左侧热区"
-            val endLabel = if (g.tapAxis == PageAxis.VERTICAL) "底部热区" else "右侧热区"
+            val startLabel = if (g.tapAxis == PageAxis.VERTICAL) S.reader.topZone else S.reader.leftZone
+            val endLabel = if (g.tapAxis == PageAxis.VERTICAL) S.reader.bottomZone else S.reader.rightZone
             // 两侧之和有上限（开着「轻点朗读」时 0.8）。若直接把原值丢给 sanitizeGestures，
             // 它会**按比例同时缩放两侧** —— 拖右边会把左边悄悄拖小，而且最终值取决于滑块回调的采样密度，
             // 同一个手势拖两次结果还不一样。这里先按「另一侧不动」把被拖的这一侧钳住，
@@ -113,39 +114,42 @@ fun BoxScope.GestureSettingsSheet(open: Boolean, graph: AppGraph, onClose: () ->
             Spacer(Modifier.height(14.dp))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 EchoSegmented(
-                    if (g.tapAxis == PageAxis.VERTICAL) "点上翻上一页" else "点左翻上一页",
-                    if (g.tapAxis == PageAxis.VERTICAL) "点上翻下一页" else "点左翻下一页",
+                    if (g.tapAxis == PageAxis.VERTICAL) S.reader.topPreviousPage else S.reader.leftPreviousPage,
+                    if (g.tapAxis == PageAxis.VERTICAL) S.reader.topNextPage else S.reader.leftNextPage,
                     firstSelected = !g.invertZones
                 ) { first -> edit { it.copy(invertZones = !first) } }
             }
         }
 
         Spacer(Modifier.height(20.dp))
-        SectionLabel("轻点正文朗读") { Text(if (g.tapToRead) "热区之外生效" else "已关闭", color = c.text3, style = MaterialTheme.typography.labelSmall) }
+        SectionLabel(S.reader.tapToRead) { Text(if (g.tapToRead) S.reader.worksOutsideTapZones else S.reader.turnedOff, color = c.text3, style = MaterialTheme.typography.labelSmall) }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            EchoSegmented("开启", "关闭", firstSelected = g.tapToRead) { on -> edit { it.copy(tapToRead = on) } }
+            EchoSegmented(S.reader.on, S.reader.off, firstSelected = g.tapToRead) { on -> edit { it.copy(tapToRead = on) } }
         }
         if (!g.tapToRead) {
             Spacer(Modifier.height(6.dp))
-            Text("关掉之后就只能用底栏的播放键从当前页开头朗读了。", color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp)
+            Text(S.reader.tapToReadOffHint, color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp)
         }
 
         Spacer(Modifier.height(20.dp))
-        SectionLabel("滑动灵敏度") {
+        SectionLabel(S.reader.swipeSensitivity) {
             Text(
                 when {
-                    g.slopScale <= 0.8f -> "灵敏"
-                    g.slopScale >= 1.6f -> "迟钝"
-                    else -> "标准"
+                    g.slopScale <= 0.8f -> S.reader.high
+                    g.slopScale >= 1.6f -> S.reader.low
+                    else -> S.common.standard
                 },
                 color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold
             )
         }
         EchoSlider(g.slopScale, { v -> edit { it.copy(slopScale = (Math.round(v * 10) / 10f)) } }, 0.5f..3f, steps = 24)
-        Text("调大之后手指要移动更远才算「滑动」，可以避免想点读却翻了页。", color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp, modifier = Modifier.padding(top = 6.dp))
+        Text(
+            S.reader.sensitivityHint,
+            color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp, modifier = Modifier.padding(top = 6.dp)
+        )
 
         Spacer(Modifier.height(22.dp))
-        OutlineButton("恢复默认", Modifier.fillMaxWidth()) { edit { GestureSettings() } }
+        OutlineButton(S.reader.resetToDefaults, Modifier.fillMaxWidth()) { edit { GestureSettings() } }
         Spacer(Modifier.height(8.dp))
     }
 }
@@ -230,15 +234,15 @@ private fun GesturePreview(g: GestureSettings) {
         // 三段文字标注按同样的比例排布，与上面的着色严格对齐
         if (vertical) {
             Column(Modifier.fillMaxSize()) {
-                ZoneLabel(if (startIsPrev) "上一页" else "下一页", g.prevZone, zonesOn, Modifier.fillMaxWidth().weight(g.prevZone.coerceAtLeast(0.0001f)))
-                ZoneLabel(if (g.tapToRead) "轻点朗读" else "—", 1f, true, Modifier.fillMaxWidth().weight((1f - g.prevZone - g.nextZone).coerceAtLeast(0.0001f)), dim = true)
-                ZoneLabel(if (startIsPrev) "下一页" else "上一页", g.nextZone, zonesOn, Modifier.fillMaxWidth().weight(g.nextZone.coerceAtLeast(0.0001f)))
+                ZoneLabel(if (startIsPrev) S.reader.prev else S.reader.next, g.prevZone, zonesOn, Modifier.fillMaxWidth().weight(g.prevZone.coerceAtLeast(0.0001f)))
+                ZoneLabel(if (g.tapToRead) S.reader.tapToReadShort else "—", 1f, true, Modifier.fillMaxWidth().weight((1f - g.prevZone - g.nextZone).coerceAtLeast(0.0001f)), dim = true)
+                ZoneLabel(if (startIsPrev) S.reader.next else S.reader.prev, g.nextZone, zonesOn, Modifier.fillMaxWidth().weight(g.nextZone.coerceAtLeast(0.0001f)))
             }
         } else {
             Row(Modifier.fillMaxSize()) {
-                ZoneLabel(if (startIsPrev) "上一页" else "下一页", g.prevZone, zonesOn, Modifier.fillMaxSize().weight(g.prevZone.coerceAtLeast(0.0001f)))
-                ZoneLabel(if (g.tapToRead) "轻点朗读" else "—", 1f, true, Modifier.fillMaxSize().weight((1f - g.prevZone - g.nextZone).coerceAtLeast(0.0001f)), dim = true)
-                ZoneLabel(if (startIsPrev) "下一页" else "上一页", g.nextZone, zonesOn, Modifier.fillMaxSize().weight(g.nextZone.coerceAtLeast(0.0001f)))
+                ZoneLabel(if (startIsPrev) S.reader.prev else S.reader.next, g.prevZone, zonesOn, Modifier.fillMaxSize().weight(g.prevZone.coerceAtLeast(0.0001f)))
+                ZoneLabel(if (g.tapToRead) S.reader.tapToReadShort else "—", 1f, true, Modifier.fillMaxSize().weight((1f - g.prevZone - g.nextZone).coerceAtLeast(0.0001f)), dim = true)
+                ZoneLabel(if (startIsPrev) S.reader.next else S.reader.prev, g.nextZone, zonesOn, Modifier.fillMaxSize().weight(g.nextZone.coerceAtLeast(0.0001f)))
             }
         }
     }

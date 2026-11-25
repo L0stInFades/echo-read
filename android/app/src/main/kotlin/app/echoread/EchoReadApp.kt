@@ -1,5 +1,6 @@
 package app.echoread
 
+import app.echoread.core.i18n.S
 import android.app.Application
 import android.content.Context
 import android.net.Uri
@@ -100,7 +101,7 @@ class AppGraph(context: Context) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (gen == scanGen) Toaster.error(e.message ?: "扫描失败")
+                if (gen == scanGen) Toaster.error(e.message ?: S.importer.scanFailed)
             } finally {
                 if (gen == scanGen) scanBusy.value = false
             }
@@ -134,13 +135,13 @@ class AppGraph(context: Context) {
     private suspend fun importOne(uri: Uri) {
         try {
             val meta = library.importUri(uri)
-            Toaster.show("《${meta.title}》导入成功，共 ${meta.chapterCount} 章", ToastKind.SUCCESS)
+            Toaster.show(S.importer.importedChapters(meta.title, meta.chapterCount), ToastKind.SUCCESS)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
             // 刻意接到 Throwable：超大文件会抛 OutOfMemoryError，那是 Error 而非 Exception，
             // 只接 Exception 的话整个导入协程会连同 mainScope 里的后续任务一起被带走。
-            Toaster.error(e.message ?: "导入失败")
+            Toaster.error(e.message ?: S.importer.importFailed)
         }
     }
 }
@@ -152,5 +153,7 @@ class EchoReadApp : Application() {
     override fun onCreate() {
         super.onCreate()
         graph = AppGraph(this)
+        // 界面语言越早定下越好：通知栏、后台导入的提示也要用对语言
+        app.echoread.core.i18n.I18n.apply(graph.settings.reader.value.language)
     }
 }

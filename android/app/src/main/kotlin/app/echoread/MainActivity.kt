@@ -9,8 +9,10 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
+import app.echoread.core.i18n.I18n
 import app.echoread.core.PlayerState
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import androidx.media3.session.MediaController
@@ -27,8 +29,18 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        // 每次创建都按当前设置重算一次界面语言：系统改语言时 Activity 也会走到这里（配置变更重建）
+        I18n.apply(graph.settings.reader.value.language)
         handleIntent(intent)
         setContent { EchoApp(graph) }
+        // 应用内切换语言：重建 Activity，整棵界面树按新语言重画（rememberSaveable 的状态都在）
+        lifecycleScope.launch {
+            graph.settings.reader.map { it.language }.distinctUntilChanged().drop(1).collect { lang ->
+                val was = I18n.english
+                I18n.apply(lang)
+                if (I18n.english != was) recreate()
+            }
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

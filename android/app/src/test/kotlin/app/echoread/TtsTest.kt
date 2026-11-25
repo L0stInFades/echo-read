@@ -126,10 +126,26 @@ class TtsTest {
         val or = OpenAISpeechConfig(baseUrl = "https://openrouter.ai/api/v1", apiKey = "k", model = "hexgrad/kokoro-82m", voice = "zf_xiaoxiao", instructions = "温柔一点", format = "opus")
         val body = SpeechApi.buildSpeechBody(or, "你好")
         assertEquals("mp3", body["response_format"]!!.jsonPrimitive.content)
-        assertEquals("温柔一点", body["provider"]!!.jsonObject["options"]!!.jsonObject["openai"]!!.jsonObject["instructions"]!!.jsonPrimitive.content)
-        assertNull(body["instructions"])
+        // OpenRouter 官方 TTS 文档（2026-11）：instructions 是顶层参数，不再经 provider.options.openai 透传
+        assertEquals("温柔一点", body["instructions"]!!.jsonPrimitive.content)
+        assertNull(body["provider"])
+        assertNull(SpeechApi.buildSpeechBody(or.copy(instructions = "  "), "hi")["instructions"])
         val gemini = SpeechApi.buildSpeechBody(or.copy(model = "google/gemini-3.1-flash-tts-preview", voice = "Kore"), "hi")
         assertEquals("pcm", gemini["response_format"]!!.jsonPrimitive.content)
+        // Gemini 3.8 / 2.5 与 HeyGen 在 OpenRouter 上只回 pcm，请求 mp3 就是 400（0.3.x 的缺陷）
+        for (m in listOf("google/gemini-3.8-flash-tts", "google/gemini-3.8-flash-lite-tts", "google/gemini-2.5-pro-tts", "heygen/heygen-voice-1-turbo:free")) {
+            assertEquals(m, "pcm", SpeechApi.buildSpeechBody(or.copy(model = m), "hi")["response_format"]!!.jsonPrimitive.content)
+        }
+        // 以后新上架、还没登记的 Gemini 模型也按厂商兜底走 pcm
+        assertEquals("pcm", SpeechApi.buildSpeechBody(or.copy(model = "google/gemini-9-flash-tts"), "hi")["response_format"]!!.jsonPrimitive.content)
+        assertEquals("mp3", SpeechApi.buildSpeechBody(or.copy(model = "elevenlabs/eleven-v4"), "hi")["response_format"]!!.jsonPrimitive.content)
+        // HeyGen 的裸流是 44.1 kHz：Content-Type 不写采样率时也不能按 24 kHz 封头
+        assertEquals(SpeechApi.PcmParams(44100, 1), SpeechApi.parsePcmParams("audio/pcm", Voices.modelHints("heygen/heygen-voice-1")?.pcmRate ?: 24000))
+        assertEquals(SpeechApi.PcmParams(24000, 1), SpeechApi.parsePcmParams("audio/pcm;rate=24000", 44100))
+        // 只有用得上 instructions 的模型才露出输入框
+        assertTrue(Voices.modelHints("google/gemini-3.8-flash-tts")?.instructions == true)
+        assertTrue(Voices.modelHints("fish-audio/drama-3")?.instructions == true)
+        assertFalse(Voices.modelHints("hexgrad/kokoro-82m")?.instructions == true)
         val fish = SpeechApi.buildSpeechBody(or.copy(model = "fish-audio/s1", voice = " "), "hi")
         assertFalse(fish.containsKey("voice"))
         val oa = SpeechApi.buildSpeechBody(or.copy(baseUrl = "https://api.openai.com/v1"), "hi")

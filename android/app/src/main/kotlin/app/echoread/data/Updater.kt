@@ -1,5 +1,6 @@
 package app.echoread.data
 
+import app.echoread.core.i18n.S
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -33,8 +34,16 @@ data class UpdateInfo(
      * 实验性版本（如 0.2.0-exp）：卡片上打「实验版」标记并提示可能不稳定。
      * 新增字段对旧客户端安全 —— 旧版 Updater 的 Json 配置带 ignoreUnknownKeys=true，会直接忽略它。
      */
-    val experimental: Boolean = false
-)
+    val experimental: Boolean = false,
+    /**
+     * 英文更新说明（0.4.0 起）。旧客户端会忽略它（同上，ignoreUnknownKeys），只渲染 [notes]；
+     * 英文界面优先显示它，缺省时退回中文的 [notes]。
+     */
+    val notesEn: String = ""
+) {
+    /** 按当前界面语言挑选要显示的更新说明 */
+    val displayNotes: String get() = if (app.echoread.core.i18n.I18n.english && notesEn.isNotBlank()) notesEn else notes
+}
 
 sealed interface UpdateState {
     data object Idle : UpdateState
@@ -98,7 +107,7 @@ class Updater(private val context: Context) {
                             lastErr = e
                         }
                     }
-                    throw lastErr ?: IllegalStateException("无法获取更新清单")
+                    throw lastErr ?: IllegalStateException(S.update.manifestFetchFailed)
                 }
             )
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -116,7 +125,7 @@ class Updater(private val context: Context) {
                         kind = app.echoread.core.net.CallKind.UPDATE_MANIFEST
                     )
                 }
-                UpdateState.Error("检查更新失败：${err?.headline() ?: "网络异常"}", null, err)
+                UpdateState.Error(S.update.updateCheckFailed(err?.headline() ?: S.update.networkError), null, err)
             }
             info.versionCode > currentVersionCode && Build.VERSION.SDK_INT >= info.minSdk -> {
                 // 用户已把这一版「叉掉」：静默检查不再打扰（手动检查 force=true 仍然照常提示）
@@ -164,7 +173,7 @@ class Updater(private val context: Context) {
                                 )
                             )
                         }
-                        val body = res.body ?: throw IllegalStateException("空响应")
+                        val body = res.body ?: throw IllegalStateException(S.update.emptyResponse)
                         val total = body.contentLength()
                         val tmp = File(target.path + ".part")
                         body.byteStream().use { input ->
@@ -186,17 +195,17 @@ class Updater(private val context: Context) {
                         }
                         if (info.sha256.isNotEmpty() && !sha256(tmp).equals(info.sha256, ignoreCase = true)) {
                             tmp.delete()
-                            throw IllegalStateException("安装包校验失败（SHA-256 不匹配）")
+                            throw IllegalStateException(S.update.checksumMismatch)
                         }
                         target.delete()
-                        if (!tmp.renameTo(target)) throw IllegalStateException("无法保存安装包")
+                        if (!tmp.renameTo(target)) throw IllegalStateException(S.update.saveFailed)
                         return@withContext target
                     }
                 } catch (e: Exception) {
                     lastErr = e
                 }
             }
-            throw lastErr ?: IllegalStateException("下载失败")
+            throw lastErr ?: IllegalStateException(S.update.downloadFailed)
             })
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
@@ -211,7 +220,7 @@ class Updater(private val context: Context) {
                         kind = app.echoread.core.net.CallKind.UPDATE_APK
                     )
                 }
-                UpdateState.Error("下载失败：${err?.headline() ?: "网络异常"}", info, err)
+                UpdateState.Error(S.update.downloadFailedWith(err?.headline() ?: S.update.networkError), info, err)
             }
         _state.value = next
         return next

@@ -1,14 +1,41 @@
 package app.echoread.core
 
+import app.echoread.core.i18n.AppLanguage
+import app.echoread.core.i18n.S
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/** TTS 服务商类型：AI 语音接口 / 系统语音（Android TextToSpeech，离线兜底） */
+/**
+ * TTS 服务商类型：AI 语音接口 / 系统语音（Android TextToSpeech，离线兜底）/ Gemini 原生接口。
+ *
+ * 旧版本读到不认识的 "gemini" 也不会崩：SettingsStore 的 Json 开着 coerceInputValues，
+ * 未知枚举值回落到属性默认值（OPENAI），降级安装是安全的。
+ */
 @Serializable
 enum class TtsProvider {
     @SerialName("openai-speech") OPENAI,
-    @SerialName("system") SYSTEM
+    @SerialName("system") SYSTEM,
+    /** Google Gemini API 原生语音合成（Interactions API，0.4.0 新增） */
+    @SerialName("gemini") GEMINI
 }
+
+/**
+ * Gemini 原生语音合成配置（Gemini API · Interactions API · v1beta）。
+ *
+ * 与 [OpenAISpeechConfig] 分开存，而不是复用它换个 Base URL：两边的 Key 互不覆盖，
+ * 在「AI 语音」与「Gemini」之间来回切换不丢任何一边的配置；字段语义也不同 ——
+ * Gemini 3.8 把正文当逐字稿，语气走结构化的 `speech_metadata.style`，不是 OpenAI 的 instructions。
+ */
+@Serializable
+data class GeminiTtsConfig(
+    val apiKey: String = "",
+    /** gemini-3.8-flash-tts（旗舰，官方列出的有声书首选）/ gemini-3.8-flash-lite-tts（更快更省） */
+    val model: String = "gemini-3.8-flash-tts",
+    /** 预置音色名（Kore…）、扩展音色库里的音色 ID，或自建音色 voice_… / voicekey_… */
+    val voice: String = "Kore",
+    /** `speech_metadata.style`：整段的语气、节奏、情绪。官方建议多数请求留空 */
+    val style: String = ""
+)
 
 /** OpenAI 兼容语音接口配置（OpenRouter / OpenAI / SiliconFlow / FishAudio 等通用） */
 @Serializable
@@ -27,6 +54,8 @@ data class OpenAISpeechConfig(
 data class TtsSettings(
     val provider: TtsProvider = TtsProvider.OPENAI,
     val openai: OpenAISpeechConfig = OpenAISpeechConfig(),
+    /** Gemini 原生接口配置（0.4.0 新增；旧存档缺该键时取默认值） */
+    val gemini: GeminiTtsConfig = GeminiTtsConfig(),
     /** 每模型记忆的音色选择（切换模型来回不丢音色） */
     val voiceByModel: Map<String, String> = emptyMap(),
     /** 播放倍速（客户端变速，避免重复合成） */
@@ -109,15 +138,15 @@ enum class ColorStyle {
 
     val label: String
         get() = when (this) {
-            TONAL_SPOT -> "标准"
-            VIBRANT -> "鲜明"
-            EXPRESSIVE -> "活泼"
-            NEUTRAL -> "淡雅"
-            MONOCHROME -> "单色"
-            FIDELITY -> "忠实"
-            CONTENT -> "内容"
-            RAINBOW -> "彩虹"
-            FRUIT_SALAD -> "缤纷"
+            TONAL_SPOT -> S.common.standard
+            VIBRANT -> S.settings.vibrant
+            EXPRESSIVE -> S.settings.expressive
+            NEUTRAL -> S.settings.neutral
+            MONOCHROME -> S.settings.mono
+            FIDELITY -> S.settings.fidelity
+            CONTENT -> S.settings.content
+            RAINBOW -> S.settings.rainbow
+            FRUIT_SALAD -> S.settings.fruitSalad
         }
 }
 
@@ -141,7 +170,9 @@ data class ReaderSettings(
     /** 配色风格，对应 material-color-utilities 的变体 */
     val colorStyle: ColorStyle = ColorStyle.TONAL_SPOT,
     /** 对比度，对应系统「对比度」设置：0 = 标准，0.5 = 中，1 = 高 */
-    val contrast: Float = 0f
+    val contrast: Float = 0f,
+    /** 界面语言（0.4.0 新增；旧存档缺该键时跟随系统） */
+    val language: AppLanguage = AppLanguage.SYSTEM
 ) {
     companion object {
         /** 品牌种子色。0.1.x 起沿用，HCT 色相 273.21 */
@@ -161,4 +192,28 @@ data class TtsModelInfo(
     val promptPrice: Double? = null,
     /** 输出 token 单价（Gemini 等按 token 计费的模型才有） */
     val completionPrice: Double? = null
+)
+
+/**
+ * Gemini 音色目录条目（`GET /v1beta/voices` 的 Voice 资源，只留界面用得到的字段）。
+ * 列表里先是本项目自建的音色（新的在前），后面是 Google 的预置目录。
+ */
+@Serializable
+data class GeminiVoiceEntry(
+    /** 合成时填进 speech_config 的值：预置音色是名字（Kore），自建音色是 voice_… */
+    val id: String,
+    val displayName: String = "",
+    /** prebuilt / prompted（音色设计、音色改造）/ replicated（音色复刻） */
+    val type: String? = null,
+    /** BCP-47，如 en-US */
+    val languageCode: String? = null,
+    val accent: String? = null,
+    /** female / male / neutral */
+    val gender: String? = null,
+    /** low / medium / high */
+    val pitch: String? = null,
+    val persona: String? = null,
+    /** 适用场景，如 Audiobook / Conversational / News */
+    val context: String? = null,
+    val description: String? = null
 )

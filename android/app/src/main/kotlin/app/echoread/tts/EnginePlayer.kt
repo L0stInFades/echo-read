@@ -1,5 +1,6 @@
 package app.echoread.tts
 
+import app.echoread.core.i18n.S
 import android.os.Looper
 import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
@@ -78,11 +79,11 @@ class EnginePlayer(
         val window = listOfNotNull(if (cur > 0) cur - 1 else null, cur, if (cur < book.chapterCount - 1) cur + 1 else null)
         lastWindow = window
         val items = window.map { idx ->
-            val title = titles.getOrNull(idx) ?: "第 ${idx + 1} 章"
+            val title = titles.getOrNull(idx) ?: S.playback.chapterTitle(idx + 1)
             val metadata = MediaMetadata.Builder()
                 .setTitle(title)
                 .setArtist(book.title)
-                .setAlbumTitle("Lector · AI 听书")
+                .setAlbumTitle(S.playback.albumTitle)
                 .setMediaType(MediaMetadata.MEDIA_TYPE_AUDIO_BOOK_CHAPTER)
                 .setIsPlayable(true)
                 .setIsBrowsable(false)

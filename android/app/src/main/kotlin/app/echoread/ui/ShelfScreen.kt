@@ -1,5 +1,6 @@
 package app.echoread.ui
 
+import app.echoread.core.i18n.S
 import app.echoread.ui.motion.EchoMotion
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.ui.unit.IntOffset
@@ -73,6 +74,7 @@ import app.echoread.core.BookMeta
 import app.echoread.core.readFraction
 import app.echoread.core.started
 import app.echoread.core.TtsProvider
+import app.echoread.core.i18n.I18n
 import app.echoread.data.UpdateState
 import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.flow.update
@@ -86,7 +88,16 @@ import app.echoread.ui.motion.PressScale
 import app.echoread.ui.motion.echoPress
 import app.echoread.ui.motion.echoTap
 
-private enum class SortMode(val label: String) { RECENT("最近阅读"), ADDED("最近导入"), TITLE("书名") }
+private enum class SortMode {
+    RECENT, ADDED, TITLE;
+
+    // 文案必须是 getter：枚举常量只构造一次，写进构造参数会停在首次访问时的语言
+    val label: String get() = when (this) {
+        RECENT -> S.shelf.recent
+        ADDED -> S.shelf.added
+        TITLE -> S.shelf.title
+    }
+}
 
 /**
  * 书架：One UI 式大标题下沉（滚动收起为紧凑标题栏）+ Harmony 卡片分组 + 底部拇指可达的「导入」主按钮。
@@ -115,7 +126,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
             val m = library.importSample()
             onOpenBook(m.id)
         } catch (e: Exception) {
-            Toaster.error(e.message ?: "示例导入失败")
+            Toaster.error(e.message ?: S.shelf.sampleImportFailed)
         }
     }
 
@@ -178,7 +189,8 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                     )
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        if (books.isNotEmpty()) "书架 · ${books.size} 本" else "AI 听书 · 声临其境",
+                        if (books.isNotEmpty()) S.shelf.libraryBooks(books.size)
+                        else S.shelf.tagline,
                         // 字距归零：与 Theme.kt 里定下的中文排版规则一致。
                         // 3sp 加在 12sp 的中文上是 25% 的字距，「书架」会被拉成「书 架」
                         color = c.text3, style = MaterialTheme.typography.bodySmall,
@@ -192,7 +204,8 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
 
             item("update") { UpdateCard(graph) }
 
-            if (tts.provider == TtsProvider.OPENAI && tts.openai.apiKey.isBlank()) {
+            val geminiEngine = tts.provider == TtsProvider.GEMINI
+            if ((tts.provider == TtsProvider.OPENAI && tts.openai.apiKey.isBlank()) || (geminiEngine && tts.gemini.apiKey.isBlank())) {
                 item("keyBanner") {
                     Row(
                         Modifier
@@ -209,8 +222,16 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("配置 API Key，开启 AI 朗读", color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                            Text("支持 OpenRouter / OpenAI 兼容语音接口", color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                if (geminiEngine) S.shelf.geminiKeyBannerTitle
+                                else S.shelf.keyBannerTitle,
+                                color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                if (geminiEngine) S.shelf.geminiKeyBannerSubtitle
+                                else S.shelf.keyBannerSubtitle,
+                                color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
                         }
                         Icon(EchoIcons.ChevronRight, null, tint = c.text3, modifier = Modifier.size(16.dp))
                     }
@@ -225,15 +246,15 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                             contentAlignment = Alignment.Center
                         ) { Icon(EchoIcons.Book, null, tint = c.accent, modifier = Modifier.size(40.dp)) }
                         Spacer(Modifier.height(20.dp))
-                        Text("书架还是空的", color = c.text, style = MaterialTheme.typography.titleLargeEmphasized)
+                        Text(S.shelf.emptyTitle, color = c.text, style = MaterialTheme.typography.titleLargeEmphasized)
                         Spacer(Modifier.height(6.dp))
-                        Text("导入 TXT 或 EPUB 书籍，轻点任意文字，\nAI 便从那里开始为你朗读", color = c.text2, style = MaterialTheme.typography.bodyMedium, lineHeight = 20.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Text(S.shelf.emptyHint, color = c.text2, style = MaterialTheme.typography.bodyMedium, lineHeight = 20.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
                         Spacer(Modifier.height(24.dp))
-                        GradientButton("导入第一本书", height = 46.dp) { showImport = true }
+                        GradientButton(S.shelf.importYourFirstBook, height = 46.dp) { showImport = true }
                         Spacer(Modifier.height(10.dp))
-                        OutlineButton("没有书？先听示例 →", Modifier.testTag("shelf.sample")) { openSample() }
+                        OutlineButton(S.shelf.trySample, Modifier.testTag("shelf.sample")) { openSample() }
                         Spacer(Modifier.height(12.dp))
-                        Text("怎么用？", color = c.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showHelp = true }.padding(6.dp))
+                        Text(S.shelf.howToUseLink, color = c.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showHelp = true }.padding(6.dp))
                     }
                 }
             } else {
@@ -262,12 +283,12 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                                 modifier = Modifier.weight(1f).height(22.dp),
                                 decorationBox = { inner ->
                                     Box(Modifier.fillMaxWidth().height(22.dp), contentAlignment = Alignment.CenterStart) {
-                                        if (query.isEmpty()) Text("搜索书名或作者", style = fieldStyle.copy(color = c.text3))
+                                        if (query.isEmpty()) Text(S.shelf.searchTitleOrAuthor, style = fieldStyle.copy(color = c.text3))
                                         inner()
                                     }
                                 }
                             )
-                            if (query.isNotEmpty()) Text("清除", color = c.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { query = "" })
+                            if (query.isNotEmpty()) Text(S.common.clear, color = c.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { query = "" })
                         }
                         Spacer(Modifier.height(10.dp))
                         // 排序在语义上是单选，不是筛选标签 —— 用 M3 Expressive 的连接式按钮组，
@@ -279,7 +300,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                     }
                 }
                 if (filtered.isEmpty()) {
-                    item("nores") { Text("没有找到「$query」", color = c.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
+                    item("nores") { Text(S.shelf.noResultsFor(query), color = c.text3, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.fillMaxWidth().padding(vertical = 48.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center) }
                 } else {
                     // 网格逐行懒加载：每行一个 item，卡片背景按首/中/尾行分段拼出整块大圆角卡片
                     val cols = 3
@@ -340,9 +361,9 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                             compositingStrategy = CompositingStrategy.ModulateAlpha
                         }
                     )
-                    IconButtonEcho(EchoIcons.Help, "怎么用", background = c.card.copy(alpha = 0.9f)) { showHelp = true }
+                    IconButtonEcho(EchoIcons.Help, S.common.howToUse, background = c.card.copy(alpha = 0.9f)) { showHelp = true }
                     Spacer(Modifier.width(8.dp))
-                    IconButtonEcho(EchoIcons.Settings, "朗读设置", background = c.card.copy(alpha = 0.9f)) { showSettings = true }
+                    IconButtonEcho(EchoIcons.Settings, S.common.voiceSettings, background = c.card.copy(alpha = 0.9f)) { showSettings = true }
                 }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).drawBehind { drawRect(borderColor, alpha = collapse.value) })
@@ -354,7 +375,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
         // 往下翻书时它让出屏幕，回到顶部再弹回来。这条动画本身走主题里的 Expressive 弹簧。
         Box(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 22.dp).zIndex(10f)) {
             GradientButton(
-                "导入书籍",
+                S.common.importBooks,
                 icon = EchoIcons.Plus,
                 height = 52.dp,
                 modifier = Modifier
@@ -380,7 +401,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
             ) {
                 ContainedLoadingIndicator(modifier = Modifier.size(56.dp))
                 Spacer(Modifier.height(14.dp))
-                Text("正在解析书籍…", color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
+                Text(S.shelf.importingBook, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
             }
         }
 
@@ -391,7 +412,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
             scope.launch {
                 library.remove(b.id)
                 if (graph.engine.current.bookId == b.id) graph.engine.stopAll()
-                Toaster.success("已从书架移除")
+                Toaster.success(S.shelf.removedFromLibrary)
             }
             actionBook = null
         }
@@ -428,39 +449,40 @@ private fun UpdateCard(graph: AppGraph) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (info?.experimental == true) {
                             Text(
-                                "实验版", color = warningColor(c.isDark), fontSize = 9.sp, fontWeight = FontWeight.Bold,
+                                S.shelf.experimental, color = warningColor(c.isDark), fontSize = 9.sp, fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(end = 6.dp).background(warningColor(c.isDark).copy(alpha = 0.16f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp)
                             )
                         }
                     }
                     Text(
                         when (s) {
-                            is UpdateState.Ready -> "新版本 v${info?.versionName} 已下载"
-                            is UpdateState.Downloading -> if (s.progress <= 0f) "正在连接下载服务器…" else "正在下载 v${info?.versionName} · ${(s.progress * 100).toInt()}%"
-                            is UpdateState.Error -> "更新失败"
-                            else -> "发现新版本 v${info?.versionName}"
+                            is UpdateState.Ready -> S.shelf.updateDownloaded(info?.versionName)
+                            is UpdateState.Downloading -> if (s.progress <= 0f) S.shelf.connectingToDownloadServer
+                            else S.shelf.downloadingUpdate(info?.versionName, (s.progress * 100).toInt())
+                            is UpdateState.Error -> S.shelf.updateFailed
+                            else -> S.shelf.updateAvailable(info?.versionName)
                         },
                         color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold
                     )
                     val sub = when (s) {
                         is UpdateState.Error -> s.message
-                        else -> info?.notes?.ifBlank { "当前 v${graph.updater.currentVersionName}" } ?: ""
+                        else -> info?.displayNotes?.ifBlank { S.shelf.currentVersionShort(graph.updater.currentVersionName) } ?: ""
                     }
                     if (sub.isNotEmpty()) Text(sub, color = c.text2, style = MaterialTheme.typography.bodySmall, lineHeight = 17.sp, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
                 }
                 Spacer(Modifier.width(10.dp))
                 when (s) {
                     is UpdateState.Downloading -> LoadingIndicator(progress = { s.progress }, modifier = Modifier.size(34.dp), color = c.accent)
-                    is UpdateState.Ready -> GradientButton("安装", height = 38.dp, fontSize = 13) {
-                        if (!graph.updater.install(context, s.file)) Toaster.show("请允许 Lector 安装应用，然后回来点「安装」", durationMs = 4000)
+                    is UpdateState.Ready -> GradientButton(S.shelf.install, height = 38.dp, fontSize = 13) {
+                        if (!graph.updater.install(context, s.file)) Toaster.show(S.shelf.allowInstallHint, durationMs = 4000)
                     }
-                    is UpdateState.Available -> GradientButton("立即更新", height = 38.dp, fontSize = 13) { scope.launch { graph.updater.download(s.info) } }
-                    is UpdateState.Error -> if (info != null) GradientButton("重试", height = 38.dp, fontSize = 13) { scope.launch { graph.updater.download(info) } }
+                    is UpdateState.Available -> GradientButton(S.shelf.updateNow, height = 38.dp, fontSize = 13) { scope.launch { graph.updater.download(s.info) } }
+                    is UpdateState.Error -> if (info != null) GradientButton(S.shelf.retry, height = 38.dp, fontSize = 13) { scope.launch { graph.updater.download(info) } }
                     else -> {}
                 }
                 // 可以叉掉：按版本永久忽略，重启也不会再弹。手动「检查更新」仍能找到它。
                 if (s !is UpdateState.Downloading) {
-                    IconButtonEcho(EchoIcons.Close, "忽略这一版更新", size = 30.dp, iconSize = 15.dp, tint = c.text3) { graph.updater.dismiss() }
+                    IconButtonEcho(EchoIcons.Close, S.shelf.skipThisVersion, size = 30.dp, iconSize = 15.dp, tint = c.text3) { graph.updater.dismiss() }
                 }
             }
             if (info?.experimental == true) {
@@ -469,7 +491,7 @@ private fun UpdateCard(graph: AppGraph) {
                     Icon(EchoIcons.Warning, null, tint = warningColor(c.isDark), modifier = Modifier.size(14.dp).padding(top = 1.dp))
                     Spacer(Modifier.width(6.dp))
                     Text(
-                        "实验版：界面与手势改动较大，可能有未发现的问题。不想升级就点右上角的 ✕，之后不会再提醒这一版。",
+                        S.shelf.experimentalWarning,
                         color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp
                     )
                 }
@@ -517,7 +539,7 @@ private fun ContinueCard(b: BookMeta, modifier: Modifier = Modifier, onClick: ()
         Box(Modifier.width(52.dp).height(76.dp).shadow(12.dp, RoundedCornerShape(10.dp))) { BookCover(b, Modifier.fillMaxSize(), radius = 10.dp, titleSize = 11) }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text("继续阅读", color = c.accent, style = MaterialTheme.typography.labelSmallEmphasized)
+            Text(S.shelf.continueReading, color = c.accent, style = MaterialTheme.typography.labelSmallEmphasized)
             Spacer(Modifier.height(2.dp))
             Text(b.title, color = c.text, style = MaterialTheme.typography.titleMediumEmphasized, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Spacer(Modifier.height(2.dp))
@@ -545,17 +567,17 @@ fun BoxScope.BookActionSheet(book: BookMeta?, onClose: () -> Unit, onOpen: (Book
     EchoSheet(open = book != null, onDismiss = onClose, title = b?.title ?: "", maxHeightFraction = 0.6f) {
         if (b != null) {
             Text(
-                "${b.author} · ${b.format.label.uppercase()} · ${b.chapterCount} 章 · ${formatChars(b.totalChars)}" + (b.intro?.let { "\n$it" } ?: ""),
+                S.shelf.bookMeta(b.author, b.format.label.uppercase(), b.chapterCount, formatChars(b.totalChars)) + (b.intro?.let { "\n$it" } ?: ""),
                 color = c.text3, style = MaterialTheme.typography.bodySmall, lineHeight = 18.sp, maxLines = 6, overflow = TextOverflow.Ellipsis
             )
             Spacer(Modifier.height(12.dp))
             Box(
                 Modifier.fillMaxWidth().background(c.cardAlt, RoundedCornerShape(Radius.md)).echoPress(pressedScale = PressScale.Tile) { onOpen(b) }.padding(16.dp)
-            ) { Text("继续阅读", color = c.text, style = MaterialTheme.typography.bodyMedium) }
+            ) { Text(S.shelf.continueReading, color = c.text, style = MaterialTheme.typography.bodyMedium) }
             Spacer(Modifier.height(8.dp))
             Box(
                 Modifier.fillMaxWidth().background(c.danger.copy(alpha = 0.12f), RoundedCornerShape(Radius.md)).echoPress(pressedScale = PressScale.Tile) { onDelete(b) }.padding(16.dp)
-            ) { Text("从书架删除", color = c.danger, style = MaterialTheme.typography.bodyMedium) }
+            ) { Text(S.shelf.deleteFromLibrary, color = c.danger, style = MaterialTheme.typography.bodyMedium) }
         }
     }
 }
@@ -570,17 +592,19 @@ fun BoxScope.BookActionSheet(book: BookMeta?, onClose: () -> Unit, onOpen: (Book
 private fun progressFraction(b: BookMeta): Float = b.readFraction()
 
 private fun progressText(b: BookMeta): String =
-    if (!b.started()) "未开始" else "已读 ${(progressFraction(b) * 100).toInt()}%"
+    if (!b.started()) S.shelf.notStarted else S.shelf.readPercent((progressFraction(b) * 100).toInt())
 
-fun formatChars(n: Int): String = if (n >= 10000) String.format(java.util.Locale.ROOT, "%.1f 万字", n / 10000.0) else "$n 字"
+/** 英文没有「万」：按千进位，百万字以上再进一级（长篇网文动辄几百万字，「3500.0k」读不出来） */
+/** 书的篇幅：中文按「万字」，英文按 k / M（各语言包里的 bookLength） */
+fun formatChars(n: Int): String = app.echoread.core.i18n.S.shelf.bookLength(n)
 
 private fun relativeTime(ts: Long): String {
     val d = System.currentTimeMillis() - ts
     return when {
-        d < 60_000 -> "刚刚"
-        d < 3_600_000 -> "${d / 60_000} 分钟前"
-        d < 86_400_000 -> "${d / 3_600_000} 小时前"
-        d < 7 * 86_400_000 -> "${d / 86_400_000} 天前"
-        else -> java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT, Locale.CHINA).format(java.util.Date(ts))
+        d < 60_000 -> S.shelf.justNow
+        d < 3_600_000 -> S.shelf.minAgo(d / 60_000)
+        d < 86_400_000 -> S.shelf.hoursAgo(d / 3_600_000)
+        d < 7 * 86_400_000 -> S.shelf.daysAgo(d / 86_400_000)
+        else -> java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT, I18n.locale).format(java.util.Date(ts))
     }
 }
