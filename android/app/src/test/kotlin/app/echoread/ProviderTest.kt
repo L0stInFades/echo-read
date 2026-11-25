@@ -692,6 +692,95 @@ class ProviderTest {
         assertTrue("更高的目录格式版本直接拒收", runCatching { Providers.parseCatalog("""{"schema":2,"providers":[]}""") }.isFailure)
     }
 
+    /** 地址与 Key 的输入规整：中文输入法敲出来的全角字符、大写的协议名、夹带的空白 */
+    @Test
+    fun addressesAreNormalized() {
+        assertEquals("http://127.0.0.1:8899", Providers.cleanAddress("HTTP：／／127.0.0.1：8899"))
+        assertEquals("https://api.example.com/v1", Providers.cleanAddress("  Https://api.example。com/v1 \n"))
+        assertEquals("中文域名原样保留", "https://例子.cn/v1", Providers.cleanAddress("https://例子.cn/v1"))
+        assertEquals("sk-abc123", Providers.cleanSecret(" ｓｋ－ａｂｃ１２３ "))
+        assertTrue(Providers.validBase("http://192.168.1.5:8880/v1"))
+        assertFalse(Providers.validBase("192.168.1.5:8880"))
+        assertFalse(Providers.validBase("HTTP：／／127.0.0.1：8899"))
+
+        val local = spec("kokoro-local")
+        val typed = Providers.newProfile(local, emptyList()).copy(baseUrl = "192.168.1.5:8880/v1")
+        assertFalse("没有协议头的地址发不出请求，不算就绪", Providers.ready(local, typed))
+
+        // 旧存档里没规整过的地址，读出来照样能用
+        val mm = spec("minimax")
+        val legacy = Providers.newProfile(mm, emptyList()).copy(apiKey = "K", baseUrl = "HTTP：／／127.0.0.1：8899")
+        assertEquals("http://127.0.0.1:8899", Providers.baseOf(mm, legacy))
+        assertTrue(Providers.ready(mm, legacy))
+        assertEquals("http://127.0.0.1:8899/v1/t2a_v2", HttpSpeech.buildRequest(mm.synth!!, HttpSpeech.vars(mm, legacy, "hi")).url.toString())
+    }
+
+    /** 地址写错是配置问题：停下来让人去改，而不是当成网络抖动重试 */
+    @Test
+    fun malformedAddressIsAConfigProblem() {
+        val e = app.echoread.core.net.NetErrors.fromThrowable(IllegalArgumentException("Expected URL scheme 'http' or 'https' but no scheme was found for 192.16..."))
+        assertEquals(NetCategory.CONFIG_MISSING_BASE_URL, e.category)
+        assertEquals(Disposition.STOP_SESSION, e.disposition())
+        assertNotEquals(NetCategory.CONFIG_MISSING_BASE_URL, app.echoread.core.net.NetErrors.fromThrowable(IllegalArgumentException("something else")).category)
+    }
+
+    /** 系统配了代理时，本机地址仍然直连；别的地址照常交给系统代理 */
+    @Test
+    fun loopbackBypassesTheSystemProxy() {
+        for (h in listOf("127.0.0.1", "localhost", "LOCALHOST", "127.8.0.1", "[::1]", "tts.localhost")) assertTrue(h, SpeechApi.isLoopback(h))
+        for (h in listOf("192.168.1.5", "10.0.2.2", "127.0.0.1.example.com", "localhost.example.com", "1127.0.0.1")) assertFalse(h, SpeechApi.isLoopback(h))
+
+        val proxy = java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress.createUnresolved("192.168.31.104", 7890))
+        val before = java.net.ProxySelector.getDefault()
+        java.net.ProxySelector.setDefault(object : java.net.ProxySelector() {
+            override fun select(uri: java.net.URI?) = listOf(proxy)
+            override fun connectFailed(uri: java.net.URI?, sa: java.net.SocketAddress?, ioe: java.io.IOException?) {}
+        })
+        try {
+            val selector = SpeechApi.client.proxySelector
+            assertEquals(listOf(java.net.Proxy.NO_PROXY), selector.select(java.net.URI("http://127.0.0.1:8880/v1/audio/speech")))
+            assertEquals(listOf(java.net.Proxy.NO_PROXY), selector.select(java.net.URI("http://localhost:8880/v1")))
+            assertEquals(listOf(proxy), selector.select(java.net.URI("https://api.openai.com/v1/audio/speech")))
+            assertEquals("局域网地址不替用户做决定", listOf(proxy), selector.select(java.net.URI("http://192.168.1.5:8880/v1")))
+        } finally {
+            java.net.ProxySelector.setDefault(before)
+        }
+    }
+
+    /** 连接状态只对算出它的那把「端点 + Key」作数：Key 改错又改回来，不能还挂着那条旧的「被拒绝」 */
+    @Test
+    fun statusIsBoundToTheKeyItWasCheckedWith() {
+        val now = 1_000_000_000L
+        val good = "fp-good"
+        val bad = "fp-bad"
+        val d = Discovery(models = emptyList(), voices = emptyList(), at = now - 60_000, fp = good, model = "m")
+        val ok = app.echoread.tts.SyncStatus.Ok(verified = true)
+        val failed = app.echoread.tts.SyncStatus.Failed(app.echoread.core.net.NetErrors.config(missingKey = true, endpoint = "", kind = app.echoread.core.net.CallKind.MODEL_LIST))
+        fun needs(cur: app.echoread.tts.SyncStatus?, checked: String?, fp: String, model: String = "m", scoped: Boolean = false, disc: Discovery? = d, at: Long = now) =
+            app.echoread.tts.ServiceSync.needsSync(cur, checked, fp, disc, at, scoped, model)
+
+        assertTrue("本次启动还没查过", needs(null, null, good))
+        assertFalse("同一把 Key、刚查过、是好的：不重复发请求", needs(ok, good, good))
+        assertTrue("Key 换了", needs(ok, good, bad))
+        assertTrue("Key 改错（被拒绝）又改回来：Discovery 里的指纹对得上，但这条红色状态是拿错的那把算的", needs(failed, bad, good))
+        assertTrue("失败不留到下一次", needs(failed, bad, bad))
+        assertFalse("正在查的就是这一把", needs(app.echoread.tts.SyncStatus.Syncing, good, good))
+        assertTrue("在途的是上一把 Key 的检查", needs(app.echoread.tts.SyncStatus.Syncing, bad, good))
+        assertTrue("缓存超过 6 小时", needs(ok, good, good, at = now + app.echoread.tts.ServiceSync.MAX_AGE_MS))
+        assertTrue("音色表按模型分而模型换了", needs(ok, good, good, model = "m2", scoped = true))
+        assertFalse(needs(ok, good, good, model = "m2", scoped = false))
+    }
+
+    /** Inworld 的音色列表不在 /v1 下面，但仍然跟着服务地址走：换了地址（中转）就不该再把 Key 发回官方主机 */
+    @Test
+    fun inworldVoiceListFollowsTheAddress() {
+        val s = spec("inworld")
+        val r = s.listVoices[0]
+        fun url(p: VoiceProfile) = HttpSpeech.buildRequest(r.method, r.url, r.headers, r.json, null, "", HttpSpeech.vars(s, p, null)).url.toString()
+        assertEquals("https://api.inworld.ai/tts/v1/voices", url(profile("inworld")))
+        assertEquals("http://10.0.0.2:9000/relay/tts/v1/voices", url(profile("inworld") { it.copy(baseUrl = "http://10.0.0.2:9000/relay/v1") }))
+    }
+
     /** 英文包只用 ASCII 标点：中文字体里弯引号、省略号、破折号是全角的，夹在英文句子中间会撑出一大段空白 */
     @Test
     fun englishPackUsesAsciiPunctuation() {

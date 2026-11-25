@@ -299,7 +299,8 @@ object HttpSpeech {
     /** 拉一张列表（跟随翻页，最多 [ListRecipe.maxPages] 页）。也是这家服务的「连接检查」 */
     suspend fun list(r: ListRecipe, spec: ProviderSpec, p: VoiceProfile): List<VoiceSpec> = withContext(Dispatchers.IO) {
         val v = vars(spec, p, null)
-        val endpoint = Template.expand(r.url.substringBefore('?'), v, Template.Context.URL)
+        // 展示用的端点也过一遍 URL 规整（{base}/../x 这类相对写法显示成最终地址）
+        val endpoint = Template.expand(r.url.substringBefore('?'), v, Template.Context.URL).let { it.toHttpUrlOrNull()?.toString() ?: it }
         if (v["base"].isNullOrEmpty() && "base" in Template.names(r.url)) throw config(false, "", CallKind.MODEL_LIST)
         val needsKey = r.headers.values.any { "key" in Template.names(it) }
         if (needsKey && v["key"].isNullOrEmpty() && !spec.keyOptional) throw config(true, endpoint, CallKind.MODEL_LIST)

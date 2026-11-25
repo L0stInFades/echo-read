@@ -473,7 +473,7 @@ object ZhStrings : Strings {
         override val badgeNotSet = "未配置"
         override val badgeNoResponse = "无响应"
         override val apiKeyNotSet = "未填写 API Key"
-        override val baseUrlNotSet = "未填写 Base URL"
+        override val baseUrlNotSet = "服务地址未填或无效"
         override fun apiKeyRejected(badge: Any?) = "API Key 被拒绝（${badge}）"
         override fun outOfQuota(badge: Any?) = "账户额度不足（${badge}）"
         override fun rateLimited(badge: Any?) = "请求过于频繁（${badge}）"
@@ -490,7 +490,7 @@ object ZhStrings : Strings {
         override fun emptyAudioReturned(badge: Any?) = "返回的音频为空（${badge}）"
         override fun requestFailed(badge: Any?) = "请求失败（${badge}）"
         override val adviceMissingKey = "去「朗读设置」填入 API Key。"
-        override val adviceMissingBaseUrl = "去「朗读设置」填入 Base URL。"
+        override val adviceMissingBaseUrl = "在朗读设置里检查服务地址：应以 http:// 或 https:// 开头。"
         override val adviceAuth = "检查 Key 是否填错、过期或被服务商停用。"
         override val adviceGeminiQuota = "Gemini API 配额已用完：免费层的每日配额在太平洋时间零点（北京时间 15～16 点）重置；在 Google AI Studio 绑定结算账户可提高配额。"
         override val adviceQuota = "给账户充值，或换一个服务商。"
@@ -645,6 +645,7 @@ object ZhStrings : Strings {
         override val general = "通用"
         override val sound = "声音"
         override val enterKey = "填写 API Key"
+        override val badAddress = "地址不是有效的网址，应以 http:// 或 https:// 开头"
     }
 
     override val update = object : Strings.Update {

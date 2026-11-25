@@ -48,10 +48,14 @@ class ServiceSync(private val settings: SettingsStore, private val scope: Corout
     val status: StateFlow<Map<String, SyncStatus>> = _status
     private val jobs = HashMap<String, Job>()
 
+    /** 每个服务当前这条状态是拿哪一把「端点 + Key」算出来的（见 [needsSync]） */
+    private val checkedFp = HashMap<String, String>()
+
     private fun set(id: String, st: SyncStatus) = _status.update { it + (id to st) }
 
     fun forget(id: String) {
         jobs.remove(id)?.cancel()
+        checkedFp.remove(id)
         _status.update { it - id }
     }
 
@@ -62,10 +66,12 @@ class ServiceSync(private val settings: SettingsStore, private val scope: Corout
         val s = settings.tts.value
         val spec = Providers.specOf(p, s)
         if (!Providers.ready(spec, p)) {
+            checkedFp.remove(profileId)
             set(profileId, SyncStatus.Idle)
             onDone?.invoke(SyncStatus.Idle)
             return
         }
+        checkedFp[profileId] = Providers.fingerprint(spec, p)
         set(profileId, SyncStatus.Syncing)
         jobs[profileId] = scope.launch {
             val st = try {
@@ -97,7 +103,7 @@ class ServiceSync(private val settings: SettingsStore, private val scope: Corout
     }
 
     /**
-     * 需要时才同步：本次启动还没同步过、「端点 + Key」变了、缓存超过 6 小时，
+     * 需要时才同步：本次启动还没同步过、「端点 + Key」变了、上一次失败了、缓存超过 6 小时，
      * 或者音色表按模型分而模型换了。否则什么都不发。
      */
     fun ensureFresh(profileId: String) {
@@ -106,20 +112,35 @@ class ServiceSync(private val settings: SettingsStore, private val scope: Corout
         val spec = Providers.specOf(p, s)
         if (!Providers.ready(spec, p)) {
             jobs.remove(profileId)?.cancel()
+            checkedFp.remove(profileId)
             set(profileId, SyncStatus.Idle)
             return
         }
-        val cur = _status.value[profileId]
-        if (cur is SyncStatus.Syncing) return
-        val d = settings.discovery.value[profileId]
         val modelScoped = spec.listVoices.any { "model" in Template.names(it.url) }
-        val stale = d == null || d.fp != Providers.fingerprint(spec, p) ||
-            System.currentTimeMillis() - d.at > MAX_AGE_MS ||
-            (modelScoped && d.model != Providers.modelOf(spec, p))
-        if (stale || cur == null || cur is SyncStatus.Idle) refresh(profileId)
+        val needed = needsSync(
+            cur = _status.value[profileId], checkedFp = checkedFp[profileId], fp = Providers.fingerprint(spec, p),
+            d = settings.discovery.value[profileId], now = System.currentTimeMillis(), modelScoped = modelScoped, model = Providers.modelOf(spec, p)
+        )
+        if (needed) refresh(profileId)
     }
 
     companion object {
         const val MAX_AGE_MS = 6 * 3600_000L
+
+        /**
+         * 眼下这条状态还作不作数（纯函数，便于测试）。
+         *
+         * 状态是拿某一把「端点 + Key」算出来的，换了一把它就不作数 —— 不管它是绿是红。
+         * 只比 [Discovery] 里存的指纹不够：失败不写 Discovery，于是「Key 改错（被拒绝）又改回来」之后，
+         * 存着的指纹与现在的对得上，界面上却一直挂着那条旧的「API Key 被拒绝」（真机实测）。
+         * 失败的状态也不留到下一次：断网、超时都是一时的，再打开面板就该重新确认。
+         */
+        fun needsSync(cur: SyncStatus?, checkedFp: String?, fp: String, d: Discovery?, now: Long, modelScoped: Boolean, model: String): Boolean = when {
+            cur == null || cur is SyncStatus.Idle -> true
+            checkedFp != fp -> true
+            cur is SyncStatus.Syncing -> false
+            cur is SyncStatus.Failed -> true
+            else -> d == null || d.fp != fp || now - d.at > MAX_AGE_MS || (modelScoped && d.model != model)
+        }
     }
 }

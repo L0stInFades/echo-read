@@ -147,6 +147,7 @@ private fun statusLine(spec: ProviderSpec, p: VoiceProfile, st: SyncStatus?): St
     val ok = Color(0xFF34C759)
     return when {
         Providers.baseOf(spec, p).isEmpty() -> StatusLine(c.text3, S.providers.setAddress, c.accent)
+        !Providers.validBase(Providers.baseOf(spec, p)) -> StatusLine(c.danger, S.providers.badAddress, c.danger)
         Providers.needsKey(spec, p) -> StatusLine(c.text3, S.providers.addApiKey, c.accent)
         st is SyncStatus.Syncing -> StatusLine(c.accent, S.providers.connecting, c.text2)
         st is SyncStatus.Failed -> StatusLine(c.danger, st.error.headline(), c.danger, st.error)
@@ -491,6 +492,7 @@ private fun ServicesPage(
                 val selected = tts.active == p.id
                 val subtitle = when {
                     Providers.baseOf(spec, p).isEmpty() -> S.providers.setAddress
+                    !Providers.validBase(Providers.baseOf(spec, p)) -> S.providers.badAddress
                     Providers.needsKey(spec, p) -> S.providers.addApiKey
                     else -> modelLabel(Providers.modelOptions(spec, discovery[p.id]), Providers.modelOf(spec, p)).takeIf { Providers.modelOf(spec, p).isNotBlank() }
                         ?: spec.baseUrl.ifBlank { p.baseUrl }.removePrefix("https://").removePrefix("http://").substringBefore('/')
@@ -646,19 +648,19 @@ private fun ServicePage(
                     EchoTextField(p.name, { v -> settings.updateProfile(id) { it.copy(name = v) } }, label = S.providers.displayName, placeholder = serviceName(spec, null))
                     Spacer(Modifier.height(12.dp))
                     EchoTextField(
-                        p.baseUrl, { v -> settings.updateProfile(id) { it.copy(baseUrl = v.trim()) } },
+                        p.baseUrl, { v -> settings.updateProfile(id) { it.copy(baseUrl = Providers.cleanAddress(v)) } },
                         label = S.providers.address, placeholder = spec.baseHint.ifBlank { "https://" }, keyboardType = KeyboardType.Uri, mono = true
                     )
                     Spacer(Modifier.height(12.dp))
                 }
                 EchoTextField(
-                    p.apiKey, { v -> settings.updateProfile(id) { it.copy(apiKey = v.trim()) } },
+                    p.apiKey, { v -> settings.updateProfile(id) { it.copy(apiKey = Providers.cleanSecret(v)) } },
                     label = S.providers.apiKey, placeholder = spec.keyHint, password = true, mono = true
                 )
                 for (f in spec.fields) {
                     Spacer(Modifier.height(12.dp))
                     EchoTextField(
-                        p.fields[f.id] ?: f.default, { v -> settings.updateProfile(id) { it.copy(fields = it.fields + (f.id to v.trim())) } },
+                        p.fields[f.id] ?: f.default, { v -> settings.updateProfile(id) { it.copy(fields = it.fields + (f.id to Providers.cleanSecret(v))) } },
                         label = S.providers.fieldLabel(f.id), placeholder = f.hint.ifBlank { f.default }, password = f.secret, mono = true
                     )
                 }
@@ -666,7 +668,7 @@ private fun ServicePage(
                     Spacer(Modifier.height(8.dp))
                     AnimatedVisibility(showAddress, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut) {
                         EchoTextField(
-                            p.baseUrl, { v -> settings.updateProfile(id) { it.copy(baseUrl = v.trim()) } },
+                            p.baseUrl, { v -> settings.updateProfile(id) { it.copy(baseUrl = Providers.cleanAddress(v)) } },
                             label = S.providers.addressOverride, placeholder = spec.baseUrl, keyboardType = KeyboardType.Uri, mono = true,
                             modifier = Modifier.padding(top = 4.dp, bottom = 4.dp)
                         )

@@ -19,6 +19,7 @@ import app.echoread.core.net.NetError
 import app.echoread.core.net.NetErrors
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URI
 
 /**
@@ -134,12 +135,44 @@ object Providers {
 
     /* ---------------- 解析一个已添加的服务 ---------------- */
 
+    /**
+     * 把输入里的全角字符换回半角。中文输入法下很容易把地址敲成「HTTP：／／192.168.1.5：8880」
+     * （真机上用 Gboard 拼音实测如此），而 Key、地址、区域这些东西从来只有 ASCII。
+     */
+    fun halfWidth(s: String): String {
+        if (s.none { it.code >= 0x3000 }) return s
+        val out = StringBuilder(s.length)
+        for (ch in s) out.append(
+            when (ch.code) {
+                in 0xFF01..0xFF5E -> (ch.code - 0xFEE0).toChar()
+                0x3000 -> ' '
+                0x3002 -> '.'
+                else -> ch
+            }
+        )
+        return out.toString()
+    }
+
+    /** 规整一个服务地址：全角转半角、去掉空白、协议名小写（HTTP:// → http://） */
+    fun cleanAddress(raw: String): String {
+        val s = halfWidth(raw).filterNot { it.isWhitespace() }
+        val m = Regex("^(https?)(://)", RegexOption.IGNORE_CASE).find(s) ?: return s
+        return m.groupValues[1].lowercase() + "://" + s.substring(m.range.last + 1)
+    }
+
+    /** 规整 Key / 额外字段：全角转半角、去掉首尾空白 */
+    fun cleanSecret(raw: String): String = halfWidth(raw).trim()
+
+    /** 是一个能发请求的 http(s) 地址 */
+    fun validBase(base: String): Boolean = base.toHttpUrlOrNull() != null
+
     fun fieldVars(spec: ProviderSpec, p: VoiceProfile): Map<String, String> =
         spec.fields.associate { f -> "f.${f.id}" to (p.fields[f.id]?.trim()?.takeIf { it.isNotEmpty() } ?: f.default) }
 
     /** 实际使用的地址：用户填的覆盖目录里的；`{f.region}` 这类字段就地展开；去掉末尾的斜杠 */
     fun baseOf(spec: ProviderSpec, p: VoiceProfile): String {
-        val raw = p.baseUrl.trim().ifEmpty { spec.baseUrl }
+        // 存档里若还留着没规整过的地址（旧版本存的、别处同步来的），这里再规整一次
+        val raw = cleanAddress(p.baseUrl).ifEmpty { spec.baseUrl }
         return Template.expand(raw, fieldVars(spec, p), Template.Context.RAW).trim().trimEnd('/')
     }
 
@@ -178,7 +211,7 @@ object Providers {
     fun needsKey(spec: ProviderSpec, p: VoiceProfile): Boolean = !spec.keyOptional && p.apiKey.isBlank()
 
     /** 配置够不够发出第一次请求（不保证 Key 有效） */
-    fun ready(spec: ProviderSpec, p: VoiceProfile): Boolean = !needsKey(spec, p) && baseOf(spec, p).isNotEmpty()
+    fun ready(spec: ProviderSpec, p: VoiceProfile): Boolean = !needsKey(spec, p) && validBase(baseOf(spec, p))
 
     fun openAiConfig(spec: ProviderSpec, p: VoiceProfile): OpenAISpeechConfig {
         val model = modelOf(spec, p)

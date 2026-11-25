@@ -358,6 +358,8 @@ object NetErrors {
             return it.error.copy(attempt = attempt, maxAttempts = maxAttempts)
         }
         val category = when (t) {
+            // 地址写错了（没有 http://、夹着全角字符）：这是配置问题，重试四遍也不会好
+            is IllegalArgumentException -> if (t.message?.contains("URL", ignoreCase = true) == true) NetCategory.CONFIG_MISSING_BASE_URL else NetCategory.UNKNOWN
             is SocketTimeoutException -> NetCategory.TIMEOUT
             is InterruptedIOException -> NetCategory.TIMEOUT
             is UnknownHostException -> NetCategory.CONNECTIVITY

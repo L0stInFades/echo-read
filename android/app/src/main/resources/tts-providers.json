@@ -232,7 +232,7 @@
       "defaultVoice": "Dennis",
       "listVoices": [
         {
-          "url": "https://api.inworld.ai/tts/v1/voices",
+          "url": "{base}/../tts/v1/voices",
           "headers": {"Authorization": "Basic {key}"},
           "items": "voices",
           "id": "voiceId",

@@ -661,6 +661,7 @@ interface Strings {
         val general: String
         val sound: String
         val enterKey: String
+        val badAddress: String
     }
 
     /** 应用内更新 */

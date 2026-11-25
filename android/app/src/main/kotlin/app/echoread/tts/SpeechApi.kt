@@ -63,10 +63,35 @@ object SpeechApi {
      */
     val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
+            .proxySelector(LoopbackDirect)
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(90, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
             .build()
+    }
+
+    /** 是不是本机地址（localhost、127.x.x.x、::1） */
+    fun isLoopback(host: String): Boolean {
+        val h = host.trim().trim('[', ']').lowercase()
+        return h == "localhost" || h.endsWith(".localhost") || h == "::1" || Regex("^127(\\.\\d{1,3}){3}$").matches(h)
+    }
+
+    /**
+     * 本机地址一律直连，不交给系统代理。
+     * Wi-Fi 上配了 HTTP 代理而没填排除列表时，系统会把 http://127.0.0.1:8880 也交给代理 ——
+     * 代理那头的 127.0.0.1 是它自己，于是跑在手机上的朗读服务只会得到一个 503（真机实测）。
+     * 浏览器对 localhost 也是这么处理的。其余地址仍按系统设置走。
+     */
+    internal object LoopbackDirect : java.net.ProxySelector() {
+        override fun select(uri: java.net.URI?): List<java.net.Proxy> {
+            if (uri?.host?.let { isLoopback(it) } == true) return listOf(java.net.Proxy.NO_PROXY)
+            val system = runCatching { getDefault()?.takeIf { it !== this }?.select(uri) }.getOrNull()
+            return system?.takeIf { it.isNotEmpty() } ?: listOf(java.net.Proxy.NO_PROXY)
+        }
+
+        override fun connectFailed(uri: java.net.URI?, sa: java.net.SocketAddress?, ioe: java.io.IOException?) {
+            runCatching { getDefault()?.takeIf { it !== this }?.connectFailed(uri, sa, ioe) }
+        }
     }
 
     /** 合成：整次调用 75s 封顶（含连接、写、读、重定向），保证退避预算可预测 */

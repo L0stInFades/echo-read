@@ -52,12 +52,22 @@ private fun androidx.compose.foundation.layout.BoxScope.ConfigConfirmSheet(graph
     EchoSheet(open = pending != null, onDismiss = { graph.configRequests.value = null }, title = S.settings.externalConfigTitle, maxHeightFraction = 0.6f) {
         if (p != null) {
             val tts = graph.settings.tts.value
-            val spec = p.provider?.takeIf { it.isNotBlank() }?.let { app.echoread.tts.Providers.spec(it, tts) }
-                ?: p.baseUrl?.takeIf { it.isNotBlank() }?.let { app.echoread.tts.Providers.specForBase(it) }
+            val key = p.apiKey?.let { app.echoread.tts.Providers.cleanSecret(it) }?.takeIf { it.isNotBlank() }
+            val address = p.baseUrl?.let { app.echoread.tts.Providers.cleanAddress(it) }?.takeIf { it.isNotBlank() }
+            val named = p.provider?.takeIf { it.isNotBlank() }?.let { app.echoread.tts.Providers.spec(it, tts) }
+            val spec = named ?: address?.let { app.echoread.tts.Providers.specForBase(it) }
+            val known = spec != null && spec.id != app.echoread.tts.Providers.CUSTOM
+            // 目录里地址本来就要自己填的那几家（自建服务）：每次都是新建一个服务，直接用传入的地址
+            val selfHosted = known && named != null && named.baseUrl.isBlank()
+            // 给目录里的服务换地址（中转、自建网关）：只有这份配置自己带了 Key 才照办。
+            // 否则就等于让一段外来的配置把手机里已存的 Key 发到别的主机去
+            val reroute = known && named != null && !selfHosted && key != null && address != null && address.trimEnd('/') != named.baseUrl.trimEnd('/')
+            val useAddress = address != null && (!known || reroute || selfHosted)
+            // 卡片上列出来的，就是确认后真正会写进去的 —— 不会生效的地址不展示
             val rows = listOfNotNull(
                 (spec?.name ?: p.provider)?.takeIf { it.isNotBlank() }?.let { S.providers.service to it },
-                p.apiKey?.takeIf { it.isNotBlank() }?.let { S.providers.apiKey to (it.take(6) + "..." + it.takeLast(4)) },
-                p.baseUrl?.takeIf { it.isNotBlank() }?.let { S.providers.address to it },
+                key?.let { S.providers.apiKey to (it.take(6) + "..." + it.takeLast(4)) },
+                address?.takeIf { useAddress }?.let { S.providers.address to it },
                 p.model?.takeIf { it.isNotBlank() }?.let { S.common.model to it },
                 p.voice?.takeIf { it.isNotBlank() }?.let { S.common.voice to it }
             )
@@ -74,19 +84,18 @@ private fun androidx.compose.foundation.layout.BoxScope.ConfigConfirmSheet(graph
                     val cur = settings.tts.value
                     val target = when {
                         spec != null && spec.id != app.echoread.tts.Providers.CUSTOM -> settings.addProfile(spec)
-                        !p.baseUrl.isNullOrBlank() ->
+                        address != null ->
                             // 认不出的地址：新建一个自定义端点，不覆盖已有服务的配置
-                            cur.profiles.firstOrNull { it.baseUrl.trimEnd('/') == p.baseUrl.trimEnd('/') }
+                            cur.profiles.firstOrNull { it.baseUrl.trimEnd('/') == address.trimEnd('/') }
                                 ?: settings.addProfile(app.echoread.tts.Providers.spec(app.echoread.tts.Providers.CUSTOM)!!)
                         else -> cur.activeProfile?.takeIf { app.echoread.tts.Providers.specOf(it, cur).kind == app.echoread.core.ProviderSpec.KIND_OPENAI }
                             ?: cur.profiles.firstOrNull { app.echoread.tts.Providers.specOf(it, cur).kind == app.echoread.core.ProviderSpec.KIND_OPENAI }
                             ?: settings.addProfile(app.echoread.tts.Providers.spec(app.echoread.tts.Providers.OPENROUTER)!!)
                     }
-                    val known = spec != null && spec.id != app.echoread.tts.Providers.CUSTOM
                     settings.updateProfile(target.id) { prof ->
                         prof.copy(
-                            apiKey = p.apiKey?.takeIf { it.isNotBlank() } ?: prof.apiKey,
-                            baseUrl = if (known) prof.baseUrl else p.baseUrl?.takeIf { it.isNotBlank() } ?: prof.baseUrl
+                            apiKey = key ?: prof.apiKey,
+                            baseUrl = if (useAddress) address!! else prof.baseUrl
                         )
                     }
                     p.model?.takeIf { it.isNotBlank() }?.let { settings.setModel(target.id, it) }

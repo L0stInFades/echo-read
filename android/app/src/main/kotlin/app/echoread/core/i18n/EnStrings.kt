@@ -476,7 +476,7 @@ object EnStrings : Strings {
         override val badgeNotSet = "not set"
         override val badgeNoResponse = "no response"
         override val apiKeyNotSet = "API key not set"
-        override val baseUrlNotSet = "Server address not set"
+        override val baseUrlNotSet = "Server address missing or invalid"
         override fun apiKeyRejected(badge: Any?) = "API key rejected (${badge})"
         override fun outOfQuota(badge: Any?) = "Out of quota (${badge})"
         override fun rateLimited(badge: Any?) = "Rate limited (${badge})"
@@ -493,7 +493,7 @@ object EnStrings : Strings {
         override fun emptyAudioReturned(badge: Any?) = "Empty audio returned (${badge})"
         override fun requestFailed(badge: Any?) = "Request failed (${badge})"
         override val adviceMissingKey = "Enter an API key in Voice settings."
-        override val adviceMissingBaseUrl = "Enter the server address in Voice settings."
+        override val adviceMissingBaseUrl = "Check the server address in Voice settings. It should start with http:// or https://."
         override val adviceAuth = "Check that the key is correct, not expired, and not disabled by the provider."
         override val adviceGeminiQuota = "Gemini API quota used up: the free tier's daily quota resets at midnight Pacific time; link a billing account in Google AI Studio for higher limits."
         override val adviceQuota = "Top up your account, or switch providers."
@@ -648,6 +648,7 @@ object EnStrings : Strings {
         override val general = "General"
         override val sound = "Sound"
         override val enterKey = "Enter API key"
+        override val badAddress = "Not a valid address. It should start with http:// or https://"
     }
 
     override val update = object : Strings.Update {

@@ -53,6 +53,15 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (keystoreProps.isNotEmpty()) signingConfigs.getByName("release") else signingConfigs.getByName("debug")
         }
+        // 与 release 同样的 R8 规则、同样的签名，只是换个包名：在自己天天用的手机上验证混淆后的代码，
+        // 又不碰正式包里的书架、阅读进度与 Key。它不带 src/release 下的启动画像（dex 的分包因此不同），
+        // 所以发版前仍要拿真正的 release 包再过一遍
+        create("verify") {
+            initWith(getByName("release"))
+            applicationIdSuffix = ".verify"
+            versionNameSuffix = "-verify"
+            matchingFallbacks += "release"
+        }
     }
 
     compileOptions {
