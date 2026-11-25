@@ -1,15 +1,15 @@
 {
-  "versionCode": 15,
-  "versionName": "0.4.0-exp",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.4.0-exp/Lector-v0.4.0-exp.apk",
+  "versionCode": 16,
+  "versionName": "0.5.0-exp",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.5.0-exp/Lector-v0.5.0-exp.apk",
   "mirrors": [
-    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.4.0-exp/Lector-v0.4.0-exp.apk",
-    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.4.0-exp/Lector-v0.4.0-exp.apk",
-    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.4.0-exp/Lector-v0.4.0-exp.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.5.0-exp/Lector-v0.5.0-exp.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.5.0-exp/Lector-v0.5.0-exp.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.5.0-exp/Lector-v0.5.0-exp.apk"
   ],
-  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n新增「Gemini」朗读引擎：直连 Google Gemini 3.8 Flash / Flash-Lite TTS（官方 Interactions API），免费层即可使用；30 个精选音色、扩展音色库与自建音色，可写语气（speech_metadata.style）。\n新增英文界面：在「怎么用」或「阅读样式」里切换 跟随系统 / 中文 / English；英文书的分章（CHAPTER I、Chapter One、Prologue）与系统语音的英文朗读一并改进。\n修复：OpenRouter 上的 Gemini 3.8 / 2.5 与 HeyGen 语音请求失败（400）；语气指令改用 OpenRouter 现行写法，Gemini 与 Fish Audio 模型可用。\n为 9 月以来上架的新模型补齐说明与音色标注（ElevenLabs v4、MAI-Voice-2.1、Voxtral TTS 3、Qwen3 TTS 等）；Key 无效、地区不可用、当日额度用完会直接说明原因。",
-  "sha256": "012c6045abb68e99a50288df1aabdefdc23c0e21bed741ee39252c4843d54484",
+  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n朗读服务目录：内置 20 家朗读服务（OpenRouter、Gemini、ElevenLabs、Azure、MiniMax、Fish Audio、硅基流动、火山豆包、阿里云百炼、智谱、阶跃等），每家各存各的 Key、模型与音色，点一下切换；也可以自己加 OpenAI 兼容端点，或粘贴一段 JSON 接入任意语音接口。原来的「AI 语音 / Gemini」配置自动迁移。\n液态玻璃界面：面板与悬浮件改为半透明的玻璃材质（Android 11 起都是真模糊，13 起带边缘折射），可在「阅读样式 → 外观」里关闭；模型与音色不再层层叠面板，改为同一张面板里翻页。\n英文界面重做：标签不再被切断，行高与字距按英文排版，文案精简。\nAPI Key 落盘前用系统密钥库加密，备份与换机带不走明文。\n修复：「上一章」图标画错位置；书架按界面语言排序；面板重新打开时回到顶部。",
+  "sha256": "6661a7cd3a774ab1d5c55e3dad856db6d0c3afd3777f5158b22efc4d96ed8653",
   "minSdk": 26,
   "experimental": true,
-  "notesEn": "[Experimental] Bigger changes; there may be undiscovered issues. To skip it, tap “Later / ✕” on the update card.\nNew “Gemini” voice engine: connects directly to Google's Gemini 3.8 Flash / Flash-Lite TTS (official Interactions API) and works on the free tier — 30 featured voices, the voice library, your own custom voices, and style control.\nNew English interface: switch between System / 中文 / English under “How to use” or “Reading style”. English books now split into chapters properly (CHAPTER I, Chapter One, Prologue), and the system voice reads English text in English.\nFixed: Gemini 3.8 / 2.5 and HeyGen voices on OpenRouter failing with 400; delivery instructions now use OpenRouter's current parameter and work for Gemini and Fish Audio models.\nDescriptions and voice labels for models released since September (ElevenLabs v4, MAI-Voice-2.1, Voxtral TTS 3, Qwen3 TTS and more); invalid keys, unsupported regions and used-up daily quotas now explain themselves."
+  "notesEn": "[Experimental] Bigger changes; there may be undiscovered issues. To skip it, tap the X on the update card.\nVoice services: 20 built-in providers (OpenRouter, Gemini, ElevenLabs, Azure, MiniMax, Fish Audio, SiliconFlow, Volcengine, Alibaba Bailian, Zhipu, StepFun and more). Each keeps its own key, model and voice; switch with one tap. Add any OpenAI-compatible endpoint, or paste a JSON recipe for any other speech API. Your existing AI voice / Gemini setup migrates automatically.\nLiquid glass: panels and floating controls are translucent glass with real blur on Android 11 and up (edge refraction on Android 13+). Turn it off under Reading style > Appearance. Model and voice pickers are now pages inside one panel.\nEnglish interface reworked: no more clipped labels, Latin line heights and spacing, shorter copy.\nAPI keys are encrypted with the system keystore before they are saved.\nFixed: the Previous chapter icon was drawn out of place; the library sorts by the interface language; panels reopen at the top."
 }
