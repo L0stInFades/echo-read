@@ -1,14 +1,15 @@
 {
-  "versionCode": 14,
-  "versionName": "0.3.0-exp",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.3.0-exp/Lector-v0.3.0-exp.apk",
+  "versionCode": 15,
+  "versionName": "0.4.0-exp",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.4.0-exp/Lector-v0.4.0-exp.apk",
   "mirrors": [
-    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.3.0-exp/Lector-v0.3.0-exp.apk",
-    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.3.0-exp/Lector-v0.3.0-exp.apk",
-    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.3.0-exp/Lector-v0.3.0-exp.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.4.0-exp/Lector-v0.4.0-exp.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.4.0-exp/Lector-v0.4.0-exp.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.4.0-exp/Lector-v0.4.0-exp.apk"
   ],
-  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n应用更名为 Lector，全新图标与启动画面。包名不变，覆盖安装即可，书架、进度、设置与语音缓存全部保留。其余功能与 0.2.5 相同。",
-  "sha256": "dd1b778b015e2b079804e85f63525f4af66d2560e22d8fb97f2288ddbd8e3d34",
+  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n新增「Gemini」朗读引擎：直连 Google Gemini 3.8 Flash / Flash-Lite TTS（官方 Interactions API），免费层即可使用；30 个精选音色、扩展音色库与自建音色，可写语气（speech_metadata.style）。\n新增英文界面：在「怎么用」或「阅读样式」里切换 跟随系统 / 中文 / English；英文书的分章（CHAPTER I、Chapter One、Prologue）与系统语音的英文朗读一并改进。\n修复：OpenRouter 上的 Gemini 3.8 / 2.5 与 HeyGen 语音请求失败（400）；语气指令改用 OpenRouter 现行写法，Gemini 与 Fish Audio 模型可用。\n为 9 月以来上架的新模型补齐说明与音色标注（ElevenLabs v4、MAI-Voice-2.1、Voxtral TTS 3、Qwen3 TTS 等）；Key 无效、地区不可用、当日额度用完会直接说明原因。",
+  "sha256": "012c6045abb68e99a50288df1aabdefdc23c0e21bed741ee39252c4843d54484",
   "minSdk": 26,
-  "experimental": true
+  "experimental": true,
+  "notesEn": "[Experimental] Bigger changes; there may be undiscovered issues. To skip it, tap “Later / ✕” on the update card.\nNew “Gemini” voice engine: connects directly to Google's Gemini 3.8 Flash / Flash-Lite TTS (official Interactions API) and works on the free tier — 30 featured voices, the voice library, your own custom voices, and style control.\nNew English interface: switch between System / 中文 / English under “How to use” or “Reading style”. English books now split into chapters properly (CHAPTER I, Chapter One, Prologue), and the system voice reads English text in English.\nFixed: Gemini 3.8 / 2.5 and HeyGen voices on OpenRouter failing with 400; delivery instructions now use OpenRouter's current parameter and work for Gemini and Fish Audio models.\nDescriptions and voice labels for models released since September (ElevenLabs v4, MAI-Voice-2.1, Voxtral TTS 3, Qwen3 TTS and more); invalid keys, unsupported regions and used-up daily quotas now explain themselves."
 }
