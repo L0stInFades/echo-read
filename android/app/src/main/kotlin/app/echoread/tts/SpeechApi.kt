@@ -100,15 +100,26 @@ object SpeechApi {
         "X-OpenRouter-Categories" to "audio-gen"
     )
 
+    /**
+     * 同是 /audio/speech，各家仍有出入；这些出入由服务目录（[app.echoread.core.ProviderSpec]）声明，汇总成这一份选项：
+     * 自建服务不要 Key、阶跃的语气参数叫 instruction、有的只回无头 PCM 且采样率不写在响应头里。
+     */
+    data class Options(
+        val keyOptional: Boolean = false,
+        val styleParam: String = "instructions",
+        val pcmRate: Int = 0
+    )
+
     fun buildHeaders(cfg: OpenAISpeechConfig): Map<String, String> {
         val h = LinkedHashMap<String, String>()
-        h["Authorization"] = "Bearer ${cfg.apiKey.trim()}"
+        // 自建服务常常不设 Key：这时不发 Authorization，而不是发一个空的 Bearer（有的网关会因此直接 401）
+        if (cfg.apiKey.isNotBlank()) h["Authorization"] = "Bearer ${cfg.apiKey.trim()}"
         if (isOpenRouterBase(cfg.baseUrl)) h.putAll(APP_ATTRIBUTION)
         return h
     }
 
     /** 组装 /audio/speech 请求体（纯函数，便于测试） */
-    fun buildSpeechBody(cfg: OpenAISpeechConfig, text: String): JsonObject {
+    fun buildSpeechBody(cfg: OpenAISpeechConfig, text: String, opts: Options = Options()): JsonObject {
         val or = isOpenRouterBase(cfg.baseUrl)
         val pcmOnly = or && Voices.modelHints(cfg.model)?.pcmOnly == true
         val format = when {
@@ -124,7 +135,7 @@ object SpeechApi {
             if (voice.isNotEmpty()) put("voice", voice)
             put("response_format", format)
             // OpenAI 官方与 OpenRouter 都是顶层 instructions；OpenRouter 对不支持它的模型直接忽略
-            if (instructions.isNotEmpty()) put("instructions", instructions)
+            if (instructions.isNotEmpty()) put(opts.styleParam.ifBlank { "instructions" }, instructions)
         }
     }
 
@@ -267,15 +278,85 @@ object SpeechApi {
         )
     }
 
+    /**
+     * 把一次成功响应里的字节规整成可以直接落盘播放的音频；不是音频就抛 [NetException]。
+     * 所有协议（/audio/speech、按模板发的 HTTP 请求、JSON 里解出来的 base64 / hex）最后都过这一关，
+     * 所以「200 + 一张网页」「200 + 空音频」在任何一家身上都是同一种报错，也都不会被当成音频缓存下来。
+     *
+     * @param pcmRate 无头 PCM 的采样率；[rawPcm] 为真时即使 Content-Type 没声明也按 PCM 处理（JSON 里解出来的裸流）
+     */
+    internal fun playable(
+        bytes: ByteArray,
+        ctype: String,
+        status: Int,
+        url: String,
+        model: String?,
+        t0: Long,
+        pcmRate: Int = 24000,
+        pcmChannels: Int = 1,
+        rawPcm: Boolean = false
+    ): ByteArray {
+        // HTTP 200 但没有音频：这是真实的 200，绝不伪造成 502 —— 伪造会让它变成「可重试的
+        // 上游故障」，于是一个恒定返回空音频的模型/音色组合会把 8 次退避全烧完才报错
+        if (bytes.size < 10) {
+            throw NetException(
+                NetError(
+                    category = NetCategory.EMPTY_AUDIO,
+                    status = status,
+                    endpoint = NetErrors.cleanEndpoint(url),
+                    method = "POST",
+                    kind = CallKind.SYNTHESIS,
+                    model = model,
+                    providerMessage = S.playback.emptyAudioBody(ctype, bytes.size),
+                    elapsedMs = System.currentTimeMillis() - t0
+                )
+            )
+        }
+        val declaredPcm = Regex("audio/(x-)?pcm|audio/l16", RegexOption.IGNORE_CASE).containsMatchIn(ctype)
+        return if (declaredPcm || (rawPcm && !hasContainer(bytes))) {
+            val p = parsePcmParams(ctype, pcmRate)
+            pcmToWav(bytes, p.rate, if (declaredPcm) p.channels else pcmChannels)
+        } else if (!looksLikeAudio(bytes, ctype)) {
+            // 200 但内容不是音频：按真实状态码报 PARSE，绝不落盘 —— 落盘会让这段永久损坏
+            throw NetException(
+                NetErrors.fromHttp(
+                    status = status,
+                    bodyRaw = String(bytes.copyOfRange(0, minOf(bytes.size, 512)), Charsets.ISO_8859_1),
+                    endpoint = url,
+                    method = "POST",
+                    kind = CallKind.SYNTHESIS,
+                    model = model,
+                    elapsedMs = System.currentTimeMillis() - t0
+                ).copy(
+                    category = NetCategory.PARSE,
+                    providerMessage = S.playback.notAudioBody(ctype, bytes.size)
+                )
+            )
+        } else if (Mp3Fix.looksLikeMp3(bytes)) {
+            // 拼接式 MP3（Kokoro 等）：剥掉分段自带的 Xing 头，否则解码器只播第一段
+            Mp3Fix.stripXing(bytes)
+        } else {
+            bytes
+        }
+    }
+
+    /** 带容器头、播放器能直接认出来的格式（与 [looksLikeAudio] 里的魔数一致） */
+    private fun hasContainer(b: ByteArray): Boolean {
+        if (b.size < 12) return false
+        fun ascii(off: Int, s: String) = (0 until s.length).all { b[off + it].toInt().toChar() == s[it] }
+        return ascii(0, "ID3") || (b[0] == 0xFF.toByte() && (b[1].toInt() and 0xE0) == 0xE0) ||
+            (ascii(0, "RIFF") && ascii(8, "WAVE")) || ascii(0, "OggS") || ascii(0, "fLaC") || ascii(4, "ftyp")
+    }
+
     /** 合成一段文本，返回可直接播放的音频字节（mp3/ogg/wav；PCM 裸流已封 WAV） */
-    suspend fun synthesize(cfg: OpenAISpeechConfig, text: String): ByteArray = withContext(Dispatchers.IO) {
+    suspend fun synthesize(cfg: OpenAISpeechConfig, text: String, opts: Options = Options()): ByteArray = withContext(Dispatchers.IO) {
         val base = trimBase(cfg.baseUrl)
         if (base.isEmpty()) throw NetException(NetErrors.config(missingKey = false, kind = CallKind.SYNTHESIS))
-        if (cfg.apiKey.isBlank()) {
+        if (cfg.apiKey.isBlank() && !opts.keyOptional) {
             throw NetException(NetErrors.config(missingKey = true, endpoint = "$base/audio/speech", kind = CallKind.SYNTHESIS))
         }
         val t0 = System.currentTimeMillis()
-        val body = buildSpeechBody(cfg, text).toString().toRequestBody("application/json".toMediaType())
+        val body = buildSpeechBody(cfg, text, opts).toString().toRequestBody("application/json".toMediaType())
         val req = Request.Builder().url("$base/audio/speech").post(body).apply {
             buildHeaders(cfg).forEach { (k, v) -> header(k, v) }
         }.build()
@@ -284,47 +365,8 @@ object SpeechApi {
             ensureOk(it, CallKind.SYNTHESIS, cfg.model, t0)
             val ctype = it.header("Content-Type") ?: ""
             val bytes = it.body?.bytes() ?: ByteArray(0)
-            // HTTP 200 但没有音频：这是真实的 200，绝不伪造成 502 —— 伪造会让它变成「可重试的
-            // 上游故障」，于是一个恒定返回空音频的模型/音色组合会把 8 次退避全烧完才报错
-            if (bytes.size < 10) {
-                throw NetException(
-                    NetError(
-                        category = NetCategory.EMPTY_AUDIO,
-                        status = it.code,
-                        endpoint = NetErrors.cleanEndpoint(req.url.toString()),
-                        method = "POST",
-                        kind = CallKind.SYNTHESIS,
-                        model = cfg.model,
-                        providerMessage = S.playback.emptyAudioBody(ctype, bytes.size),
-                        elapsedMs = System.currentTimeMillis() - t0
-                    )
-                )
-            }
-            if (Regex("audio/(x-)?pcm|audio/l16", RegexOption.IGNORE_CASE).containsMatchIn(ctype)) {
-                val (rate, channels) = parsePcmParams(ctype, Voices.modelHints(cfg.model)?.pcmRate ?: 24000)
-                pcmToWav(bytes, rate, channels)
-            } else if (!looksLikeAudio(bytes, ctype)) {
-                // 200 但内容不是音频：按真实状态码报 PARSE，绝不落盘 —— 落盘会让这段永久损坏
-                throw NetException(
-                    NetErrors.fromHttp(
-                        status = it.code,
-                        bodyRaw = String(bytes.copyOfRange(0, minOf(bytes.size, 512)), Charsets.ISO_8859_1),
-                        endpoint = req.url.toString(),
-                        method = "POST",
-                        kind = CallKind.SYNTHESIS,
-                        model = cfg.model,
-                        elapsedMs = System.currentTimeMillis() - t0
-                    ).copy(
-                        category = NetCategory.PARSE,
-                        providerMessage = S.playback.notAudioBody(ctype, bytes.size)
-                    )
-                )
-            } else if (Mp3Fix.looksLikeMp3(bytes)) {
-                // 拼接式 MP3（Kokoro 等）：剥掉分段自带的 Xing 头，否则解码器只播第一段
-                Mp3Fix.stripXing(bytes)
-            } else {
-                bytes
-            }
+            val rate = opts.pcmRate.takeIf { r -> r > 0 } ?: Voices.modelHints(cfg.model)?.pcmRate ?: 24000
+            playable(bytes, ctype, it.code, req.url.toString(), cfg.model, t0, pcmRate = rate)
         }
     }
 
@@ -462,8 +504,8 @@ object SpeechApi {
     data class TestResult(val ok: Boolean, val message: String, val audio: ByteArray? = null, val error: NetError? = null)
 
     /** 试听：合成「你好」，成功时把音频一并返回（调用方负责播放） */
-    suspend fun testConfig(cfg: OpenAISpeechConfig): TestResult = try {
-        val bytes = synthesize(cfg, S.playback.testPhrase)
+    suspend fun testConfig(cfg: OpenAISpeechConfig, opts: Options = Options()): TestResult = try {
+        val bytes = synthesize(cfg, S.playback.testPhrase, opts)
         TestResult(true, S.common.connectionOk, bytes)
     } catch (e: CancellationException) {
         throw e

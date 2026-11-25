@@ -21,6 +21,7 @@ interface Strings {
     val catalog: Catalog
     val playback: Playback
     val errors: Errors
+    val providers: Providers
     val update: Update
 
     /** 多处共用的短词（按钮、状态） */
@@ -34,21 +35,13 @@ interface Strings {
         val perTokenPricing: String
         val model: String
         val voice: String
-        val service: String
-        val notSetUp: String
-        val collapse: String
-        val expand: String
         val generating: String
         val preview: String
-        val refresh: String
         val details: String
         val speech: String
         val speed: String
         val selected: String
-        val orEnterAModel: String
-        val chooseVoice: String
         val all: String
-        val serviceDefault: String
         val pageTurnGestures: String
         val importBooks: String
         val clear: String
@@ -70,9 +63,7 @@ interface Strings {
         val sampleImportFailed: String
         fun libraryBooks(booksCount: Any?): String
         val tagline: String
-        val geminiKeyBannerTitle: String
-        val keyBannerTitle: String
-        val geminiKeyBannerSubtitle: String
+        fun keyBannerTitle(service: Any?): String
         val keyBannerSubtitle: String
         val emptyTitle: String
         val emptyHint: String
@@ -184,8 +175,6 @@ interface Strings {
         val leftNextPage: String
         val tapToRead: String
         val worksOutsideTapZones: String
-        val turnedOff: String
-        val on: String
         val tapToReadOffHint: String
         val swipeSensitivity: String
         val high: String
@@ -227,7 +216,6 @@ interface Strings {
         /** 语言名按惯例用本族文字：两个语言包里都是「中文」 */
         val languageZh: String
         val languageEn: String
-        val languageHint: String
         val vibrant: String
         val expressive: String
         val neutral: String
@@ -249,17 +237,14 @@ interface Strings {
         val amber: String
         val rose: String
         val slate: String
-        val appColors: String
         val useWallpaperColors: String
         val wallpaperColorsHint: String
-        val requiresAndroid12Or: String
         val mainColor: String
         val style: String
         val contrast: String
         val medium: String
         val high: String
         val reading: String
-        val theme: String
         val themePreviewGlyph: String
         val fontSize: String
         val lineSpacing: String
@@ -269,15 +254,8 @@ interface Strings {
         val sansSerif: String
         val haptics: String
         val hapticsHint: String
-        val vendorQwen: String
-        val vendorCustom: String
-        val perMillionChars: String
-        fun syncedGeminiVoices(listCount: Any?): String
-        fun syncedModels(modelsCount: Any?): String
-        val noModelsListed: String
         val enterApiKeyFirst: String
         val playing: String
-        val previewFinished: String
         val notSelected: String
         val notSet: String
         val advanced: String
@@ -290,27 +268,6 @@ interface Strings {
         val calculating: String
         val clear: String
         val audioCacheCleared: String
-        val voiceSettingsTitle: String
-        val voiceEngine: String
-        val aiVoice: String
-        val systemTts: String
-        val engineOpenAiDesc: String
-        val engineGeminiDesc: String
-        val engineSystemDesc: String
-        val keyHintAutoSync: String
-        val waitingToSync: String
-        val syncingModelList: String
-        val connectedToOpenrouter: String
-        val connectedShort: String
-        fun voiceModelsSuffix(count: Any?): String
-        val balanceSuffix: String
-        fun balanceFailedSuffix(badge: Any?): String
-        fun suspiciousAuthSuffix(badge: Any?): String
-        val customEndpoint: String
-        val createOpenRouterKey: String
-        val deliveryInstructions: String
-        val instructionsPlaceholder: String
-        val geminiChunkNote: String
         fun youreUpToDate(currentVersionName: Any?): String
         val updateFoundSeeLibrary: String
         val couldntCheckForUpdates: String
@@ -333,19 +290,10 @@ interface Strings {
         val noTapZones: String
         fun zonesSummaryTopBottom(prevPercent: Any?, nextPercent: Any?): String
         fun zonesSummaryLeftRight(prevPercent: Any?, nextPercent: Any?): String
-        val tapToReadSuffix: String
-        val chooseModel: String
         val noModelsSyncedHint: String
         val modelIdPlaceholder: String
-        val filterModels: String
-        val cloning: String
-        fun voiceCount(voicesN: Any?): String
-        val anyVoiceId: String
         val noMatchingModels: String
-        val orEnterAnUnlisted: String
         val voiceId: String
-        val orEnterAVoice: String
-        val noVoiceListHint: String
         val blankServiceDefault: String
         val dark: String
         val black: String
@@ -357,12 +305,6 @@ interface Strings {
     /** Gemini 原生引擎 */
     interface Gemini {
         val previewText: String
-        val flashLangs: String
-        val flashNote: String
-        val flashPrice: String
-        val liteLangs: String
-        val liteNote: String
-        val litePrice: String
         val notJsonObject: String
         val noAudioReturned: String
         fun statusSuffix(status: Any?): String
@@ -373,27 +315,7 @@ interface Strings {
         val styleCalm: String
         val styleStorytelling: String
         val styleSlow: String
-        val keyHint: String
-        val waitingToConnect: String
-        val fetchingTheVoiceCatalog: String
-        fun connectedVoices(total: Any?): String
-        fun customVoicesSuffix(custom: Any?): String
-        val createAKeyIn: String
-        val privacyNote: String
-        val style: String
-        val stylePlaceholder: String
-        val styleHint: String
-        val chooseAGeminiModel: String
-        fun paidTier(price: Any?): String
-        val tiersNote: String
-        val libraryLoadedHint: String
-        val fetchingTheVoiceLibrary: String
-        val libraryNotLoadedHint: String
-        val noKeyVoicesHint: String
-        val fetchVoiceLibrary: String
-        val voiceSearchPlaceholder: String
         val noMatchingVoices: String
-        val voiceIdField: String
     }
 
     /** 音色目录与模型信息行 */
@@ -660,6 +582,85 @@ interface Strings {
         val copied: String
         val gotIt: String
         val lectorDiagnostics: String
+    }
+
+
+    /** 朗读服务（0.5.0）：服务目录、添加与配置服务、模型与音色选择 */
+    interface Providers {
+        val previewText: String
+        fun undecodableAudio(encoding: Any?): String
+        val noAudioField: String
+        val systemVoice: String
+        val systemVoiceDesc: String
+        val customEndpoint: String
+        val customEndpointDesc: String
+        val service: String
+        val addApiKey: String
+        val setAddress: String
+        val connecting: String
+        val connected: String
+        val ready: String
+        fun balance(amount: Any?): String
+        fun balanceFailed(badge: Any?): String
+        fun suspiciousAuth(badge: Any?): String
+        fun ownVoices(count: Int): String
+        fun retiresOn(date: Any?): String
+        fun limitPerRequest(count: Int): String
+        val servicesTitle: String
+        val yourServices: String
+        val addService: String
+        val inUse: String
+        val useThisService: String
+        val configure: String
+        val searchServices: String
+        val regionGlobal: String
+        val regionCn: String
+        val regionLocal: String
+        val added: String
+        val pasteDefinition: String
+        val pasteDefinitionDesc: String
+        /** 目录标签 → 文案；不认识的标签原样返回（界面只显示认识的，见 knownBadges） */
+        fun badge(id: String): String
+        val apiKey: String
+        val getApiKey: String
+        val apiDocs: String
+        val address: String
+        val addressOverride: String
+        val displayName: String
+        /** 目录声明的额外字段名（region…）→ 文案；不认识的原样返回 */
+        fun fieldLabel(id: String): String
+        val checkConnection: String
+        val notVerifiedHint: String
+        val keyStaysOnDevice: String
+        val removeService: String
+        val serviceRemoved: String
+        val show: String
+        val hide: String
+        val importHint: String
+        val paste: String
+        val add: String
+        fun importFailed(reason: Any?): String
+        val serviceAdded: String
+        val searchModels: String
+        val searchVoices: String
+        val modelId: String
+        val anyVoiceIdHint: String
+        val refreshList: String
+        fun languages(count: Int): String
+        val style: String
+        val stylePlaceholder: String
+        val noVoiceList: String
+        val playback: String
+        val listUpdated: String
+        val noServicesMatch: String
+        val defaultVoice: String
+        val glass: String
+        val glassHint: String
+        val appearance: String
+        val about: String
+        val general: String
+        val sound: String
+        val enterKey: String
     }
 
     /** 应用内更新 */

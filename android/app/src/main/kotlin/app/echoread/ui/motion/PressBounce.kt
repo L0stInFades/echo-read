@@ -11,6 +11,7 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.graphicsLayer
@@ -80,6 +81,12 @@ fun Modifier.echoPress(
     onClickLabel: String? = null,
     onLongClick: (() -> Unit)? = null,
     pressedCorner: Dp? = null,
+    /**
+     * 按下时盖一层淡淡的颜色（列表行用）。行在一整张分组卡片里，缩放会让它从卡片里「凸」出来、
+     * 分隔线也跟着错位；参考对象（FlClash）对行一律只做状态层、不做缩放，这里照此处理：
+     * 传了它就把 [pressedScale] 设成 1f。
+     */
+    pressedOverlay: androidx.compose.ui.graphics.Color? = null,
     onClick: () -> Unit,
 ): Modifier {
     val state = remember { EchoPressState() }
@@ -157,6 +164,14 @@ fun Modifier.echoPress(
         }
         .semantics(mergeDescendants = true, properties = semanticsBlock)
         .graphicsLayer(layerBlock)
+        .then(
+            if (pressedOverlay == null) Modifier
+            else Modifier.drawWithContent {
+                drawContent()
+                val p = state.progress.value
+                if (p > 0.004f) drawRect(pressedOverlay, alpha = p)
+            }
+        )
 }
 
 /** 代表「胶囊」的半径起点：任何按钮都不会高于这个值的两倍，RoundedCornerShape 自会收敛到半高 */

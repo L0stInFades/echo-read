@@ -308,6 +308,8 @@ object NetErrors {
             // Gemini API 对无效 Key 回的是 400 INVALID_ARGUMENT + reason=API_KEY_INVALID，不是 401（实测）。
             // 只看状态码会把它当成「这一段不被接受」逐段跳过，用户永远看不到「Key 填错了」
             status in 400..403 && googleKeyRejected(bodyRaw) -> NetCategory.AUTH
+            // xAI 对无效 Key 回的也是 400（实测：{"error":"Incorrect API key provided…"}），同样不能当成「这一段不被接受」
+            status == 400 && keyRejectedMessage(parsed.first) -> NetCategory.AUTH
             status == 401 -> NetCategory.AUTH
             status == 403 -> if (looksAuthy(parsed.first, parsed.second)) NetCategory.AUTH else NetCategory.BAD_REQUEST
             status == 402 -> NetCategory.QUOTA
@@ -403,6 +405,14 @@ object NetErrors {
         val s = "${msg.orEmpty()} ${code.orEmpty()}".lowercase()
         return listOf("key", "auth", "token", "credential", "permission", "unauthor", "forbidden").any { it in s }
     }
+
+    private val KEY_REJECTED = Regex(
+        "(incorrect|invalid|wrong|missing|expired)[^.]{0,24}api[ _-]?key|api[ _-]?key[^.]{0,24}(incorrect|invalid|not valid|expired|not found)",
+        RegexOption.IGNORE_CASE
+    )
+
+    /** 服务商的原话明说了「Key 不对」 */
+    private fun keyRejectedMessage(msg: String?): Boolean = msg != null && KEY_REJECTED.containsMatchIn(msg)
 
     /** Google RPC ErrorInfo 的 reason 以 API_KEY_ 开头：无效 / 被限制 / 未开通该服务的 Key */
     private fun googleKeyRejected(raw: String?): Boolean =

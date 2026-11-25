@@ -76,26 +76,6 @@ object GeminiTts {
     private val json = Json { ignoreUnknownKeys = true }
     private val JSON_MEDIA = "application/json".toMediaType()
 
-    /**
-     * 3.8 两档模型（官方「When to use which model」）。
-     * 价格按官方定价折算：音频每秒 25 个 token，Flash $9 / Flash-Lite $6 每百万音频 token，
-     * 即每小时音频 90k token ≈ $0.81 / $0.54；2027-01-01 起官方定价翻倍。
-     */
-    data class ModelOption(val id: String, val label: String, val langs: String, val note: String, val price: String)
-
-    val MODELS: List<ModelOption> get() = listOf(
-        ModelOption(
-            MODEL_FLASH, "Gemini 3.8 Flash TTS", S.gemini.flashLangs,
-            S.gemini.flashNote,
-            S.gemini.flashPrice
-        ),
-        ModelOption(
-            MODEL_FLASH_LITE, "Gemini 3.8 Flash-Lite TTS", S.gemini.liteLangs,
-            S.gemini.liteNote,
-            S.gemini.litePrice
-        )
-    )
-
     fun interactionsUrl(base: String = BASE_URL): String = "${base.trimEnd('/')}/interactions"
     fun voicesUrl(base: String = BASE_URL): String = "${base.trimEnd('/')}/voices"
 

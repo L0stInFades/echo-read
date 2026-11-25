@@ -342,12 +342,18 @@ class GeminiTest {
         // 0.3.x 的写法：Hash.cyrb53("v2|${settings.provider}|${c.model}|${c.voice}|${c.format}|${c.instructions}|$text")
         val legacy = Hash.cyrb53("v2|OPENAI|hexgrad/kokoro-82m|zf_xiaoxiao|mp3|温柔|你好")
         assertEquals("升级后已缓存的语音必须照常命中", legacy, TtsEngine.cacheKeyOf("你好", SynthTarget.OpenAI(c)))
+        // 0.5.0：同一份配置迁移成「服务」之后，解析出来的目标仍然落在同一个缓存键上
+        val migrated = SettingsStore.sanitizeTts(TtsSettings(openai = c.copy(apiKey = "k")))
+        assertEquals("迁移到服务目录后缓存键不变", legacy, TtsEngine.cacheKeyOf("你好", SynthTarget.of(migrated)!!))
         val g = SynthTarget.Gemini(GeminiTtsConfig(apiKey = "k"))
         assertNotEquals(TtsEngine.cacheKeyOf("你好", g), TtsEngine.cacheKeyOf("你好", SynthTarget.Gemini(GeminiTtsConfig(apiKey = "k", style = "calm"))))
         assertNotEquals(TtsEngine.cacheKeyOf("你好", g), TtsEngine.cacheKeyOf("你好", SynthTarget.Gemini(GeminiTtsConfig(apiKey = "k", model = GeminiTts.MODEL_FLASH_LITE))))
         assertEquals("换 Key 不该让缓存失效", TtsEngine.cacheKeyOf("你好", g), TtsEngine.cacheKeyOf("你好", SynthTarget.Gemini(GeminiTtsConfig(apiKey = "other"))))
-        assertEquals(TtsProvider.GEMINI, SynthTarget.of(TtsSettings(provider = TtsProvider.GEMINI))!!.provider)
+        val gem = SettingsStore.sanitizeTts(TtsSettings(provider = TtsProvider.GEMINI, gemini = GeminiTtsConfig(apiKey = "k")))
+        assertEquals("迁移后的 Gemini 服务与 0.4.x 同一个缓存键", TtsEngine.cacheKeyOf("你好", g), TtsEngine.cacheKeyOf("你好", SynthTarget.of(gem)!!))
+        assertEquals("GEMINI", SynthTarget.of(TtsSettings(provider = TtsProvider.GEMINI))!!.cacheNs)
         assertNull(SynthTarget.of(TtsSettings(provider = TtsProvider.SYSTEM)))
+        assertNull(SynthTarget.of(SettingsStore.sanitizeTts(TtsSettings(provider = TtsProvider.SYSTEM))))
     }
 
     /* ---------------- 端到端：真实的 OkHttp 请求打到本机假服务 ---------------- */

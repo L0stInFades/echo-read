@@ -64,125 +64,101 @@ fun BoxScope.GestureSettingsSheet(open: Boolean, graph: AppGraph, onClose: () ->
         graph.settings.updateReader { r: ReaderSettings -> r.copy(gestures = block(r.gestures)) }
     }
 
-    EchoSheet(open = open, onDismiss = onClose, title = S.common.pageTurnGestures) {
+    EchoSheet(open = open, onDismiss = onClose, title = S.common.pageTurnGestures, maxHeightFraction = 0.88f) {
         GesturePreview(g)
-        Spacer(Modifier.height(18.dp))
-
-        SectionLabel(S.reader.swipeToTurn) {
-            if (g.axis == PageAxis.VERTICAL) Text(S.reader.wontConflictWithBack, color = c.text3, style = MaterialTheme.typography.labelSmall)
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AxisToggle(S.reader.leftRight, EchoIcons.SwipeH, g.axis == PageAxis.HORIZONTAL, Modifier.weight(1f), index = 0, count = 3) { edit { it.copy(axis = PageAxis.HORIZONTAL) } }
-            AxisToggle(S.reader.upDown, EchoIcons.SwipeV, g.axis == PageAxis.VERTICAL, Modifier.weight(1f), index = 1, count = 3) { edit { it.copy(axis = PageAxis.VERTICAL) } }
-            AxisToggle(S.reader.off, EchoIcons.Close, g.axis == PageAxis.OFF, Modifier.weight(1f), index = 2, count = 3) { edit { it.copy(axis = PageAxis.OFF) } }
-        }
-        if (g.axis == PageAxis.HORIZONTAL) {
-            Spacer(Modifier.height(6.dp))
-            Text(
-                S.reader.tipWithGestureNavigation,
-                color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp
-            )
-        }
         Spacer(Modifier.height(20.dp))
 
-        SectionLabel(S.reader.tapToTurnZones)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AxisToggle(S.reader.zonesLeftRight, EchoIcons.TapZone, g.tapTurn && g.tapAxis == PageAxis.HORIZONTAL, Modifier.weight(1f), index = 0, count = 3) {
-                edit { it.copy(tapTurn = true, tapAxis = PageAxis.HORIZONTAL) }
+        // 与其余面板同一套分组语言：一组一张卡片、组内发丝线分隔、说明放在组下方
+        SettingsSection(
+            S.reader.swipeToTurn,
+            footer = when (g.axis) {
+                PageAxis.HORIZONTAL -> S.reader.tipWithGestureNavigation
+                PageAxis.VERTICAL -> S.reader.wontConflictWithBack
+                PageAxis.OFF -> null
             }
-            AxisToggle(S.reader.zonesTopBottom, EchoIcons.SwipeV, g.tapTurn && g.tapAxis == PageAxis.VERTICAL, Modifier.weight(1f), index = 1, count = 3) {
-                // 上下热区会吃掉首尾几行的点读，默认收窄一些
-                edit { it.copy(tapTurn = true, tapAxis = PageAxis.VERTICAL, prevZone = minOf(it.prevZone, 0.12f), nextZone = minOf(it.nextZone, 0.12f)) }
-            }
-            AxisToggle(S.reader.off, EchoIcons.Close, !g.tapTurn, Modifier.weight(1f), index = 2, count = 3) { edit { it.copy(tapTurn = false) } }
-        }
-
-        if (g.tapTurn) {
-            Spacer(Modifier.height(16.dp))
-            val startLabel = if (g.tapAxis == PageAxis.VERTICAL) S.reader.topZone else S.reader.leftZone
-            val endLabel = if (g.tapAxis == PageAxis.VERTICAL) S.reader.bottomZone else S.reader.rightZone
-            // 两侧之和有上限（开着「轻点朗读」时 0.8）。若直接把原值丢给 sanitizeGestures，
-            // 它会**按比例同时缩放两侧** —— 拖右边会把左边悄悄拖小，而且最终值取决于滑块回调的采样密度，
-            // 同一个手势拖两次结果还不一样。这里先按「另一侧不动」把被拖的这一侧钳住，
-            // 让步的永远是正在编辑的那个值；sanitizeGestures 的比例缩放只留给加载腐坏存档时兜底。
-            val zoneCap = (if (g.tapToRead) 0.8f else 1f)
-            SectionLabel(startLabel) { Text("${(g.prevZone * 100).toInt()}%", color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold) }
-            EchoSlider(g.prevZone, { v -> edit { it.copy(prevZone = minOf(Math.round(v * 100) / 100f, zoneCap - it.nextZone)) } }, 0f..0.5f, steps = 9)
-            Spacer(Modifier.height(10.dp))
-            SectionLabel(endLabel) { Text("${(g.nextZone * 100).toInt()}%", color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold) }
-            EchoSlider(g.nextZone, { v -> edit { it.copy(nextZone = minOf(Math.round(v * 100) / 100f, zoneCap - it.prevZone)) } }, 0f..0.5f, steps = 9)
-            Spacer(Modifier.height(14.dp))
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ) {
+            custom {
+                val axes = listOf(PageAxis.HORIZONTAL, PageAxis.VERTICAL, PageAxis.OFF)
                 EchoSegmented(
-                    if (g.tapAxis == PageAxis.VERTICAL) S.reader.topPreviousPage else S.reader.leftPreviousPage,
-                    if (g.tapAxis == PageAxis.VERTICAL) S.reader.topNextPage else S.reader.leftNextPage,
-                    firstSelected = !g.invertZones
-                ) { first -> edit { it.copy(invertZones = !first) } }
+                    items = listOf(SegmentItem(S.reader.leftRight, EchoIcons.SwipeH), SegmentItem(S.reader.upDown, EchoIcons.SwipeV), SegmentItem(S.reader.off)),
+                    selectedIndex = axes.indexOf(g.axis)
+                ) { i -> edit { it.copy(axis = axes[i]) } }
+            }
+            if (g.axis != PageAxis.OFF) {
+                custom {
+                    SettingsSlider(
+                        S.reader.swipeSensitivity,
+                        when {
+                            g.slopScale <= 0.8f -> S.reader.high
+                            g.slopScale >= 1.6f -> S.reader.low
+                            else -> S.common.standard
+                        },
+                        g.slopScale, 0.5f..3f, steps = 24
+                    ) { v -> edit { it.copy(slopScale = (Math.round(v * 10) / 10f)) } }
+                    Text(S.reader.sensitivityHint, color = c.text3, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
-
-        Spacer(Modifier.height(20.dp))
-        SectionLabel(S.reader.tapToRead) { Text(if (g.tapToRead) S.reader.worksOutsideTapZones else S.reader.turnedOff, color = c.text3, style = MaterialTheme.typography.labelSmall) }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            EchoSegmented(S.reader.on, S.reader.off, firstSelected = g.tapToRead) { on -> edit { it.copy(tapToRead = on) } }
-        }
-        if (!g.tapToRead) {
-            Spacer(Modifier.height(6.dp))
-            Text(S.reader.tapToReadOffHint, color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp)
-        }
-
-        Spacer(Modifier.height(20.dp))
-        SectionLabel(S.reader.swipeSensitivity) {
-            Text(
-                when {
-                    g.slopScale <= 0.8f -> S.reader.high
-                    g.slopScale >= 1.6f -> S.reader.low
-                    else -> S.common.standard
-                },
-                color = c.accent, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold
-            )
-        }
-        EchoSlider(g.slopScale, { v -> edit { it.copy(slopScale = (Math.round(v * 10) / 10f)) } }, 0.5f..3f, steps = 24)
-        Text(
-            S.reader.sensitivityHint,
-            color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp, modifier = Modifier.padding(top = 6.dp)
-        )
-
         Spacer(Modifier.height(22.dp))
-        OutlineButton(S.reader.resetToDefaults, Modifier.fillMaxWidth()) { edit { GestureSettings() } }
-        Spacer(Modifier.height(8.dp))
-    }
-}
 
-/**
- * 选中态用 M3 Expressive 的 ToggleButton：选中时按 Expressive 弹簧做形状变化。
- *
- * 未选中态必须显式描边：`ToggleButtonDefaults` 的未选中容器色是 `surfaceContainer`，
- * 而本应用的弹层面板底色（`echo.card`）恰好也映射到 `surfaceContainer` —— 两者逐位相同，
- * 不加边框的话三选一里未选中的那两个会完全没有容器，看上去像凭空浮着的文字。
- */
-@Composable
-private fun AxisToggle(
-    label: String,
-    icon: ImageVector,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    /** 在三选一里的位置，决定首/中/尾圆角 —— 没有它这三个按钮只是三个各自独立的胶囊 */
-    index: Int = 0,
-    count: Int = 1,
-    onSelect: () -> Unit
-) {
-    val c = echo
-    ToggleButton(
-        checked = selected,
-        onCheckedChange = { if (it) onSelect() },
-        modifier = modifier.semantics { role = Role.RadioButton },
-        shapes = connectedShapesAt(index, count),
-        border = if (selected) null else BorderStroke(1.dp, c.border)
-    ) {
-        Icon(icon, null, modifier = Modifier.size(17.dp))
-        Spacer(Modifier.width(6.dp))
-        Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+        SettingsSection(S.reader.tapToTurnZones) {
+            custom {
+                EchoSegmented(
+                    items = listOf(SegmentItem(S.reader.zonesLeftRight, EchoIcons.TapZone), SegmentItem(S.reader.zonesTopBottom, EchoIcons.SwipeV), SegmentItem(S.reader.off)),
+                    selectedIndex = when {
+                        !g.tapTurn -> 2
+                        g.tapAxis == PageAxis.VERTICAL -> 1
+                        else -> 0
+                    }
+                ) { i ->
+                    when (i) {
+                        0 -> edit { it.copy(tapTurn = true, tapAxis = PageAxis.HORIZONTAL) }
+                        // 上下热区会吃掉首尾几行的点读，默认收窄一些
+                        1 -> edit { it.copy(tapTurn = true, tapAxis = PageAxis.VERTICAL, prevZone = minOf(it.prevZone, 0.12f), nextZone = minOf(it.nextZone, 0.12f)) }
+                        else -> edit { it.copy(tapTurn = false) }
+                    }
+                }
+            }
+            if (g.tapTurn) {
+                val startLabel = if (g.tapAxis == PageAxis.VERTICAL) S.reader.topZone else S.reader.leftZone
+                val endLabel = if (g.tapAxis == PageAxis.VERTICAL) S.reader.bottomZone else S.reader.rightZone
+                // 两侧之和有上限（开着「轻点朗读」时 0.8）。若直接把原值丢给 sanitizeGestures，
+                // 它会**按比例同时缩放两侧** —— 拖右边会把左边悄悄拖小，而且最终值取决于滑块回调的采样密度，
+                // 同一个手势拖两次结果还不一样。这里先按「另一侧不动」把被拖的这一侧钳住，
+                // 让步的永远是正在编辑的那个值；sanitizeGestures 的比例缩放只留给加载腐坏存档时兜底。
+                val zoneCap = (if (g.tapToRead) 0.8f else 1f)
+                custom {
+                    SettingsSlider(startLabel, "${(g.prevZone * 100).toInt()}%", g.prevZone, 0f..0.5f, steps = 9) { v ->
+                        edit { it.copy(prevZone = minOf(Math.round(v * 100) / 100f, zoneCap - it.nextZone)) }
+                    }
+                }
+                custom {
+                    SettingsSlider(endLabel, "${(g.nextZone * 100).toInt()}%", g.nextZone, 0f..0.5f, steps = 9) { v ->
+                        edit { it.copy(nextZone = minOf(Math.round(v * 100) / 100f, zoneCap - it.prevZone)) }
+                    }
+                }
+                custom {
+                    EchoSegmented(
+                        if (g.tapAxis == PageAxis.VERTICAL) S.reader.topPreviousPage else S.reader.leftPreviousPage,
+                        if (g.tapAxis == PageAxis.VERTICAL) S.reader.topNextPage else S.reader.leftNextPage,
+                        firstSelected = !g.invertZones
+                    ) { first -> edit { it.copy(invertZones = !first) } }
+                }
+            }
+        }
+        Spacer(Modifier.height(22.dp))
+
+        SettingsSection {
+            switch(
+                S.reader.tapToRead,
+                value = if (g.tapToRead) S.reader.worksOutsideTapZones else S.reader.tapToReadOffHint,
+                checked = g.tapToRead
+            ) { on -> edit { it.copy(tapToRead = on) } }
+        }
+
+        Spacer(Modifier.height(18.dp))
+        SoftButton(S.reader.resetToDefaults, Modifier.fillMaxWidth()) { edit { GestureSettings() } }
+        Spacer(Modifier.height(8.dp))
     }
 }
 
@@ -204,9 +180,8 @@ private fun GesturePreview(g: GestureSettings) {
         Modifier
             .fillMaxWidth()
             .aspectRatio(1.9f)
-            .clip(RoundedCornerShape(Radius.md))
-            .background(c.cardAlt)
-            .border(1.dp, c.border, RoundedCornerShape(Radius.md))
+            .clip(RoundedCornerShape(GroupRadius))
+            .background(c.fill)
     ) {
         Box(
             Modifier.fillMaxSize().drawBehind {

@@ -63,7 +63,28 @@ data class EchoColors(
     val onAccent: Color,
     val accentSoft: Color,
     val danger: Color,
-    val isDark: Boolean
+    val isDark: Boolean,
+    /* ---- 0.5.0：玻璃材质上的层级 ----
+     * 面板本身是半透明的玻璃，面板上的卡片就不能再用不透明的色调容器（会把玻璃整块盖死）。
+     * 这一组是「叠在玻璃上的半透明填充」：浅色是白、深色是很淡的白，叠出来仍然是一级一级的层次。
+     * 用户关掉玻璃时它们退回对应的不透明色调容器，观感与 0.4.x 一致。 */
+    /** 面板 / 浮层的玻璃着色（盖在模糊背板上） */
+    val glass: Color,
+    /** 小型悬浮件（提示条、状态药丸、圆形按钮）的玻璃着色，比面板更薄 */
+    val glassThin: Color,
+    /** 玻璃上的分组卡片 */
+    val fill: Color,
+    /** 卡片里的内嵌控件（输入框、分段控件的轨道、筛选标签） */
+    val fillStrong: Color,
+    /** 组内分隔线 */
+    val hairline: Color,
+    /** 玻璃的高光描边：亮端 / 暗端 */
+    val rimHi: Color,
+    val rimLo: Color,
+    /** 浮层背后的遮罩。玻璃面板用得很淡（20% / 48%），底下的内容还看得出轮廓 */
+    val scrim: Color,
+    /** 玻璃是否开启 */
+    val glassOn: Boolean
 )
 
 /* ---------------- M3 色板（seed #7C9BFF · SchemeTonalSpot · 2021 spec） ---------------- */
@@ -92,7 +113,7 @@ data class EchoColors(
  * 取 `outline` 是最接近的真实角色：浅色 4.27:1、深色 5.85:1，稳过 3:1 的非文本/大字门槛，
  * 且远优于旧实现（onSurface @0.35~0.40 ≈ 2.3:1）。
  */
-fun echoColorsFrom(s: ColorScheme, dark: Boolean) = EchoColors(
+fun echoColorsFrom(s: ColorScheme, dark: Boolean, glass: Boolean = true) = EchoColors(
     canvas = s.surface,
     card = s.surfaceContainer,
     cardAlt = s.surfaceContainerHigh,
@@ -105,8 +126,36 @@ fun echoColorsFrom(s: ColorScheme, dark: Boolean) = EchoColors(
     onAccent = s.onPrimary,
     accentSoft = s.primaryContainer,
     danger = s.error,
-    isDark = dark
+    isDark = dark,
+    // 着色取面板自己的底色再降透明度：背板被模糊成大色块之后，叠上去的仍是这套配色的色相
+    // 0.8 上下：阅读主题与应用配色各自独立，浅色面板可能盖在深色书页上。
+    // 再薄的话，面板上的次要文字（组下方的说明）在那种组合里对比度不够（真机上量过）
+    glass = if (!glass) s.surfaceContainerLow else s.surfaceContainerLow.copy(alpha = if (dark) 0.78f else 0.82f),
+    glassThin = if (!glass) s.surfaceContainerHigh else s.surfaceContainerHigh.copy(alpha = if (dark) 0.66f else 0.62f),
+    fill = if (!glass) s.surfaceContainerHigh else if (dark) Color.White.copy(alpha = 0.075f) else Color.White.copy(alpha = 0.66f),
+    fillStrong = if (!glass) s.surfaceContainerHighest else s.onSurface.copy(alpha = if (dark) 0.10f else 0.065f),
+    hairline = s.onSurface.copy(alpha = if (dark) 0.11f else 0.09f),
+    rimHi = if (dark) Color.White.copy(alpha = 0.26f) else Color.White.copy(alpha = 0.85f),
+    rimLo = if (dark) Color.White.copy(alpha = 0.07f) else Color.White.copy(alpha = 0.22f),
+    scrim = Color.Black.copy(alpha = if (glass) (if (dark) 0.48f else 0.22f) else 0.5f),
+    glassOn = glass
 )
+
+/** 面板 / 大浮层的玻璃 */
+val EchoColors.sheetGlass: app.echoread.ui.glass.GlassStyle
+    get() = app.echoread.ui.glass.GlassStyle(
+        tint = glass, fallback = sheet, blur = 26.dp, saturation = if (isDark) 1.5f else 1.7f,
+        rimHi = rimHi, rimLo = rimLo, rimWidth = 1.dp, inputScale = 3,
+        lensDepth = 18.dp, lensAmount = 22.dp
+    )
+
+/** 小型悬浮件的玻璃：更薄、模糊更轻，底下的内容还辨得出形状 */
+val EchoColors.pillGlass: app.echoread.ui.glass.GlassStyle
+    get() = app.echoread.ui.glass.GlassStyle(
+        tint = glassThin, fallback = cardAlt, blur = 14.dp, saturation = if (isDark) 1.5f else 1.8f,
+        rimHi = rimHi, rimLo = rimLo, rimWidth = 1.dp, inputScale = 1,
+        lensDepth = 12.dp, lensAmount = 14.dp
+    )
 
 /**
  * 默认值只在「主题尚未提供」的极短窗口里被读到（例如预览）。
@@ -198,7 +247,9 @@ val EchoShapes = Shapes(
  * 这样同一段文字在普通与强调之间切换不会引起重排。
  */
 private val ZeroSpacing = 0.sp
-val EchoTypography = Typography(
+
+/** 中文界面的字号阶梯：字距归零、行高上调（见上） */
+private val CjkTypography = Typography(
     displayLarge = TextStyle(fontSize = 57.sp, lineHeight = 68.sp, fontWeight = FontWeight.Normal, letterSpacing = ZeroSpacing),
     displayLargeEmphasized = TextStyle(fontSize = 57.sp, lineHeight = 68.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
     displayMedium = TextStyle(fontSize = 45.sp, lineHeight = 56.sp, fontWeight = FontWeight.Normal, letterSpacing = ZeroSpacing),
@@ -230,6 +281,53 @@ val EchoTypography = Typography(
     labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
     labelSmallEmphasized = TextStyle(fontSize = 11.sp, lineHeight = 16.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = ZeroSpacing)
 )
+
+/**
+ * 英文界面的字号阶梯（0.5.0）。
+ *
+ * 0.4.0 的英文界面直接沿用了上面那套为汉字调的度量，是「英文界面问题很大」的头号原因：
+ * 行高比 1.6~1.75 是给纵向填满字身框的汉字留的呼吸空间，套在拉丁字母上（x 字高只有字号的一半）
+ * 两行字之间空出将近一整行，说明文字看上去像被拆散的短句；ExtraBold 的标签在拉丁字形上也过重。
+ *
+ * 这里回到 M3 为拉丁文字定的行高（正文 1.43，标题 1.27~1.5），字距取 M3 值的一半左右 ——
+ * 系统字体被换成手写体 / 圆体的机型不少，过宽的字距在那些字体上更显松。
+ * 字号与中文完全一致：同一个界面切换语言时，布局骨架不动，只有文字的密度变了。
+ */
+private val LatinTypography = Typography(
+    displayLarge = TextStyle(fontSize = 57.sp, lineHeight = 64.sp, fontWeight = FontWeight.Normal, letterSpacing = (-0.25).sp),
+    displayLargeEmphasized = TextStyle(fontSize = 57.sp, lineHeight = 64.sp, fontWeight = FontWeight.Bold, letterSpacing = (-0.25).sp),
+    displayMedium = TextStyle(fontSize = 45.sp, lineHeight = 52.sp, fontWeight = FontWeight.Normal, letterSpacing = ZeroSpacing),
+    displayMediumEmphasized = TextStyle(fontSize = 45.sp, lineHeight = 52.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
+    displaySmall = TextStyle(fontSize = 36.sp, lineHeight = 44.sp, fontWeight = FontWeight.Normal, letterSpacing = ZeroSpacing),
+    displaySmallEmphasized = TextStyle(fontSize = 36.sp, lineHeight = 44.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
+    headlineLarge = TextStyle(fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
+    headlineLargeEmphasized = TextStyle(fontSize = 32.sp, lineHeight = 40.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
+    headlineMedium = TextStyle(fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
+    headlineMediumEmphasized = TextStyle(fontSize = 28.sp, lineHeight = 36.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
+    headlineSmall = TextStyle(fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
+    headlineSmallEmphasized = TextStyle(fontSize = 24.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
+    titleLarge = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Medium, letterSpacing = ZeroSpacing),
+    titleLargeEmphasized = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold, letterSpacing = ZeroSpacing),
+    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp),
+    titleMediumEmphasized = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp),
+    titleSmall = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp),
+    titleSmallEmphasized = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp),
+    bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 23.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.15.sp),
+    bodyLargeEmphasized = TextStyle(fontSize = 16.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.15.sp),
+    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.15.sp),
+    bodyMediumEmphasized = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.15.sp),
+    bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 17.sp, fontWeight = FontWeight.Normal, letterSpacing = 0.2.sp),
+    bodySmallEmphasized = TextStyle(fontSize = 12.sp, lineHeight = 17.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.2.sp),
+    labelLarge = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.1.sp),
+    labelLargeEmphasized = TextStyle(fontSize = 14.sp, lineHeight = 20.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.1.sp),
+    labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.25.sp),
+    labelMediumEmphasized = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.25.sp),
+    labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 15.sp, fontWeight = FontWeight.Medium, letterSpacing = 0.25.sp),
+    labelSmallEmphasized = TextStyle(fontSize = 11.sp, lineHeight = 15.sp, fontWeight = FontWeight.SemiBold, letterSpacing = 0.25.sp)
+)
+
+/** 当前界面语言对应的字号阶梯 */
+fun echoTypography(english: Boolean): Typography = if (english) LatinTypography else CjkTypography
 
 /* ---------------- 阅读器配色（刻意独立于 M3） ---------------- */
 
@@ -309,6 +407,7 @@ fun readerThemeOf(id: String): ReaderTheme = READER_THEMES.firstOrNull { it.id =
 fun EchoTheme(
     dark: Boolean = isSystemInDarkTheme(),
     dynamic: Boolean = false,
+    glass: Boolean = true,
     seed: Color = Color(ReaderSettings.DEFAULT_SEED),
     style: ColorStyle = ColorStyle.TONAL_SPOT,
     contrast: Float = 0f,
@@ -324,13 +423,14 @@ fun EchoTheme(
     }
     val generated = rememberGeneratedScheme(seed, style, dark, contrast)
     val scheme = dynamicScheme ?: generated
-    val colors = remember(scheme, dark) { echoColorsFrom(scheme, dark) }
+    val colors = remember(scheme, dark, glass) { echoColorsFrom(scheme, dark, glass) }
     CompositionLocalProvider(LocalEchoColors provides colors) {
         MaterialExpressiveTheme(
             colorScheme = scheme,
             motionScheme = EchoMotionScheme,
             shapes = EchoShapes,
-            typography = EchoTypography,
+            // 切换语言会重建 Activity，这里读到的就是新语言
+            typography = echoTypography(app.echoread.core.i18n.I18n.english),
             content = content
         )
     }

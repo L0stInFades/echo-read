@@ -499,6 +499,49 @@ object Voices {
         return out.values.toList()
     }
 
+    /* ---------- 服务目录里的音色（0.5.0） ---------- */
+
+    private val LANG_NAME_PREFIX = listOf(
+        "chinese" to "zh", "cantonese" to "zh", "mandarin" to "zh", "english" to "en", "japanese" to "ja", "korean" to "ko",
+        "spanish" to "es", "french" to "fr", "german" to "de", "italian" to "it", "dutch" to "nl", "portuguese" to "pt",
+        "russian" to "ru", "hindi" to "hi"
+    )
+    private val LANG_CODE_PREFIX = Regex("^([a-z]{2})[-_]")
+
+    /** 目录没写语种时从音色 ID 猜：`zh_female_…`、`en-US-…`、`Chinese (Mandarin)_…` 这三种写法覆盖了绝大多数服务商 */
+    private fun guessLang(id: String): String {
+        val low = id.lowercase()
+        LANG_CODE_PREFIX.find(low)?.groupValues?.get(1)?.let { if (it in LANG_KEYS) return it }
+        return LANG_NAME_PREFIX.firstOrNull { low.startsWith(it.first) }?.second ?: ""
+    }
+
+    /** 服务目录 / 在线列表里的一条音色 → 音色表条目。自建音色单独成组，多语言音色归「多语言」 */
+    fun fromSpec(v: app.echoread.core.VoiceSpec): VoiceInfo {
+        val lang = when {
+            v.mine -> "mine"
+            v.lang == "multi" -> "multi"
+            else -> langGroupOf(v.lang.ifBlank { guessLang(v.id) })
+        }
+        return VoiceInfo(
+            id = v.id,
+            label = v.name.ifBlank { v.id },
+            lang = lang,
+            gender = v.gender.takeIf { it == "f" || it == "m" },
+            note = v.tags.filter { it.isNotBlank() }.joinToString("·").ifEmpty { null }
+        )
+    }
+
+    /** 在线列表里的一条 Gemini 音色还原成目录条目，交给 [geminiCatalog] 与精选音色合并 */
+    fun geminiEntryOf(v: app.echoread.core.VoiceSpec): GeminiVoiceEntry = GeminiVoiceEntry(
+        id = v.id,
+        displayName = v.name,
+        type = if (v.mine) "replicated" else "prebuilt",
+        languageCode = v.lang.ifBlank { null },
+        accent = v.tags.getOrNull(0),
+        gender = when (v.gender) { "f" -> "female"; "m" -> "male"; else -> null },
+        context = v.tags.getOrNull(1)
+    )
+
     /** 模型的完整音色目录：在线列表优先，其次内置兜底表。开放音色模型返回空列表。 */
     fun catalogVoices(modelId: String, serverVoices: List<String>? = null): List<VoiceInfo> {
         if (modelHints(modelId)?.freeVoice != null) return emptyList()

@@ -86,28 +86,32 @@ fun BoxScope.ErrorDetailSheet(error: NetError?, onDismiss: () -> Unit) {
         StatusBadgeRow(e)
         Spacer(Modifier.height(14.dp))
 
-        Text(e.headline(), color = c.text, style = MaterialTheme.typography.titleMedium)
+        Text(e.headline(), color = c.text, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 4.dp))
         Spacer(Modifier.height(6.dp))
-        Text(e.advice(), color = c.text2, style = MaterialTheme.typography.bodyMedium)
+        Text(e.advice(), color = c.text2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 4.dp))
 
         e.providerMessage?.takeIf { it.isNotBlank() }?.let { msg ->
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(18.dp))
             SectionLabel(S.errors.labelProviderMessage)
-            Text(msg, color = c.text, style = MaterialTheme.typography.bodyMedium)
-            e.providerCode?.takeIf { it.isNotBlank() }?.let {
-                Spacer(Modifier.height(4.dp))
-                Text(S.errors.labelCode(it), color = c.text3, style = MaterialTheme.typography.bodySmall)
+            EchoCard(padding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {
+                Text(msg, color = c.text, style = MaterialTheme.typography.bodyMedium)
+                e.providerCode?.takeIf { it.isNotBlank() }?.let {
+                    Spacer(Modifier.height(4.dp))
+                    Text(S.errors.labelCode(it), color = c.text3, style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
 
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(18.dp))
         SectionLabel(S.errors.labelRequest)
-        KeyValue(S.errors.labelEndpoint, if (e.endpoint.isEmpty()) "—" else "${e.method} ${e.endpoint}")
-        e.model?.takeIf { it.isNotBlank() }?.let { KeyValue(S.common.model, it) }
-        e.transport?.let { KeyValue(S.errors.labelTransport, it) }
-        if (e.maxAttempts > 1) KeyValue(S.errors.labelAttempt, S.errors.attemptOf(e.attempt, e.maxAttempts))
-        if (e.elapsedMs > 0) KeyValue(S.errors.labelElapsed, "${e.elapsedMs} ms")
-        e.retryAfterSec?.let { KeyValue("Retry-After", S.errors.seconds(it)) }
+        EchoCard(padding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 10.dp)) {
+            KeyValue(S.errors.labelEndpoint, if (e.endpoint.isEmpty()) "-" else "${e.method} ${e.endpoint}")
+            e.model?.takeIf { it.isNotBlank() }?.let { KeyValue(S.common.model, it) }
+            e.transport?.let { KeyValue(S.errors.labelTransport, it) }
+            if (e.maxAttempts > 1) KeyValue(S.errors.labelAttempt, S.errors.attemptOf(e.attempt, e.maxAttempts))
+            if (e.elapsedMs > 0) KeyValue(S.errors.labelElapsed, "${e.elapsedMs} ms")
+            e.retryAfterSec?.let { KeyValue("Retry-After", S.errors.seconds(it)) }
+        }
 
         e.bodySnippet?.takeIf { it.isNotBlank() }?.let { snippet ->
             Spacer(Modifier.height(16.dp))
@@ -116,9 +120,8 @@ fun BoxScope.ErrorDetailSheet(error: NetError?, onDismiss: () -> Unit) {
                 Modifier
                     .fillMaxWidth()
                     .heightIn(max = 160.dp)
-                    .background(c.card, RoundedCornerShape(Radius.sm))
-                    .border(1.dp, c.border, RoundedCornerShape(Radius.sm))
-                    .padding(10.dp)
+                    .background(c.fillStrong, RoundedCornerShape(Radius.mdMinus))
+                    .padding(12.dp)
                     .horizontalScroll(rememberScrollState())
             ) {
                 Text(snippet, color = c.text2, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
@@ -127,7 +130,7 @@ fun BoxScope.ErrorDetailSheet(error: NetError?, onDismiss: () -> Unit) {
 
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OutlineButton(S.errors.copyDiagnostics, Modifier.weight(1f)) {
+            SoftButton(S.errors.copyDiagnostics, Modifier.weight(1f)) {
                 copyToClipboard(context, e.detail())
                 Toaster.success(S.errors.copied)
             }
@@ -145,7 +148,7 @@ private fun StatusBadgeRow(e: NetError) {
         StatusClass.SERVER -> c.danger                 // 5xx：对方的问题
         StatusClass.NONE -> c.text3
     }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             e.badge(),
             color = tint,
@@ -165,7 +168,7 @@ private fun StatusBadgeRow(e: NetError) {
 private fun KeyValue(k: String, v: String) {
     val c = echo
     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-        Text(k, color = c.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(76.dp))
+        Text(k, color = c.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(84.dp))
         Text(v, color = c.text2, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
     }
 }

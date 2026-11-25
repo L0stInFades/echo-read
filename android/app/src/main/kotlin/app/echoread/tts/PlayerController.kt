@@ -61,7 +61,7 @@ class PlayerController(
         scope.launch { settings.tts.collect { engine.updateConfig(it) } }
         // 片段长度变化 → 引擎按当前偏移原地重载（滑块每 tick 都触发，去抖收敛）
         scope.launch {
-            settings.tts.map { it.maxChunkChars }.distinctUntilChanged().drop(1).debounce(250).collect { engine.reload() }
+            settings.tts.map { Providers.chunkChars(it) }.distinctUntilChanged().drop(1).debounce(250).collect { engine.reload() }
         }
         scope.launch { engine.snapshot.collect { onSnapshot(it) } }
     }

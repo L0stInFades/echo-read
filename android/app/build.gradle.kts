@@ -42,6 +42,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // 调试包换一个包名，与正式包并存：往自己天天在用的手机上装调试包，不会碰正式版的书架与 Key
+            applicationIdSuffix = ".dev"
+            versionNameSuffix = "-dev"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

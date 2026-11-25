@@ -44,8 +44,11 @@ class AppGraph(context: Context) {
     val player = PlayerController(engine, library, settings, mainScope)
     val updater = Updater(context)
 
+    /** 各朗读服务的同步与连接状态（面板关掉也不取消） */
+    val services = app.echoread.tts.ServiceSync(settings, mainScope)
+
     /** 外部传入的朗读配置（深链 / adb），须用户确认后才写入设置 */
-    data class PendingConfig(val apiKey: String?, val baseUrl: String?, val model: String?, val voice: String?)
+    data class PendingConfig(val apiKey: String?, val baseUrl: String?, val model: String?, val voice: String?, val provider: String? = null)
     val configRequests = MutableStateFlow<PendingConfig?>(null)
 
     /** 打开指定书籍的请求（通知栏点击 / 外部深链）：Pair(bookId, autoplay) */
@@ -152,8 +155,7 @@ class EchoReadApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // 界面语言在 SettingsStore 读档时就定下了（通知栏、后台导入的提示、首次安装的默认音色都依赖它）
         graph = AppGraph(this)
-        // 界面语言越早定下越好：通知栏、后台导入的提示也要用对语言
-        app.echoread.core.i18n.I18n.apply(graph.settings.reader.value.language)
     }
 }

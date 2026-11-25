@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
@@ -182,25 +183,14 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
                     Text(S.importer.checkedFiles(progress.second), color = c.text3, style = MaterialTheme.typography.labelSmall)
                 } else if (!busy && truncated) {
                     // 触到遍历上限就如实说：把截断结果当完整结果展示，用户会以为「书就这些」
-                    Text(S.importer.scanTruncated, color = warningColor(c.isDark), style = MaterialTheme.typography.labelSmall, lineHeight = 15.sp)
+                    Text(S.importer.scanTruncated, color = warningColor(c.isDark), style = MaterialTheme.typography.bodySmall)
                 }
             }
             Spacer(Modifier.width(8.dp))
             if (busy) {
-                Text(S.importer.stop, color = c.danger, style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { graph.cancelScan() }.padding(6.dp))
+                TextAction(S.importer.stop, color = c.danger) { graph.cancelScan() }
             } else {
-                Row(
-                    Modifier
-                        .border(1.dp, c.border, CircleShape)
-                        .echoPress(pressedScale = PressScale.Chip) { graph.rescan() }
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(EchoIcons.Refresh, null, tint = c.accent, modifier = Modifier.size(14.dp))
-                    Spacer(Modifier.width(5.dp))
-                    Text(S.importer.rescan, color = c.accent, style = MaterialTheme.typography.bodySmall)
-                }
+                SoftButton(S.importer.rescan, color = c.accent, height = 34.dp, icon = EchoIcons.Refresh) { graph.rescan() }
             }
         }
         // M3 Expressive 的波形进度条：扫描是不定时长的任务，正好用不定态
@@ -213,44 +203,17 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
         Spacer(Modifier.height(14.dp))
 
         // 搜索 + 类型筛选
-        Row(
-            Modifier.fillMaxWidth().background(c.cardAlt, CircleShape).border(1.dp, c.border, CircleShape)
-                .padding(horizontal = 14.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(EchoIcons.Search, null, tint = c.text3, modifier = Modifier.size(15.dp))
-            Spacer(Modifier.width(8.dp))
-            val style = fieldTextStyle(c.text, 13)
-            BasicTextField(
-                value = query, onValueChange = { query = it }, singleLine = true,
-                textStyle = style, cursorBrush = SolidColor(c.accent),
-                modifier = Modifier.weight(1f).height(22.dp),
-                decorationBox = { inner ->
-                    Box(Modifier.fillMaxWidth().height(22.dp), contentAlignment = Alignment.CenterStart) {
-                        if (query.isEmpty()) Text(S.importer.searchFileNameOr, style = style.copy(color = c.text3))
-                        inner()
-                    }
-                }
-            )
-            if (query.isNotEmpty()) {
-                Text(S.common.clear, color = c.text3, style = MaterialTheme.typography.labelSmall,
-                    modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { query = "" })
-            }
-        }
+        SearchField(query, { query = it }, S.importer.searchFileNameOr)
         Spacer(Modifier.height(8.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             for (f in TypeFilter.entries) Chip(f.label, selected = filter == f) { filter = f }
             Spacer(Modifier.weight(1f))
             if (shown.isNotEmpty()) {
                 val allSelected = shown.all { it.uri.toString() in selected }
-                Text(
-                    if (allSelected) S.importer.deselectAll else S.importer.selectAll,
-                    color = c.accent, style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.echoPress(pressedScale = PressScale.Chip) {
-                        if (allSelected) shown.forEach { selected.remove(it.uri.toString()) }
-                        else shown.forEach { if (it.uri.toString() !in selected) selected.add(it.uri.toString()) }
-                    }.padding(4.dp)
-                )
+                TextAction(if (allSelected) S.importer.deselectAll else S.importer.selectAll) {
+                    if (allSelected) shown.forEach { selected.remove(it.uri.toString()) }
+                    else shown.forEach { if (it.uri.toString() !in selected) selected.add(it.uri.toString()) }
+                }
             }
         }
 
@@ -280,7 +243,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
                         if (busy) S.importer.scanning
                         else if (candidates.isEmpty()) S.importer.noBooksScannedHint
                         else S.importer.noMatchingBooks,
-                        color = c.text3, style = MaterialTheme.typography.bodySmall, lineHeight = 18.sp,
+                        color = c.text3, style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.fillMaxWidth().padding(vertical = 28.dp, horizontal = 8.dp)
                     )
                 }
@@ -311,7 +274,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
             }
         }
         Spacer(Modifier.height(8.dp))
-        OutlineButton(S.importer.browseFiles, Modifier.fillMaxWidth()) {
+        SoftButton(S.importer.browseFiles, Modifier.fillMaxWidth()) {
             filePicker.launch(arrayOf("text/plain", "application/epub+zip", "application/octet-stream", "*/*"))
         }
         Spacer(Modifier.height(8.dp))
@@ -336,25 +299,24 @@ private fun AccessCard(
     when (tier) {
         AccessTier.ALL_FILES, AccessTier.LEGACY -> {
             Row(
-                Modifier.fillMaxWidth().background(c.accentSoft, RoundedCornerShape(Radius.md)).padding(12.dp),
+                Modifier.fillMaxWidth().background(c.accentSoft, RoundedCornerShape(GroupRadius)).padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Icon(EchoIcons.CheckCircle, null, tint = c.accent, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
-                Text(S.importer.readyToScanAll, color = c.text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                Text(S.importer.changeFolder, color = c.accent, style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { onPickFolder() }.padding(4.dp))
+                Text(S.importer.readyToScanAll, color = c.text, style = MaterialTheme.typography.bodyMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Spacer(Modifier.width(8.dp))
+                TextAction(S.importer.changeFolder) { onPickFolder() }
             }
         }
         else -> {
             Column(
-                Modifier.fillMaxWidth().background(c.cardAlt, RoundedCornerShape(Radius.md))
-                    .border(1.dp, c.border, RoundedCornerShape(Radius.md)).padding(14.dp)
+                Modifier.fillMaxWidth().background(c.fill, RoundedCornerShape(GroupRadius)).padding(16.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(EchoIcons.Scan, null, tint = c.accent, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
-                    Text(S.importer.letLectorFindBooks, color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text(S.importer.letLectorFindBooks, color = c.text, style = MaterialTheme.typography.titleSmallEmphasized)
                 }
                 Spacer(Modifier.height(6.dp))
                 Text(
@@ -366,16 +328,16 @@ private fun AccessCard(
                         scanner.safCanGrantRoot -> S.importer.chooseFolderOrRootHint
                         else -> S.importer.chooseFolderHint
                     },
-                    color = c.text2, style = MaterialTheme.typography.bodySmall, lineHeight = 18.sp
+                    color = c.text2, style = MaterialTheme.typography.bodyMedium
                 )
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(14.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (scanner.needsLegacyPermission()) {
                         GradientButton(S.importer.grantAccess, Modifier.weight(1f), height = 42.dp, fontSize = 13) { onRequestLegacy() }
                     } else if (scanner.allFilesAccessSupported) {
                         GradientButton(S.importer.enableFullScan, Modifier.weight(1f), height = 42.dp, fontSize = 13) { onGrantAllFiles() }
                     }
-                    OutlineButton(if (scanner.safCanGrantRoot) S.importer.chooseStorage else S.importer.chooseFolder, Modifier.weight(1f), height = 42.dp) { onPickFolder() }
+                    SoftButton(if (scanner.safCanGrantRoot) S.importer.chooseStorage else S.importer.chooseFolder, Modifier.weight(1f), height = 42.dp) { onPickFolder() }
                 }
                 if (trees.isNotEmpty()) {
                     Spacer(Modifier.height(10.dp))
@@ -387,10 +349,7 @@ private fun AccessCard(
                             Spacer(Modifier.width(6.dp))
                             Text(scanner.treeLabel(t), color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                             // 授权会一直累积，每次扫描都要重走一遍；给一个撤销入口
-                            Text(
-                                S.importer.remove, color = c.text3, style = MaterialTheme.typography.labelSmall,
-                                modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { onForgetTree(t) }.padding(horizontal = 6.dp, vertical = 2.dp)
-                            )
+                            TextAction(S.importer.remove, color = c.text2) { onForgetTree(t) }
                         }
                     }
                 }
@@ -405,9 +364,9 @@ private fun CandidateRow(cand: BookCandidate, checked: Boolean, imported: Boolea
     Row(
         Modifier
             .fillMaxWidth()
-            .background(if (checked) c.accentSoft else c.cardAlt, RoundedCornerShape(Radius.md))
-            .border(1.dp, if (checked) c.accent else Color.Transparent, RoundedCornerShape(Radius.md))
-            .echoPress(pressedScale = PressScale.Tile) { onToggle() }
+            .clip(RoundedCornerShape(18.dp))
+            .background(if (checked) c.accentSoft else c.fill)
+            .echoPress(pressedScale = 1f, pressedOverlay = c.text.copy(alpha = 0.07f)) { onToggle() }
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -426,10 +385,8 @@ private fun CandidateRow(cand: BookCandidate, checked: Boolean, imported: Boolea
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false)
                 )
                 if (imported) {
-                    Text(
-                        S.importer.inLibrary, color = c.text3, fontSize = 9.sp,
-                        modifier = Modifier.padding(start = 5.dp).background(c.text3.copy(alpha = 0.14f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp)
-                    )
+                    Spacer(Modifier.width(6.dp))
+                    Badge(S.importer.inLibrary)
                 }
             }
             Text(
@@ -443,16 +400,11 @@ private fun CandidateRow(cand: BookCandidate, checked: Boolean, imported: Boolea
             )
             val sub = cand.author ?: cand.path
             if (!sub.isNullOrBlank()) {
-                Text(sub, color = c.text3, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(sub, color = c.text3, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
         Spacer(Modifier.width(8.dp))
-        Icon(
-            if (checked) EchoIcons.CheckCircle else EchoIcons.Plus,
-            null,
-            tint = if (checked) c.accent else c.text3,
-            modifier = Modifier.size(18.dp)
-        )
+        if (checked) CheckBadge() else Icon(EchoIcons.Plus, null, tint = c.text3, modifier = Modifier.size(18.dp))
     }
 }
 

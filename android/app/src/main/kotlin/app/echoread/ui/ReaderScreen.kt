@@ -46,6 +46,13 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import app.echoread.ui.glass.GlassStyle
+import app.echoread.ui.glass.LocalBackdrop
+import app.echoread.ui.glass.backdropSource
+import app.echoread.ui.glass.glass
+import app.echoread.ui.glass.glassShadow
+import app.echoread.ui.glass.rememberBackdrop
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
@@ -250,7 +257,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
 
     suspend fun layoutOne(index: Int, sp: LayoutSpec): ChapterPages? {
         val d = try {
-            graph.chapterCache.get(bookId, index, settings.tts.value.maxChunkChars)
+            graph.chapterCache.get(bookId, index, app.echoread.tts.Providers.chunkChars(settings.tts.value))
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -344,7 +351,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                 for (n in intArrayOf(target + 1, target - 1)) {
                     if (n < 0 || n >= total) continue
                     if (window.pagesOf(n) != null && window.specOf(n) == sp) continue
-                    graph.chapterCache.prefetch(bookId, n, settings.tts.value.maxChunkChars)
+                    graph.chapterCache.prefetch(bookId, n, app.echoread.tts.Providers.chunkChars(settings.tts.value))
                     val laid = layoutOne(n, sp) ?: continue
                     window.put(n, laid, sp)
                 }
@@ -749,7 +756,22 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
         shownProgress
     }
     val dockBg = if (theme.isDark) Color(0xFF15171E) else Color.White
-    val dockBorder = theme.text.copy(alpha = 0.12f)
+    // 阅读页上的悬浮件用阅读主题自己的颜色做玻璃着色：阅读主题独立于系统深浅色，取 app 配色会错配
+    val floatGlass = remember(theme.id) {
+        GlassStyle(
+            tint = dockBg.copy(alpha = if (theme.isDark) 0.62f else 0.60f),
+            fallback = dockBg,
+            blur = 14.dp,
+            saturation = 1.6f,
+            rimHi = Color.White.copy(alpha = if (theme.isDark) 0.24f else 0.9f),
+            rimLo = Color.White.copy(alpha = if (theme.isDark) 0.06f else 0.25f),
+            inputScale = 1,
+            lensDepth = 12.dp,
+            lensAmount = 14.dp
+        )
+    }
+    val backdrop = rememberBackdrop()
+    val pageBackdrop = rememberBackdrop()
     val skeletonLine = with(density) { (reader.fontSize * reader.lineHeight).sp.toPx() }
 
     Box(Modifier.fillMaxSize().background(theme.bg)) {
@@ -757,12 +779,12 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
             Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                 Text(S.reader.thisBookDoesntExist, color = theme.dim, style = MaterialTheme.typography.bodyMedium)
                 Spacer(Modifier.height(16.dp))
-                OutlineButton(S.reader.backToLibrary, color = theme.text) { onBack() }
+                SoftButton(S.reader.backToLibrary, color = theme.text) { onBack() }
             }
             return@Box
         }
 
-        Column(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().backdropSource(backdrop, theme.bg)) {
             // 顶栏
             Row(
                 Modifier
@@ -793,7 +815,8 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
             Box(Modifier.fillMaxWidth().weight(1f).padding(horizontal = 20.dp, vertical = 6.dp)) {
                 val m = meta
                 val shownPages = window.pagesOf(shown.chapter)
-                Column(Modifier.fillMaxSize()) {
+                // 书页本身是一块背板：悬浮在它上面的状态药丸与睡眠面板从这里采样
+                Column(Modifier.fillMaxSize().backdropSource(pageBackdrop, theme.bg)) {
                     Box(
                         Modifier
                             .fillMaxWidth()
@@ -884,14 +907,14 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     androidx.compose.animation.AnimatedVisibility(
                         visible = showStatus,
                         enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut,
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 10.dp).zIndex(5f)
+                        modifier = Modifier.align(Alignment.BottomCenter).zIndex(5f)
                     ) {
                         Row(
                             Modifier
-                                .shadow(10.dp, CircleShape, spotColor = Color.Black.copy(alpha = 0.3f))
-                                .background(dockBg, CircleShape)
-                                .border(1.dp, dockBorder, CircleShape)
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                .padding(horizontal = 10.dp, vertical = 12.dp)
+                                .glassShadow(CircleShape, Color.Black.copy(alpha = if (theme.isDark) 0.4f else 0.16f), blur = 14.dp, dy = 4.dp)
+                                .glass(CircleShape, floatGlass, pageBackdrop.takeIf { c.glassOn })
+                                .padding(horizontal = 16.dp, vertical = 9.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val statusText = when {
@@ -939,30 +962,29 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                 }
 
                 // 睡眠定时选项：悬浮在页面区底部（临时弹出，不改变页面尺寸）
-                androidx.compose.animation.AnimatedVisibility(visible = showSleep, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 26.dp).zIndex(5f)) {
+                androidx.compose.animation.AnimatedVisibility(visible = showSleep, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut, modifier = Modifier.align(Alignment.BottomCenter).zIndex(5f)) {
                     Column(
                         Modifier
+                            .padding(start = 10.dp, end = 10.dp, top = 14.dp, bottom = 22.dp)
                             .widthIn(max = 380.dp)
-                            .shadow(18.dp, RoundedCornerShape(Radius.lg), spotColor = Color.Black.copy(alpha = 0.4f))
-                            .background(dockBg, RoundedCornerShape(Radius.lg))
-                            .border(1.dp, dockBorder, RoundedCornerShape(Radius.lg))
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                            .glassShadow(RoundedCornerShape(26.dp), Color.Black.copy(alpha = if (theme.isDark) 0.45f else 0.18f), blur = 20.dp, dy = 6.dp)
+                            .glass(RoundedCornerShape(26.dp), floatGlass, pageBackdrop.takeIf { c.glassOn })
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // 六个选项是单选而非筛选，用 M3 Expressive 的连接式按钮组。
-                        // 拆成两排各三个：一排六个在窄屏上放不下，而换行会让首/尾圆角落在错误的位置。
-                        // 配色显式传阅读主题色 —— ToggleButtonDefaults 取的是 app 配色，
+                        // 六个选项是单选而非筛选，用分段控件。拆成两排各三个：一排六个在窄屏上放不下。
+                        // 配色显式传阅读主题色 —— 默认取的是 app 配色，
                         // 浅色系统 + 暗夜阅读主题时会在深色面板上画出浅色容器。
                         val sleepRows = listOf(SLEEP_OPTIONS.take(3), SLEEP_OPTIONS.drop(3))
                         for (row in sleepRows) {
                             EchoSegmented(
                                 items = row.map { SegmentItem(it.first) },
                                 selectedIndex = row.indexOfFirst { it.second == sleepMode },
-                                containerColor = Color.Transparent,
-                                contentColor = theme.text.copy(alpha = 0.75f),
+                                containerColor = theme.text.copy(alpha = 0.08f),
+                                contentColor = theme.text.copy(alpha = 0.8f),
                                 checkedContainerColor = theme.accent,
                                 checkedContentColor = theme.bg,
-                                borderColor = dockBorder
+                                height = 42.dp
                             ) { i ->
                                 player.setSleepTimer(row[i].second)
                                 showSleep = false
@@ -1076,18 +1098,21 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
             }
         }
 
-        ChapterListSheet(
-            open = showChapters, titles = titles, current = shown.chapter,
-            onClose = { showChapters = false }, onSelect = { gotoChapter(it) }
-        )
         LaunchedEffect(showChapters) { if (showChapters && titles.isEmpty()) titles = graph.library.chapterTitles(bookId) }
-        ReaderStyleSheet(
-            open = showStyle,
-            graph = graph,
-            onOpenGestures = { showStyle = false; showGestures = true }
-        ) { showStyle = false }
-        GestureSettingsSheet(open = showGestures, graph = graph) { showGestures = false }
-        TtsSettingsSheet(open = showTts, graph = graph) { showTts = false }
+        // 面板是书页的兄弟节点：从上面那块背板采样做玻璃
+        CompositionLocalProvider(LocalBackdrop provides backdrop) {
+            ChapterListSheet(
+                open = showChapters, titles = titles, current = shown.chapter,
+                onClose = { showChapters = false }, onSelect = { gotoChapter(it) }
+            )
+            ReaderStyleSheet(
+                open = showStyle,
+                graph = graph,
+                onOpenGestures = { showStyle = false; showGestures = true }
+            ) { showStyle = false }
+            GestureSettingsSheet(open = showGestures, graph = graph) { showGestures = false }
+            TtsSettingsSheet(open = showTts, graph = graph) { showTts = false }
+        }
     }
 }
 

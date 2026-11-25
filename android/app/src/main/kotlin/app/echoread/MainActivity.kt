@@ -65,9 +65,11 @@ class MainActivity : ComponentActivity() {
         val baseUrl = intent?.getStringExtra(EXTRA_BASE_URL)
         val model = intent?.getStringExtra(EXTRA_MODEL)
         val voice = intent?.getStringExtra(EXTRA_VOICE)
-        if (!apiKey.isNullOrBlank() || !baseUrl.isNullOrBlank() || !model.isNullOrBlank() || !voice.isNullOrBlank()) {
-            listOf(EXTRA_API_KEY, EXTRA_BASE_URL, EXTRA_MODEL, EXTRA_VOICE).forEach { intent?.removeExtra(it) }
-            graph.configRequests.value = AppGraph.PendingConfig(apiKey?.trim(), baseUrl?.trim(), model?.trim(), voice?.trim())
+        // provider：服务目录里的 ID（elevenlabs、siliconflow…），指定把这份配置写给哪一家；不给就按 baseUrl 认，再不行给当前的 OpenAI 兼容服务
+        val provider = intent?.getStringExtra(EXTRA_PROVIDER)
+        if (!apiKey.isNullOrBlank() || !baseUrl.isNullOrBlank() || !model.isNullOrBlank() || !voice.isNullOrBlank() || !provider.isNullOrBlank()) {
+            listOf(EXTRA_API_KEY, EXTRA_BASE_URL, EXTRA_MODEL, EXTRA_VOICE, EXTRA_PROVIDER).forEach { intent?.removeExtra(it) }
+            graph.configRequests.value = AppGraph.PendingConfig(apiKey?.trim(), baseUrl?.trim(), model?.trim(), voice?.trim(), provider?.trim())
         }
         // 深链：通知栏点击（或 adb --es bookId）直接打开指定书籍；autoplay 供自动化测试起播
         val bookId = intent?.getStringExtra(EXTRA_BOOK_ID)
@@ -86,6 +88,7 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_BASE_URL = "baseUrl"
         const val EXTRA_MODEL = "model"
         const val EXTRA_VOICE = "voice"
+        const val EXTRA_PROVIDER = "provider"
     }
 
     /**

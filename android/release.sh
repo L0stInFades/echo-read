@@ -38,7 +38,8 @@ if experimental:
 # 英文界面显示 notesEn（0.4.0 起的客户端认它；旧客户端按 ignoreUnknownKeys 忽略，照旧显示 notes）
 if notes_en:
     if experimental and "Experimental" not in notes_en:
-        notes_en = ("[Experimental] Bigger changes; there may be undiscovered issues. To skip it, tap “Later / ✕” on the update card.\n" + notes_en).strip()
+        # 英文说明只用 ASCII 标点：中文字体里弯引号是全角的，夹在英文句子里会撑出一大段空白
+        notes_en = ("[Experimental] Bigger changes; there may be undiscovered issues. To skip it, tap the X on the update card.\n" + notes_en).strip()
     manifest["notesEn"] = notes_en
 json.dump(manifest, open("update.json", "w", encoding="utf-8"), ensure_ascii=False, indent=2)
 PY

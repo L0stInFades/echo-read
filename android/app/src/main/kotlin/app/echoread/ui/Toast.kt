@@ -31,6 +31,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.echoread.ui.glass.LocalBackdrop
+import app.echoread.ui.glass.glass
+import app.echoread.ui.glass.glassShadow
 import app.echoread.ui.motion.EchoTransitions
 import app.echoread.ui.motion.PressScale
 import app.echoread.ui.motion.echoPress
@@ -102,8 +105,8 @@ object Toaster {
 @Composable
 fun ToastHost() {
     val c = echo
-    Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(top = 12.dp), contentAlignment = Alignment.TopCenter) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Box(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.statusBars).padding(top = 4.dp), contentAlignment = Alignment.TopCenter) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
             for (t in Toaster.items) {
                 key(t.id) {
                     AnimatedVisibility(visibleState = t.visible, enter = EchoTransitions.riseIn, exit = EchoTransitions.sinkOut) {
@@ -122,13 +125,15 @@ fun ToastHost() {
 @Composable
 private fun ToastPill(text: String, color: Color, action: ToastAction? = null) {
     val c = echo
+    val shape = RoundedCornerShape(22.dp)
     Row(
         modifier = Modifier
+            // 外圈留白给投影：入场动画会按内容边界裁剪，投影画在边界外就被切掉了
+            .padding(horizontal = 14.dp, vertical = 8.dp)
             .widthIn(max = 340.dp)
-            .shadow(18.dp, RoundedCornerShape(18.dp), spotColor = Color.Black.copy(alpha = 0.35f))
-            .background(c.card, RoundedCornerShape(18.dp))
-            .border(1.dp, c.border, RoundedCornerShape(18.dp))
-            .padding(horizontal = 18.dp, vertical = 11.dp),
+            .glassShadow(shape, Color.Black.copy(alpha = if (c.isDark) 0.45f else 0.16f), blur = 16.dp, dy = 5.dp)
+            .glass(shape, c.pillGlass, LocalBackdrop.current.takeIf { c.glassOn })
+            .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(

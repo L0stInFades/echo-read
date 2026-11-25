@@ -1,0 +1,770 @@
+{
+  "schema": 1,
+  "revision": 20261126,
+  "providers": [
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "kind": "openai",
+      "baseUrl": "https://openrouter.ai/api/v1",
+      "keyUrl": "https://openrouter.ai/settings/keys",
+      "docsUrl": "https://openrouter.ai/docs/guides/overview/multimodal/tts",
+      "keyHint": "sk-or-...",
+      "badges": ["aggregator", "free_models"],
+      "style": true,
+      "defaultModel": "hexgrad/kokoro-82m",
+      "defaultVoice": "zf_xiaoxiao",
+      "defaultVoiceEn": "af_heart",
+      "color": "#6467F2"
+    },
+    {
+      "id": "gemini",
+      "name": "Google Gemini",
+      "kind": "gemini",
+      "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
+      "keyUrl": "https://aistudio.google.com/apikey",
+      "docsUrl": "https://ai.google.dev/gemini-api/docs/speech-generation",
+      "keyHint": "AIza...",
+      "badges": ["free_tier", "cloning"],
+      "style": true,
+      "voiceOptional": true,
+      "models": [
+        {"id": "gemini-3.8-flash-tts", "name": "Gemini 3.8 Flash TTS", "langs": 130, "zh": true, "badges": ["flagship", "long_form"]},
+        {"id": "gemini-3.8-flash-lite-tts", "name": "Gemini 3.8 Flash-Lite TTS", "langs": 101, "zh": true, "badges": ["fast", "cheap"]}
+      ],
+      "defaultModel": "gemini-3.8-flash-tts",
+      "defaultVoice": "Kore",
+      "color": "#4285F4"
+    },
+    {
+      "id": "elevenlabs",
+      "name": "ElevenLabs",
+      "kind": "http",
+      "baseUrl": "https://api.elevenlabs.io",
+      "keyUrl": "https://elevenlabs.io/app/settings/api-keys",
+      "docsUrl": "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
+      "keyHint": "sk_...",
+      "badges": ["free_tier", "cloning"],
+      "maxChars": 5000,
+      "models": [
+        {"id": "eleven_v4", "name": "Eleven v4", "langs": 90, "zh": true, "badges": ["flagship", "expressive"]},
+        {"id": "eleven_v4_turbo", "name": "Eleven v4 Turbo", "langs": 90, "zh": true, "badges": ["fast"]},
+        {"id": "eleven_v3", "name": "Eleven v3", "langs": 70, "zh": true, "badges": ["expressive"]},
+        {"id": "eleven_multilingual_v2", "name": "Eleven Multilingual v2", "langs": 29, "zh": true, "badges": ["long_form"]},
+        {"id": "eleven_flash_v2_5", "name": "Eleven Flash v2.5", "langs": 32, "zh": true, "badges": ["fast", "cheap"]}
+      ],
+      "voices": [
+        {"id": "JBFqnCBsd6RMkjVDRZzb", "name": "George", "lang": "en", "gender": "m"}
+      ],
+      "defaultModel": "eleven_v4",
+      "defaultVoice": "JBFqnCBsd6RMkjVDRZzb",
+      "synth": {
+        "url": "{base}/v1/text-to-speech/{voice}?output_format=mp3_44100_128",
+        "headers": {"xi-api-key": "{key}"},
+        "json": {"text": "{text}", "model_id": "{model}"}
+      },
+      "listVoices": [
+        {
+          "url": "{base}/v2/voices?page_size=100",
+          "headers": {"xi-api-key": "{key}"},
+          "items": "voices",
+          "id": "voice_id",
+          "name": "name",
+          "lang": "labels.language",
+          "gender": "labels.gender",
+          "tags": "labels.accent,labels.descriptive|labels.description,labels.use_case",
+          "mine": "category",
+          "mineValues": ["cloned", "generated", "professional"],
+          "next": "next_page_token",
+          "nextParam": "next_page_token"
+        }
+      ],
+      "listModels": {
+        "url": "{base}/v1/models",
+        "headers": {"xi-api-key": "{key}"},
+        "id": "model_id",
+        "name": "name",
+        "where": "can_do_text_to_speech"
+      },
+      "color": "#111111"
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI",
+      "kind": "openai",
+      "baseUrl": "https://api.openai.com/v1",
+      "keyUrl": "https://platform.openai.com/api-keys",
+      "docsUrl": "https://developers.openai.com/api/docs/guides/text-to-speech",
+      "keyHint": "sk-...",
+      "style": true,
+      "maxChars": 4096,
+      "sunset": "2027-01-06",
+      "models": [
+        {"id": "gpt-4o-mini-tts", "name": "GPT-4o mini TTS", "zh": true, "badges": ["expressive"]},
+        {"id": "tts-1-hd", "name": "TTS-1 HD", "zh": true, "style": false,
+          "voices": [{"id": "alloy"}, {"id": "ash"}, {"id": "coral"}, {"id": "echo"}, {"id": "fable"}, {"id": "nova"}, {"id": "onyx"}, {"id": "sage"}, {"id": "shimmer"}]},
+        {"id": "tts-1", "name": "TTS-1", "zh": true, "style": false, "badges": ["fast"],
+          "voices": [{"id": "alloy"}, {"id": "ash"}, {"id": "coral"}, {"id": "echo"}, {"id": "fable"}, {"id": "nova"}, {"id": "onyx"}, {"id": "sage"}, {"id": "shimmer"}]}
+      ],
+      "voices": [
+        {"id": "marin", "lang": "multi"}, {"id": "cedar", "lang": "multi"}, {"id": "alloy", "lang": "multi"}, {"id": "ash", "lang": "multi"},
+        {"id": "ballad", "lang": "multi"}, {"id": "coral", "lang": "multi"}, {"id": "echo", "lang": "multi"}, {"id": "fable", "lang": "multi"},
+        {"id": "nova", "lang": "multi"}, {"id": "onyx", "lang": "multi"}, {"id": "sage", "lang": "multi"}, {"id": "shimmer", "lang": "multi"},
+        {"id": "verse", "lang": "multi"}
+      ],
+      "defaultModel": "gpt-4o-mini-tts",
+      "defaultVoice": "marin",
+      "color": "#0D0D0D"
+    },
+    {
+      "id": "azure",
+      "name": "Azure Speech",
+      "kind": "http",
+      "baseUrl": "https://{f.region}.tts.speech.microsoft.com",
+      "keyUrl": "https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/SpeechServices",
+      "docsUrl": "https://learn.microsoft.com/azure/ai-services/speech-service/rest-text-to-speech",
+      "badges": ["free_tier", "long_form"],
+      "fields": [
+        {"id": "region", "default": "eastasia", "hint": "eastasia / eastus / japaneast"}
+      ],
+      "voices": [
+        {"id": "zh-CN-XiaoxiaoNeural", "name": "晓晓 Xiaoxiao", "lang": "zh-CN", "gender": "f"},
+        {"id": "zh-CN-YunxiNeural", "name": "云希 Yunxi", "lang": "zh-CN", "gender": "m"},
+        {"id": "zh-CN-YunjianNeural", "name": "云健 Yunjian", "lang": "zh-CN", "gender": "m"},
+        {"id": "zh-CN-XiaoyiNeural", "name": "晓伊 Xiaoyi", "lang": "zh-CN", "gender": "f"},
+        {"id": "zh-CN-YunyangNeural", "name": "云扬 Yunyang", "lang": "zh-CN", "gender": "m"},
+        {"id": "zh-CN-Xiaoxiao:DragonHDFlashLatestNeural", "name": "晓晓 Xiaoxiao HD", "lang": "zh-CN", "gender": "f", "tags": ["HD"]},
+        {"id": "en-US-JennyNeural", "name": "Jenny", "lang": "en-US", "gender": "f"},
+        {"id": "en-US-GuyNeural", "name": "Guy", "lang": "en-US", "gender": "m"},
+        {"id": "en-US-AriaNeural", "name": "Aria", "lang": "en-US", "gender": "f"},
+        {"id": "en-US-JennyMultilingualNeural", "name": "Jenny Multilingual", "lang": "multi", "gender": "f"},
+        {"id": "en-US-Harper:MAI-Voice-2.1", "name": "Harper · MAI-Voice-2.1", "lang": "en-US", "gender": "f", "tags": ["MAI"]}
+      ],
+      "defaultVoice": "zh-CN-XiaoxiaoNeural",
+      "defaultVoiceEn": "en-US-JennyNeural",
+      "synth": {
+        "url": "{base}/cognitiveservices/v1",
+        "headers": {
+          "Ocp-Apim-Subscription-Key": "{key}",
+          "X-Microsoft-OutputFormat": "audio-24khz-96kbitrate-mono-mp3",
+          "User-Agent": "Lector"
+        },
+        "contentType": "application/ssml+xml",
+        "body": "<speak version='1.0' xml:lang='{voice|locale}'><voice name='{voice|xml}'>{text|xml}</voice></speak>"
+      },
+      "listVoices": [
+        {
+          "url": "{base}/cognitiveservices/voices/list",
+          "headers": {"Ocp-Apim-Subscription-Key": "{key}"},
+          "id": "ShortName",
+          "name": "LocalName|DisplayName",
+          "lang": "Locale",
+          "gender": "Gender"
+        }
+      ],
+      "color": "#0078D4"
+    },
+    {
+      "id": "cartesia",
+      "name": "Cartesia",
+      "kind": "http",
+      "baseUrl": "https://api.cartesia.ai",
+      "keyUrl": "https://play.cartesia.ai/keys",
+      "docsUrl": "https://docs.cartesia.ai/api-reference/tts/bytes",
+      "keyHint": "sk_car_...",
+      "badges": ["fast", "cloning"],
+      "models": [
+        {"id": "sonic-3.6", "name": "Sonic 3.6", "langs": 44, "zh": true, "badges": ["flagship"]},
+        {"id": "sonic-3.5", "name": "Sonic 3.5", "zh": true},
+        {"id": "sonic-3", "name": "Sonic 3", "zh": true}
+      ],
+      "voices": [
+        {"id": "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4", "name": "Skylar", "lang": "en", "gender": "f"},
+        {"id": "47c38ca4-5f35-497b-b1a3-415245fb35e1", "name": "Daniel", "lang": "en", "gender": "m"}
+      ],
+      "defaultModel": "sonic-3.6",
+      "defaultVoice": "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
+      "synth": {
+        "url": "{base}/tts/bytes",
+        "headers": {"Authorization": "Bearer {key}", "Cartesia-Version": "2026-08-14"},
+        "json": {
+          "model_id": "{model}",
+          "transcript": "{text}",
+          "voice": {"id": "{voice}"},
+          "language": "{lang}",
+          "output_format": {"container": "mp3", "sample_rate": 44100, "bit_rate": 128000}
+        }
+      },
+      "listVoices": [
+        {
+          "url": "{base}/voices?limit=100&language={uiLang}",
+          "headers": {"Authorization": "Bearer {key}", "Cartesia-Version": "2026-08-14"},
+          "items": "data",
+          "id": "id",
+          "name": "name",
+          "lang": "language",
+          "gender": "gender",
+          "tags": "tagline",
+          "maxPages": 1
+        }
+      ],
+      "color": "#1F6BFF"
+    },
+    {
+      "id": "inworld",
+      "name": "Inworld",
+      "kind": "openai",
+      "baseUrl": "https://api.inworld.ai/v1",
+      "keyUrl": "https://platform.inworld.ai/",
+      "docsUrl": "https://docs.inworld.ai/tts/openai-compatibility",
+      "badges": ["expressive", "cheap"],
+      "style": true,
+      "maxChars": 4000,
+      "models": [
+        {"id": "inworld-tts-2", "name": "Inworld TTS 2", "zh": true, "badges": ["flagship"]},
+        {"id": "inworld-tts-2-flash", "name": "Inworld TTS 2 Flash", "zh": true, "style": false, "badges": ["fast", "cheap"]}
+      ],
+      "voices": [
+        {"id": "Dennis", "lang": "en", "gender": "m"},
+        {"id": "Alex", "lang": "en", "gender": "m"}
+      ],
+      "defaultModel": "inworld-tts-2",
+      "defaultVoice": "Dennis",
+      "listVoices": [
+        {
+          "url": "https://api.inworld.ai/tts/v1/voices",
+          "headers": {"Authorization": "Basic {key}"},
+          "items": "voices",
+          "id": "voiceId",
+          "name": "displayName",
+          "lang": "languages.0",
+          "tags": "tags.0,tags.1",
+          "mine": "isCustom",
+          "mineValues": ["true"]
+        }
+      ],
+      "color": "#6C4CF1"
+    },
+    {
+      "id": "xai",
+      "name": "xAI Grok",
+      "kind": "http",
+      "baseUrl": "https://api.x.ai/v1",
+      "keyUrl": "https://console.x.ai/team/default/api-keys",
+      "docsUrl": "https://docs.x.ai/developers/model-capabilities/audio/text-to-speech",
+      "keyHint": "xai-...",
+      "badges": ["multilingual", "long_form"],
+      "voices": [
+        {"id": "eve", "name": "Eve", "lang": "multi", "gender": "f"},
+        {"id": "ara", "name": "Ara", "lang": "multi", "gender": "f"},
+        {"id": "rex", "name": "Rex", "lang": "multi", "gender": "m"},
+        {"id": "sal", "name": "Sal", "lang": "multi"}
+      ],
+      "defaultVoice": "eve",
+      "synth": {
+        "url": "{base}/tts",
+        "headers": {"Authorization": "Bearer {key}"},
+        "json": {
+          "text": "{text}",
+          "language": "auto",
+          "voice_id": "{voice}",
+          "output_format": {"codec": "mp3", "sample_rate": 24000, "bit_rate": 128000}
+        }
+      },
+      "listVoices": [
+        {
+          "url": "{base}/tts/voices",
+          "headers": {"Authorization": "Bearer {key}"},
+          "items": "voices",
+          "id": "voice_id",
+          "name": "name",
+          "lang": "language"
+        }
+      ],
+      "color": "#000000"
+    },
+    {
+      "id": "mistral",
+      "name": "Mistral Voxtral",
+      "kind": "http",
+      "baseUrl": "https://api.mistral.ai/v1",
+      "keyUrl": "https://console.mistral.ai/api-keys",
+      "docsUrl": "https://docs.mistral.ai/studio/audio/text-to-speech/generate-speech",
+      "badges": ["cloning"],
+      "models": [
+        {"id": "voxtral-mini-tts-3-0", "name": "Voxtral TTS 3", "langs": 35, "zh": true}
+      ],
+      "voices": [
+        {"id": "voice_3142", "name": "Mei", "lang": "zh", "gender": "f"},
+        {"id": "voice_478", "name": "Sheila", "lang": "en-US", "gender": "f"},
+        {"id": "gb_jane_neutral", "name": "Jane", "lang": "en-GB", "gender": "f"}
+      ],
+      "defaultModel": "voxtral-mini-tts-3-0",
+      "defaultVoice": "voice_3142",
+      "defaultVoiceEn": "voice_478",
+      "synth": {
+        "url": "{base}/audio/speech",
+        "headers": {"Authorization": "Bearer {key}"},
+        "json": {"model": "{model}", "input": "{text}", "voice_id": "{voice}", "response_format": "mp3"},
+        "response": {"type": "json", "audio": "audio_data", "encoding": "base64"}
+      },
+      "listVoices": [
+        {
+          "url": "{base}/audio/voices?limit=100",
+          "headers": {"Authorization": "Bearer {key}"},
+          "items": "items",
+          "id": "id",
+          "name": "name",
+          "lang": "languages.0",
+          "gender": "gender",
+          "maxPages": 1
+        }
+      ],
+      "color": "#FA520F"
+    },
+    {
+      "id": "deepgram",
+      "name": "Deepgram",
+      "kind": "http",
+      "baseUrl": "https://api.deepgram.com",
+      "keyUrl": "https://console.deepgram.com/",
+      "docsUrl": "https://developers.deepgram.com/docs/flux-tts/batch",
+      "badges": ["fast"],
+      "maxChars": 2000,
+      "voices": [
+        {"id": "flux-hannah-en", "name": "Hannah", "lang": "en", "gender": "f"},
+        {"id": "flux-haley-en", "name": "Haley", "lang": "en", "gender": "f"},
+        {"id": "flux-kit-en", "name": "Kit", "lang": "en"},
+        {"id": "flux-cliff-en", "name": "Cliff", "lang": "en", "gender": "m"},
+        {"id": "flux-wenjing-zh", "name": "文静 Wenjing", "lang": "zh", "gender": "f", "tags": ["Early Access"]},
+        {"id": "flux-haoran-zh", "name": "浩然 Haoran", "lang": "zh", "gender": "m", "tags": ["Early Access"]}
+      ],
+      "defaultVoice": "flux-wenjing-zh",
+      "defaultVoiceEn": "flux-hannah-en",
+      "synth": {
+        "url": "{base}/v2/speak?model={voice}&encoding=mp3",
+        "headers": {"Authorization": "Token {key}"},
+        "json": {"text": "{text}"}
+      },
+      "color": "#13EF93"
+    },
+    {
+      "id": "together",
+      "name": "Together AI",
+      "kind": "openai",
+      "baseUrl": "https://api.together.ai/v1",
+      "keyUrl": "https://api.together.ai/settings/api-keys",
+      "docsUrl": "https://docs.together.ai/docs/inference/text-to-speech/overview",
+      "badges": ["cheap"],
+      "models": [
+        {"id": "hexgrad/Kokoro-82M", "name": "Kokoro 82M", "langs": 8, "zh": true, "badges": ["cheap"],
+          "voices": [{"id": "zf_xiaoxiao", "name": "Xiaoxiao", "lang": "zh", "gender": "f"}, {"id": "zm_yunxi", "name": "Yunxi", "lang": "zh", "gender": "m"},
+            {"id": "af_heart", "name": "Heart", "lang": "en-US", "gender": "f"}, {"id": "am_michael", "name": "Michael", "lang": "en-US", "gender": "m"}]},
+        {"id": "Qwen/Qwen3-TTS-12Hz-1.7B", "name": "Qwen3 TTS", "langs": 10, "zh": true,
+          "voices": [{"id": "vivian", "name": "Vivian", "lang": "zh", "gender": "f"}, {"id": "serena", "name": "Serena", "lang": "zh", "gender": "f"},
+            {"id": "ryan", "name": "Ryan", "lang": "en", "gender": "m"}]},
+        {"id": "canopylabs/orpheus-3b-0.1-ft", "name": "Orpheus 3B", "badges": ["expressive"],
+          "voices": [{"id": "tara", "name": "Tara", "lang": "en", "gender": "f"}, {"id": "leo", "name": "Leo", "lang": "en", "gender": "m"}]}
+      ],
+      "defaultModel": "hexgrad/Kokoro-82M",
+      "defaultVoice": "zf_xiaoxiao",
+      "defaultVoiceEn": "af_heart",
+      "listVoices": [
+        {
+          "url": "{base}/voices?model={model}",
+          "headers": {"Authorization": "Bearer {key}"},
+          "items": "data.0.voices",
+          "id": "id",
+          "name": "name"
+        }
+      ],
+      "color": "#0F6FFF"
+    },
+    {
+      "id": "minimax",
+      "name": "MiniMax",
+      "kind": "http",
+      "baseUrl": "https://api.minimax.io",
+      "keyUrl": "https://platform.minimax.io/user-center/basic-information/interface-key",
+      "docsUrl": "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
+      "badges": ["long_form", "cloning"],
+      "maxChars": 3000,
+      "models": [
+        {"id": "speech-2.8-hd", "name": "Speech 2.8 HD", "zh": true, "badges": ["flagship"]},
+        {"id": "speech-2.8-turbo", "name": "Speech 2.8 Turbo", "zh": true, "badges": ["fast", "cheap"]},
+        {"id": "speech-2.6-hd", "name": "Speech 2.6 HD", "zh": true},
+        {"id": "speech-2.6-turbo", "name": "Speech 2.6 Turbo", "zh": true}
+      ],
+      "voices": [
+        {"id": "Chinese (Mandarin)_Radio_Host", "name": "Radio Host", "lang": "zh", "gender": "m"},
+        {"id": "Chinese (Mandarin)_Male_Announcer", "name": "Male Announcer", "lang": "zh", "gender": "m"},
+        {"id": "Chinese (Mandarin)_Gentleman", "name": "Gentleman", "lang": "zh", "gender": "m"},
+        {"id": "Chinese (Mandarin)_Lyrical_Voice", "name": "Lyrical Voice", "lang": "zh"},
+        {"id": "Chinese (Mandarin)_News_Anchor", "name": "News Anchor", "lang": "zh", "gender": "f"},
+        {"id": "English_expressive_narrator", "name": "Expressive Narrator", "lang": "en", "gender": "m"}
+      ],
+      "defaultModel": "speech-2.8-hd",
+      "defaultVoice": "Chinese (Mandarin)_Radio_Host",
+      "defaultVoiceEn": "English_expressive_narrator",
+      "synth": {
+        "url": "{base}/v1/t2a_v2",
+        "headers": {"Authorization": "Bearer {key}"},
+        "json": {
+          "model": "{model}",
+          "text": "{text}",
+          "stream": false,
+          "output_format": "hex",
+          "voice_setting": {"voice_id": "{voice}", "speed": 1, "vol": 1, "pitch": 0},
+          "audio_setting": {"sample_rate": 32000, "bitrate": 128000, "format": "mp3", "channel": 1}
+        },
+        "response": {
+          "type": "json", "audio": "data.audio", "encoding": "hex",
+          "errorCode": "base_resp.status_code", "okCodes": ["0"], "errorMessage": "base_resp.status_msg",
+          "errorKinds": {"1004": "auth", "2049": "auth", "1002": "rate", "1039": "rate", "1008": "quota", "2013": "bad", "1042": "bad"}
+        }
+      },
+      "listVoices": [
+        {
+          "method": "POST",
+          "url": "{base}/v1/get_voice",
+          "headers": {"Authorization": "Bearer {key}"},
+          "json": {"voice_type": "all"},
+          "items": "system_voice",
+          "mineItems": "voice_cloning|voice_generation",
+          "id": "voice_id",
+          "name": "voice_name",
+          "tags": "description.0",
+          "errorCode": "base_resp.status_code", "okCodes": ["0"], "errorMessage": "base_resp.status_msg",
+          "errorKinds": {"1004": "auth", "2049": "auth", "1002": "rate", "1008": "quota"}
+        }
+      ],
+      "color": "#E73562"
+    },
+    {
+      "id": "minimax-cn",
+      "name": "MiniMax 国内版",
+      "kind": "http",
+      "baseUrl": "https://api.minimax.cn",
+      "keyUrl": "https://platform.minimaxi.com/user-center/basic-information/interface-key",
+      "docsUrl": "https://platform.minimaxi.com/docs/api-reference/speech-t2a-http",
+      "region": "cn",
+      "badges": ["long_form", "cloning"],
+      "maxChars": 3000,
+      "models": [
+        {"id": "speech-2.8-hd", "name": "Speech 2.8 HD", "zh": true, "badges": ["flagship"]},
+        {"id": "speech-2.8-turbo", "name": "Speech 2.8 Turbo", "zh": true, "badges": ["fast", "cheap"]},
+        {"id": "speech-2.6-hd", "name": "Speech 2.6 HD", "zh": true},
+        {"id": "speech-2.6-turbo", "name": "Speech 2.6 Turbo", "zh": true}
+      ],
+      "voices": [
+        {"id": "audiobook_female_1", "name": "有声书女声 1", "lang": "zh", "gender": "f"},
+        {"id": "audiobook_male_1", "name": "有声书男声 1", "lang": "zh", "gender": "m"},
+        {"id": "male-qn-jingying", "name": "精英青年", "lang": "zh", "gender": "m"},
+        {"id": "female-chengshu", "name": "成熟女声", "lang": "zh", "gender": "f"},
+        {"id": "presenter_female", "name": "女主持", "lang": "zh", "gender": "f"},
+        {"id": "presenter_male", "name": "男主持", "lang": "zh", "gender": "m"},
+        {"id": "Chinese (Mandarin)_Radio_Host", "name": "电台主播", "lang": "zh", "gender": "m"},
+        {"id": "English_expressive_narrator", "name": "Expressive Narrator", "lang": "en", "gender": "m"}
+      ],
+      "defaultModel": "speech-2.8-hd",
+      "defaultVoice": "audiobook_female_1",
+      "defaultVoiceEn": "English_expressive_narrator",
+      "synth": {
+        "url": "{base}/v1/t2a_v2",
+        "headers": {"Authorization": "Bearer {key}"},
+        "json": {
+          "model": "{model}",
+          "text": "{text}",
+          "stream": false,
+          "output_format": "hex",
+          "voice_setting": {"voice_id": "{voice}", "speed": 1, "vol": 1, "pitch": 0},
+          "audio_setting": {"sample_rate": 32000, "bitrate": 128000, "format": "mp3", "channel": 1}
+        },
+        "response": {
+          "type": "json", "audio": "data.audio", "encoding": "hex",
+          "errorCode": "base_resp.status_code", "okCodes": ["0"], "errorMessage": "base_resp.status_msg",
+          "errorKinds": {"1004": "auth", "2049": "auth", "1002": "rate", "1039": "rate", "1008": "quota", "2013": "bad", "1042": "bad"}
+        }
+      },
+      "listVoices": [
+        {
+          "method": "POST",
+          "url": "{base}/v1/get_voice",
+          "headers": {"Authorization": "Bearer {key}"},
+          "json": {"voice_type": "all"},
+          "items": "system_voice",
+          "mineItems": "voice_cloning|voice_generation",
+          "id": "voice_id",
+          "name": "voice_name",
+          "tags": "description.0",
+          "errorCode": "base_resp.status_code", "okCodes": ["0"], "errorMessage": "base_resp.status_msg",
+          "errorKinds": {"1004": "auth", "2049": "auth", "1002": "rate", "1008": "quota"}
+        }
+      ],
+      "color": "#E73562"
+    },
+    {
+      "id": "fish",
+      "name": "Fish Audio",
+      "kind": "http",
+      "baseUrl": "https://api.fish.audio",
+      "keyUrl": "https://fish.audio/app/api-keys/",
+      "docsUrl": "https://docs.fish.audio/api-reference/endpoint/openapi-v1/text-to-speech",
+      "badges": ["cloning", "free_models", "expressive"],
+      "voiceMode": "free",
+      "voiceOptional": true,
+      "models": [
+        {"id": "s2.1-pro", "name": "S2.1 Pro", "zh": true, "badges": ["flagship"]},
+        {"id": "s2.1-pro-free", "name": "S2.1 Pro Free", "zh": true, "badges": ["free"]},
+        {"id": "s2-pro", "name": "S2 Pro", "zh": true},
+        {"id": "drama-3", "name": "Drama 3", "zh": true, "badges": ["expressive"]}
+      ],
+      "defaultModel": "s2.1-pro",
+      "synth": {
+        "url": "{base}/v1/tts",
+        "headers": {"Authorization": "Bearer {key}", "model": "{model}"},
+        "json": {"text": "{text}", "reference_id": "{voice?}", "format": "mp3", "mp3_bitrate": 128, "normalize": true, "latency": "normal"}
+      },
+      "listVoices": [
+        {
+          "url": "{base}/model?self=true&page_size=50",
+          "headers": {"Authorization": "Bearer {key}"},
+          "mineItems": "items",
+          "id": "_id",
+          "name": "title",
+          "lang": "languages.0",
+          "maxPages": 1
+        },
+        {
+          "url": "{base}/model?page_size=40&sort_by=task_count&language={uiLang}",
+          "headers": {"Authorization": "Bearer {key}"},
+          "items": "items",
+          "id": "_id",
+          "name": "title",
+          "lang": "languages.0",
+          "tags": "tags.0,tags.1",
+          "maxPages": 1
+        }
+      ],
+      "color": "#111827"
+    },
+    {
+      "id": "siliconflow",
+      "name": "SiliconFlow 硅基流动",
+      "kind": "openai",
+      "baseUrl": "https://api.siliconflow.cn/v1",
+      "keyUrl": "https://cloud.siliconflow.cn/account/ak",
+      "docsUrl": "https://docs.siliconflow.cn/docs/api/audio-speech-post",
+      "keyHint": "sk-...",
+      "region": "cn",
+      "badges": ["cheap", "cloning"],
+      "models": [
+        {"id": "FunAudioLLM/CosyVoice2-0.5B", "name": "CosyVoice 2", "zh": true, "badges": ["cheap"],
+          "voices": [
+            {"id": "FunAudioLLM/CosyVoice2-0.5B:anna", "name": "Anna", "lang": "multi", "gender": "f"},
+            {"id": "FunAudioLLM/CosyVoice2-0.5B:bella", "name": "Bella", "lang": "multi", "gender": "f"},
+            {"id": "FunAudioLLM/CosyVoice2-0.5B:claire", "name": "Claire", "lang": "multi", "gender": "f"},
+            {"id": "FunAudioLLM/CosyVoice2-0.5B:diana", "name": "Diana", "lang": "multi", "gender": "f"},
+            {"id": "FunAudioLLM/CosyVoice2-0.5B:alex", "name": "Alex", "lang": "multi", "gender": "m"},
+            {"id": "FunAudioLLM/CosyVoice2-0.5B:benjamin", "name": "Benjamin", "lang": "multi", "gender": "m"},
+            {"id": "FunAudioLLM/CosyVoice2-0.5B:charles", "name": "Charles", "lang": "multi", "gender": "m"},
+            {"id": "FunAudioLLM/CosyVoice2-0.5B:david", "name": "David", "lang": "multi", "gender": "m"}
+          ]}
+      ],
+      "defaultModel": "FunAudioLLM/CosyVoice2-0.5B",
+      "defaultVoice": "FunAudioLLM/CosyVoice2-0.5B:anna",
+      "listVoices": [
+        {
+          "url": "{base}/audio/voice/list",
+          "headers": {"Authorization": "Bearer {key}"},
+          "mineItems": "results",
+          "id": "uri",
+          "name": "customName"
+        }
+      ],
+      "color": "#6E29F6"
+    },
+    {
+      "id": "volcengine",
+      "name": "火山引擎 · 豆包语音",
+      "kind": "http",
+      "baseUrl": "https://openspeech.bytedance.com",
+      "keyUrl": "https://console.volcengine.com/speech/new/setting/apikeys",
+      "docsUrl": "https://www.volcengine.com/docs/6561/1598757",
+      "region": "cn",
+      "badges": ["long_form", "expressive"],
+      "maxChars": 1000,
+      "models": [
+        {"id": "seed-tts-2.0", "name": "豆包语音合成 2.0", "zh": true, "badges": ["flagship"]},
+        {"id": "seed-tts-1.0", "name": "豆包语音合成 1.0", "zh": true, "voices": []}
+      ],
+      "voices": [
+        {"id": "zh_female_vv_uranus_bigtts", "name": "Vivi", "lang": "zh", "gender": "f"},
+        {"id": "zh_female_xiaohe_uranus_bigtts", "name": "小何", "lang": "zh", "gender": "f"},
+        {"id": "zh_male_m191_uranus_bigtts", "name": "云舟", "lang": "zh", "gender": "m"},
+        {"id": "zh_male_baqiqingshu_uranus_bigtts", "name": "霸气青叔", "lang": "zh", "gender": "m", "tags": ["有声阅读"]},
+        {"id": "zh_male_xuanyijieshuo_uranus_bigtts", "name": "悬疑解说", "lang": "zh", "gender": "m", "tags": ["有声阅读"]},
+        {"id": "zh_male_ruyayichen_uranus_bigtts", "name": "儒雅逸辰", "lang": "zh", "gender": "m"},
+        {"id": "en_female_dacey_uranus_bigtts", "name": "Dacey", "lang": "en", "gender": "f"},
+        {"id": "en_male_tim_uranus_bigtts", "name": "Tim", "lang": "en", "gender": "m"}
+      ],
+      "defaultModel": "seed-tts-2.0",
+      "defaultVoice": "zh_female_vv_uranus_bigtts",
+      "defaultVoiceEn": "en_female_dacey_uranus_bigtts",
+      "synth": {
+        "url": "{base}/api/v3/tts/unidirectional",
+        "headers": {"X-Api-Key": "{key}", "X-Api-Resource-Id": "{model}"},
+        "json": {
+          "user": {"uid": "lector"},
+          "req_params": {"text": "{text}", "speaker": "{voice}", "audio_params": {"format": "mp3", "sample_rate": 24000}}
+        },
+        "response": {
+          "type": "lines", "audio": "data", "encoding": "base64",
+          "errorCode": "code|header.code", "okCodes": ["0", "20000000"], "errorMessage": "message|header.message"
+        }
+      },
+      "color": "#3370FF"
+    },
+    {
+      "id": "dashscope",
+      "name": "阿里云百炼 · 通义千问 TTS",
+      "kind": "http",
+      "baseUrl": "https://dashscope.aliyuncs.com/api/v1",
+      "keyUrl": "https://bailian.console.aliyun.com/?tab=model#/api-key",
+      "docsUrl": "https://help.aliyun.com/zh/model-studio/qwen-tts-api",
+      "keyHint": "sk-...",
+      "region": "cn",
+      "badges": ["cheap", "multilingual"],
+      "maxChars": 600,
+      "models": [
+        {"id": "qwen3-tts-flash", "name": "Qwen3 TTS Flash", "zh": true, "badges": ["fast", "cheap"]}
+      ],
+      "voices": [
+        {"id": "Cherry", "lang": "multi", "gender": "f"},
+        {"id": "Serena", "lang": "multi", "gender": "f"},
+        {"id": "Ethan", "lang": "multi", "gender": "m"},
+        {"id": "Chelsie", "lang": "multi", "gender": "f"},
+        {"id": "Momo", "lang": "multi"},
+        {"id": "Vivian", "lang": "multi", "gender": "f"},
+        {"id": "Moon", "lang": "multi"},
+        {"id": "Maia", "lang": "multi", "gender": "f"},
+        {"id": "Kai", "lang": "multi", "gender": "m"},
+        {"id": "Nofish", "lang": "multi"},
+        {"id": "Bella", "lang": "multi", "gender": "f"}
+      ],
+      "defaultModel": "qwen3-tts-flash",
+      "defaultVoice": "Cherry",
+      "synth": {
+        "url": "{base}/services/aigc/multimodal-generation/generation",
+        "headers": {"Authorization": "Bearer {key}"},
+        "json": {"model": "{model}", "input": {"text": "{text}", "voice": "{voice}"}},
+        "response": {"type": "json", "audio": "output.audio.url", "encoding": "url"}
+      },
+      "color": "#FF6A00"
+    },
+    {
+      "id": "zhipu",
+      "name": "智谱 GLM-TTS",
+      "kind": "openai",
+      "baseUrl": "https://open.bigmodel.cn/api/paas/v4",
+      "keyUrl": "https://bigmodel.cn/usercenter/proj-mgmt/apikeys",
+      "docsUrl": "https://docs.bigmodel.cn/",
+      "region": "cn",
+      "badges": ["cheap"],
+      "format": "wav",
+      "maxChars": 1024,
+      "models": [
+        {"id": "glm-tts", "name": "GLM-TTS", "zh": true}
+      ],
+      "voices": [
+        {"id": "tongtong", "name": "彤彤", "lang": "zh"},
+        {"id": "chuichui", "name": "锤锤", "lang": "zh"},
+        {"id": "xiaochen", "name": "小陈", "lang": "zh"},
+        {"id": "jam", "name": "Jam", "lang": "zh"},
+        {"id": "kazi", "name": "Kazi", "lang": "zh"},
+        {"id": "douji", "name": "Douji", "lang": "zh"},
+        {"id": "luodo", "name": "Luodo", "lang": "zh"}
+      ],
+      "defaultModel": "glm-tts",
+      "defaultVoice": "tongtong",
+      "color": "#3859FF"
+    },
+    {
+      "id": "stepfun",
+      "name": "阶跃星辰 StepFun",
+      "kind": "openai",
+      "baseUrl": "https://api.stepfun.com/v1",
+      "keyUrl": "https://platform.stepfun.com/interface-key",
+      "docsUrl": "https://platform.stepfun.com/docs/zh/api-reference/audio/create-audio",
+      "region": "cn",
+      "badges": ["long_form", "expressive"],
+      "style": true,
+      "styleParam": "instruction",
+      "maxChars": 1000,
+      "models": [
+        {"id": "stepaudio-3-tts", "name": "StepAudio 3 TTS", "zh": true, "badges": ["flagship"]},
+        {"id": "stepaudio-2.5-tts", "name": "StepAudio 2.5 TTS", "zh": true},
+        {"id": "step-tts-2", "name": "Step TTS 2", "zh": true, "style": false},
+        {"id": "step-tts-mini", "name": "Step TTS Mini", "zh": true, "style": false, "badges": ["fast", "cheap"]}
+      ],
+      "voices": [
+        {"id": "zixinnansheng", "name": "自信男声", "lang": "zh", "gender": "m", "tags": ["有声书"]},
+        {"id": "wenrougongzi", "name": "温柔公子", "lang": "zh", "gender": "m", "tags": ["有声书"]},
+        {"id": "wenxiuxiaozhe", "name": "文秀小哲", "lang": "zh", "tags": ["有声书"]},
+        {"id": "cixingnansheng", "name": "磁性男声", "lang": "zh", "gender": "m"},
+        {"id": "boyinnansheng", "name": "播音男声", "lang": "zh", "gender": "m"},
+        {"id": "wenrounvsheng", "name": "温柔女声", "lang": "zh", "gender": "f"}
+      ],
+      "defaultModel": "stepaudio-3-tts",
+      "defaultVoice": "wenrounvsheng",
+      "listVoices": [
+        {
+          "url": "{base}/audio/system_voices?model={model}",
+          "headers": {"Authorization": "Bearer {key}"},
+          "items": "voices"
+        }
+      ],
+      "color": "#0057FF"
+    },
+    {
+      "id": "kokoro-local",
+      "name": "Kokoro-FastAPI",
+      "kind": "openai",
+      "baseUrl": "",
+      "baseHint": "http://192.168.1.10:8880/v1",
+      "docsUrl": "https://github.com/remsky/Kokoro-FastAPI",
+      "region": "local",
+      "badges": ["local", "free"],
+      "keyOptional": true,
+      "models": [
+        {"id": "kokoro", "name": "Kokoro 82M", "langs": 8, "zh": true}
+      ],
+      "voices": [
+        {"id": "zf_xiaoxiao", "name": "Xiaoxiao", "lang": "zh", "gender": "f"},
+        {"id": "zm_yunxi", "name": "Yunxi", "lang": "zh", "gender": "m"},
+        {"id": "af_heart", "name": "Heart", "lang": "en-US", "gender": "f"},
+        {"id": "am_michael", "name": "Michael", "lang": "en-US", "gender": "m"}
+      ],
+      "defaultModel": "kokoro",
+      "defaultVoice": "zf_xiaoxiao",
+      "defaultVoiceEn": "af_heart",
+      "listVoices": [
+        {"url": "{base}/audio/voices", "items": "voices", "id": "id", "name": "name"}
+      ],
+      "color": "#4B5563"
+    },
+    {
+      "id": "custom",
+      "name": "OpenAI-compatible",
+      "kind": "openai",
+      "baseUrl": "",
+      "baseHint": "https://api.example.com/v1",
+      "region": "local",
+      "keyOptional": true,
+      "style": true,
+      "voiceMode": "free",
+      "voiceOptional": true,
+      "color": "#64748B"
+    }
+  ]
+}

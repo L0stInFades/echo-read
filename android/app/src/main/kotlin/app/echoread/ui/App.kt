@@ -7,6 +7,10 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import app.echoread.ui.glass.LocalBackdrop
+import app.echoread.ui.glass.backdropSource
+import app.echoread.ui.glass.rememberBackdrop
 import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -34,43 +38,60 @@ import app.echoread.ui.motion.EchoMotion
 import app.echoread.ui.motion.MotionDriver
 import app.echoread.ui.motion.preemptable
 
-/** 外部传入配置的确认卡片：展示脱敏 Key 与目标模型，用户确认后才写入 */
+/**
+ * 外部传入配置的确认卡片：展示脱敏 Key 与目标服务，用户确认后才写入。
+ * 写给哪个服务：指定了 provider 就是那一家；否则按 baseUrl 认；都没有就写给当前的 OpenAI 兼容服务。
+ */
 @Composable
 private fun androidx.compose.foundation.layout.BoxScope.ConfigConfirmSheet(graph: AppGraph) {
     val c = echo
     val pending by graph.configRequests.collectAsState()
-    var last by androidx.compose.runtime.remember { mutableStateOf<AppGraph.PendingConfig?>(null) }
+    var last by remember { mutableStateOf<AppGraph.PendingConfig?>(null) }
     if (pending != null) last = pending
     val p = pending ?: last
     EchoSheet(open = pending != null, onDismiss = { graph.configRequests.value = null }, title = S.settings.externalConfigTitle, maxHeightFraction = 0.6f) {
         if (p != null) {
+            val tts = graph.settings.tts.value
+            val spec = p.provider?.takeIf { it.isNotBlank() }?.let { app.echoread.tts.Providers.spec(it, tts) }
+                ?: p.baseUrl?.takeIf { it.isNotBlank() }?.let { app.echoread.tts.Providers.specForBase(it) }
             val rows = listOfNotNull(
-                p.apiKey?.takeIf { it.isNotBlank() }?.let { "API Key" to (it.take(10) + "…" + it.takeLast(4)) },
-                p.baseUrl?.takeIf { it.isNotBlank() }?.let { "Base URL" to it },
+                (spec?.name ?: p.provider)?.takeIf { it.isNotBlank() }?.let { S.providers.service to it },
+                p.apiKey?.takeIf { it.isNotBlank() }?.let { S.providers.apiKey to (it.take(6) + "..." + it.takeLast(4)) },
+                p.baseUrl?.takeIf { it.isNotBlank() }?.let { S.providers.address to it },
                 p.model?.takeIf { it.isNotBlank() }?.let { S.common.model to it },
                 p.voice?.takeIf { it.isNotBlank() }?.let { S.common.voice to it }
             )
-            androidx.compose.material3.Text(S.settings.externalConfigHint, color = c.text2, fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
+            androidx.compose.material3.Text(S.settings.externalConfigHint, color = c.text2, style = androidx.compose.material3.MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 4.dp))
             androidx.compose.foundation.layout.Spacer(Modifier.height(12.dp))
-            for ((k, v) in rows) {
-                androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
-                    androidx.compose.material3.Text(k, color = c.text3, fontSize = androidx.compose.ui.unit.TextUnit(12f, androidx.compose.ui.unit.TextUnitType.Sp), modifier = Modifier.width(72.dp))
-                    androidx.compose.material3.Text(v, color = c.text, fontSize = androidx.compose.ui.unit.TextUnit(13f, androidx.compose.ui.unit.TextUnitType.Sp))
-                }
+            SettingsSection {
+                for ((k, v) in rows) row(k, end = v)
             }
             androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
             androidx.compose.foundation.layout.Row(Modifier.fillMaxWidth(), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp)) {
-                OutlineButton(S.settings.cancel, Modifier.weight(1f)) { graph.configRequests.value = null }
+                SoftButton(S.settings.cancel, Modifier.weight(1f)) { graph.configRequests.value = null }
                 GradientButton(S.settings.apply, Modifier.weight(1f)) {
-                    graph.settings.updateOpenAI { cfg ->
-                        cfg.copy(
-                            apiKey = p.apiKey?.takeIf { it.isNotBlank() } ?: cfg.apiKey,
-                            baseUrl = p.baseUrl?.takeIf { it.isNotBlank() } ?: cfg.baseUrl
+                    val settings = graph.settings
+                    val cur = settings.tts.value
+                    val target = when {
+                        spec != null && spec.id != app.echoread.tts.Providers.CUSTOM -> settings.addProfile(spec)
+                        !p.baseUrl.isNullOrBlank() ->
+                            // 认不出的地址：新建一个自定义端点，不覆盖已有服务的配置
+                            cur.profiles.firstOrNull { it.baseUrl.trimEnd('/') == p.baseUrl.trimEnd('/') }
+                                ?: settings.addProfile(app.echoread.tts.Providers.spec(app.echoread.tts.Providers.CUSTOM)!!)
+                        else -> cur.activeProfile?.takeIf { app.echoread.tts.Providers.specOf(it, cur).kind == app.echoread.core.ProviderSpec.KIND_OPENAI }
+                            ?: cur.profiles.firstOrNull { app.echoread.tts.Providers.specOf(it, cur).kind == app.echoread.core.ProviderSpec.KIND_OPENAI }
+                            ?: settings.addProfile(app.echoread.tts.Providers.spec(app.echoread.tts.Providers.OPENROUTER)!!)
+                    }
+                    val known = spec != null && spec.id != app.echoread.tts.Providers.CUSTOM
+                    settings.updateProfile(target.id) { prof ->
+                        prof.copy(
+                            apiKey = p.apiKey?.takeIf { it.isNotBlank() } ?: prof.apiKey,
+                            baseUrl = if (known) prof.baseUrl else p.baseUrl?.takeIf { it.isNotBlank() } ?: prof.baseUrl
                         )
                     }
-                    p.model?.takeIf { it.isNotBlank() }?.let { graph.settings.setModel(it) }
-                    p.voice?.takeIf { it.isNotBlank() }?.let { graph.settings.setVoice(it) }
-                    graph.settings.updateTts { it.copy(provider = app.echoread.core.TtsProvider.OPENAI) }
+                    p.model?.takeIf { it.isNotBlank() }?.let { settings.setModel(target.id, it) }
+                    p.voice?.takeIf { it.isNotBlank() }?.let { settings.setVoice(target.id, it) }
+                    settings.setActive(target.id)
                     graph.configRequests.value = null
                     Toaster.success(S.settings.settingsApplied)
                 }
@@ -84,7 +105,8 @@ private data class PaletteChoice(
     val dynamic: Boolean,
     val seed: Int,
     val style: app.echoread.core.ColorStyle,
-    val contrast: Float
+    val contrast: Float,
+    val glass: Boolean
 )
 
 private const val SHELF_KEY = "__shelf__"
@@ -130,18 +152,22 @@ fun EchoApp(graph: AppGraph) {
     // 后者每拖动一格字号/行距/热区滑块都会发一个新实例，会把整个组合根连同书架一起作废重组。
     val palette by remember(graph) {
         graph.settings.reader.map {
-            PaletteChoice(it.dynamicColor, it.seedColor, it.colorStyle, it.contrast)
+            PaletteChoice(it.dynamicColor, it.seedColor, it.colorStyle, it.contrast, it.glass)
         }.distinctUntilChanged()
     }.collectAsState(graph.settings.reader.value.let {
-        PaletteChoice(it.dynamicColor, it.seedColor, it.colorStyle, it.contrast)
+        PaletteChoice(it.dynamicColor, it.seedColor, it.colorStyle, it.contrast, it.glass)
     })
     EchoTheme(
         dynamic = palette.dynamic,
+        glass = palette.glass,
         seed = Color(palette.seed),
         style = palette.style,
         contrast = palette.contrast
     ) {
-        Box(Modifier.fillMaxSize().background(echo.canvas).semantics { testTagsAsResourceId = true }) {
+        val rootBackdrop = rememberBackdrop()
+        Box(Modifier.fillMaxSize().semantics { testTagsAsResourceId = true }) {
+          // 两屏的画面合成一块背板：根层的面板（错误详情、外部配置确认）与提示条从这里采样做玻璃
+          Box(Modifier.fillMaxSize().backdropSource(rootBackdrop, echo.canvas)) {
             // 重入闸门：转场进行中忽略重复「打开」。返回必须永远生效，否则转场中按返回会 pause 播放却留在阅读器
             val navigate: (String?) -> Unit = { to -> if (to == null || !nav.isSettling) bookId = to }
             // 书架：常驻在底层，阅读器打开时向左退 30% 并压暗（视差），返回时随手指回来
@@ -180,10 +206,13 @@ fun EchoApp(graph: AppGraph) {
                     ReaderScreen(id, graph, nav, autoplay = autoplayFor == id, onAutoplayConsumed = { autoplayFor = null }) { navigate(null) }
                 }
             }
+          }
+          CompositionLocalProvider(LocalBackdrop provides rootBackdrop) {
             ConfigConfirmSheet(graph)
             // 错误详情：全局单宿主，任何界面都能唤起（网络错误可能来自设置、阅读器或书架）
             ErrorDetailHost()
             ToastHost()
+          }
         }
     }
 }

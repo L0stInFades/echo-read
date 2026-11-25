@@ -73,7 +73,11 @@ import app.echoread.AppGraph
 import app.echoread.core.BookMeta
 import app.echoread.core.readFraction
 import app.echoread.core.started
-import app.echoread.core.TtsProvider
+import app.echoread.tts.Providers
+import app.echoread.ui.glass.LocalBackdrop
+import app.echoread.ui.glass.backdropSource
+import app.echoread.ui.glass.rememberBackdrop
+import androidx.compose.runtime.CompositionLocalProvider
 import app.echoread.core.i18n.I18n
 import app.echoread.data.UpdateState
 import androidx.compose.ui.platform.LocalContext
@@ -130,7 +134,8 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
         }
     }
 
-    val collator = remember { Collator.getInstance(Locale.CHINESE) }
+    // 按界面语言的规则排序：中文按拼音，英文按字母（不再一律用中文排序规则）
+    val collator = remember(I18n.english) { Collator.getInstance(I18n.locale) }
     // remember 的 key 已经覆盖全部输入，外面再包一层 derivedStateOf 只是多一层观察开销
     val filtered = remember(books, query, sort) {
         val q = query.trim().lowercase()
@@ -159,7 +164,10 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
         }
     }
 
-    Box(Modifier.fillMaxSize().background(c.canvas)) {
+    val backdrop = rememberBackdrop()
+    Box(Modifier.fillMaxSize()) {
+      // 书架的画面（连同页面底色）交给背板；下面的面板是它的兄弟节点，从这里采样做玻璃
+      Box(Modifier.fillMaxSize().backdropSource(backdrop, c.canvas)) {
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -204,15 +212,16 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
 
             item("update") { UpdateCard(graph) }
 
-            val geminiEngine = tts.provider == TtsProvider.GEMINI
-            if ((tts.provider == TtsProvider.OPENAI && tts.openai.apiKey.isBlank()) || (geminiEngine && tts.gemini.apiKey.isBlank())) {
+            // 当前服务还缺 Key（或自建服务还没填地址）：书架顶上提醒一次，点了直接进设置
+            val activeProfile = tts.activeProfile
+            val activeSpec = activeProfile?.let { Providers.specOf(it, tts) }
+            if (activeProfile != null && activeSpec != null && !Providers.ready(activeSpec, activeProfile)) {
                 item("keyBanner") {
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .padding(bottom = 14.dp)
-                            .background(c.card, RoundedCornerShape(Radius.lg))
-                            .border(1.dp, c.border, RoundedCornerShape(Radius.lg))
+                            .background(c.card, RoundedCornerShape(Radius.lgPlus))
                             .echoPress(pressedScale = PressScale.Tile) { showSettings = true }
                             .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -223,14 +232,12 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(
-                                if (geminiEngine) S.shelf.geminiKeyBannerTitle
-                                else S.shelf.keyBannerTitle,
-                                color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold
+                                S.shelf.keyBannerTitle(serviceName(activeSpec, activeProfile)),
+                                color = c.text, style = MaterialTheme.typography.titleSmallEmphasized, maxLines = 2, overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                if (geminiEngine) S.shelf.geminiKeyBannerSubtitle
-                                else S.shelf.keyBannerSubtitle,
-                                color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis
+                                S.shelf.keyBannerSubtitle,
+                                color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis
                             )
                         }
                         Icon(EchoIcons.ChevronRight, null, tint = c.text3, modifier = Modifier.size(16.dp))
@@ -242,19 +249,19 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                 item("empty") {
                     Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
-                            Modifier.size(96.dp).background(c.card, RoundedCornerShape(Radius.xl)).border(1.dp, c.border, RoundedCornerShape(Radius.xl)),
+                            Modifier.size(96.dp).background(c.card, RoundedCornerShape(Radius.xl)),
                             contentAlignment = Alignment.Center
                         ) { Icon(EchoIcons.Book, null, tint = c.accent, modifier = Modifier.size(40.dp)) }
                         Spacer(Modifier.height(20.dp))
                         Text(S.shelf.emptyTitle, color = c.text, style = MaterialTheme.typography.titleLargeEmphasized)
                         Spacer(Modifier.height(6.dp))
-                        Text(S.shelf.emptyHint, color = c.text2, style = MaterialTheme.typography.bodyMedium, lineHeight = 20.sp, textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        Text(S.shelf.emptyHint, color = c.text2, style = MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(horizontal = 24.dp))
                         Spacer(Modifier.height(24.dp))
                         GradientButton(S.shelf.importYourFirstBook, height = 46.dp) { showImport = true }
                         Spacer(Modifier.height(10.dp))
-                        OutlineButton(S.shelf.trySample, Modifier.testTag("shelf.sample")) { openSample() }
+                        SoftButton(S.shelf.trySample, Modifier.testTag("shelf.sample")) { openSample() }
                         Spacer(Modifier.height(12.dp))
-                        Text(S.shelf.howToUseLink, color = c.text3, style = MaterialTheme.typography.bodySmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showHelp = true }.padding(6.dp))
+                        TextAction(S.shelf.howToUseLink, color = c.text2) { showHelp = true }
                     }
                 }
             } else {
@@ -265,37 +272,14 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                 }
                 item("search") {
                     Column(Modifier.padding(bottom = 14.dp)) {
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .background(c.card, CircleShape)
-                                .border(1.dp, c.border, CircleShape)
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(EchoIcons.Search, null, tint = c.text3, modifier = Modifier.size(15.dp))
-                            Spacer(Modifier.width(8.dp))
-                            // 固定行高 + 去掉字体内边距：自定义系统字体（如手写体）下光标与文字基线才能对齐
-                            val fieldStyle = fieldTextStyle(c.text, 13)
-                            BasicTextField(
-                                value = query, onValueChange = { query = it }, singleLine = true,
-                                textStyle = fieldStyle, cursorBrush = SolidColor(c.accent),
-                                modifier = Modifier.weight(1f).height(22.dp),
-                                decorationBox = { inner ->
-                                    Box(Modifier.fillMaxWidth().height(22.dp), contentAlignment = Alignment.CenterStart) {
-                                        if (query.isEmpty()) Text(S.shelf.searchTitleOrAuthor, style = fieldStyle.copy(color = c.text3))
-                                        inner()
-                                    }
-                                }
-                            )
-                            if (query.isNotEmpty()) Text(S.common.clear, color = c.text3, style = MaterialTheme.typography.labelSmall, modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { query = "" })
-                        }
+                        SearchField(query, { query = it }, S.shelf.searchTitleOrAuthor, background = c.card)
                         Spacer(Modifier.height(10.dp))
-                        // 排序在语义上是单选，不是筛选标签 —— 用 M3 Expressive 的连接式按钮组，
-                        // 相连的圆角把「三选一」这件事直接画出来，读屏也会正确读成单选组。
+                        // 排序在语义上是单选，不是筛选标签：分段控件把「三选一」直接画出来，读屏也会读成单选组
                         EchoSegmented(
                             items = SortMode.entries.map { SegmentItem(it.label) },
-                            selectedIndex = SortMode.entries.indexOf(sort)
+                            selectedIndex = SortMode.entries.indexOf(sort),
+                            containerColor = c.card,
+                            height = 40.dp
                         ) { sort = SortMode.entries[it] }
                     }
                 }
@@ -361,9 +345,9 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                             compositingStrategy = CompositingStrategy.ModulateAlpha
                         }
                     )
-                    IconButtonEcho(EchoIcons.Help, S.common.howToUse, background = c.card.copy(alpha = 0.9f)) { showHelp = true }
-                    Spacer(Modifier.width(8.dp))
-                    IconButtonEcho(EchoIcons.Settings, S.common.voiceSettings, background = c.card.copy(alpha = 0.9f)) { showSettings = true }
+                    IconButtonEcho(EchoIcons.Help, S.common.howToUse, tint = c.text, background = c.card) { showHelp = true }
+                    Spacer(Modifier.width(4.dp))
+                    IconButtonEcho(EchoIcons.Settings, S.common.voiceSettings, tint = c.text, background = c.card) { showSettings = true }
                 }
             }
             Box(Modifier.fillMaxWidth().height(1.dp).drawBehind { drawRect(borderColor, alpha = collapse.value) })
@@ -384,7 +368,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                         visible = collapse.value < 0.85f,
                         alignment = Alignment.BottomCenter
                     )
-                    .shadow(20.dp, CircleShape, spotColor = c.accent.copy(alpha = 0.55f))
+                    .shadow(16.dp, CircleShape, spotColor = c.accent.copy(alpha = 0.5f), ambientColor = c.accent.copy(alpha = 0.2f))
             ) { showImport = true }
         }
 
@@ -405,6 +389,9 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
             }
         }
 
+      }
+
+      CompositionLocalProvider(LocalBackdrop provides backdrop) {
         ImportSheet(open = showImport, graph = graph) { showImport = false }
         TtsSettingsSheet(open = showSettings, graph = graph) { showSettings = false }
         HelpSheet(open = showHelp, graph = graph) { showHelp = false }
@@ -416,6 +403,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
             }
             actionBook = null
         }
+      }
     }
 }
 
@@ -433,8 +421,8 @@ private fun UpdateCard(graph: AppGraph) {
             Modifier
                 .fillMaxWidth()
                 .padding(bottom = 14.dp)
-                .background(c.card, RoundedCornerShape(Radius.lg))
-                .border(1.dp, c.accent.copy(alpha = 0.35f), RoundedCornerShape(Radius.lg))
+                .background(c.card, RoundedCornerShape(Radius.lgPlus))
+                .border(1.dp, c.accent.copy(alpha = 0.3f), RoundedCornerShape(Radius.lgPlus))
                 .padding(14.dp)
         ) {
             val info = when (s) {
@@ -531,7 +519,6 @@ private fun ContinueCard(b: BookMeta, modifier: Modifier = Modifier, onClick: ()
         modifier
             .fillMaxWidth()
             .background(c.cardAlt, RoundedCornerShape(Radius.xl))
-            .border(1.dp, c.accent.copy(alpha = 0.18f), RoundedCornerShape(Radius.xl))
             .echoPress(pressedScale = PressScale.Tile, onClick = onClick)
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -568,16 +555,15 @@ fun BoxScope.BookActionSheet(book: BookMeta?, onClose: () -> Unit, onOpen: (Book
         if (b != null) {
             Text(
                 S.shelf.bookMeta(b.author, b.format.label.uppercase(), b.chapterCount, formatChars(b.totalChars)) + (b.intro?.let { "\n$it" } ?: ""),
-                color = c.text3, style = MaterialTheme.typography.bodySmall, lineHeight = 18.sp, maxLines = 6, overflow = TextOverflow.Ellipsis
+                color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 6, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(horizontal = 4.dp)
             )
-            Spacer(Modifier.height(12.dp))
-            Box(
-                Modifier.fillMaxWidth().background(c.cardAlt, RoundedCornerShape(Radius.md)).echoPress(pressedScale = PressScale.Tile) { onOpen(b) }.padding(16.dp)
-            ) { Text(S.shelf.continueReading, color = c.text, style = MaterialTheme.typography.bodyMedium) }
-            Spacer(Modifier.height(8.dp))
-            Box(
-                Modifier.fillMaxWidth().background(c.danger.copy(alpha = 0.12f), RoundedCornerShape(Radius.md)).echoPress(pressedScale = PressScale.Tile) { onDelete(b) }.padding(16.dp)
-            ) { Text(S.shelf.deleteFromLibrary, color = c.danger, style = MaterialTheme.typography.bodyMedium) }
+            Spacer(Modifier.height(14.dp))
+            SettingsSection {
+                row(S.shelf.continueReading, trailing = { ChevronEnd() }, onClick = { onOpen(b) })
+                row(S.shelf.deleteFromLibrary, icon = EchoIcons.Trash, onClick = { onDelete(b) })
+            }
+            Spacer(Modifier.height(4.dp))
         }
     }
 }

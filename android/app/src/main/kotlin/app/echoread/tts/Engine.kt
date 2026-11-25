@@ -5,7 +5,6 @@ import app.echoread.core.Hash
 import app.echoread.core.PlayerState
 import app.echoread.core.Range
 import app.echoread.core.Segmenter
-import app.echoread.core.TtsProvider
 import app.echoread.core.TtsSettings
 import app.echoread.core.net.Disposition
 import app.echoread.core.net.NetCategory
@@ -254,7 +253,7 @@ class TtsEngine(
 
         // 调用方协程被取消（界面离开等）也把装载做完：引擎状态必须收敛，不能停在 LOADING
         val d = try {
-            withContext(NonCancellable) { chapters.get(bookId, chapterIndex, settings.maxChunkChars) }
+            withContext(NonCancellable) { chapters.get(bookId, chapterIndex, Providers.chunkChars(settings)) }
         } catch (_: Exception) {
             null
         }
@@ -482,7 +481,7 @@ class TtsEngine(
 
     /** 把任意异常归一成 NetError；系统 TTS 走本地引擎，没有 HTTP 语义 */
     private fun classify(e: Throwable): NetError {
-        if (settings.provider == TtsProvider.SYSTEM) {
+        if (settings.usesSystemVoice) {
             return NetError(
                 category = NetCategory.UNKNOWN,
                 providerMessage = e.message ?: S.playback.systemTtsFailed,
@@ -511,7 +510,7 @@ class TtsEngine(
     /** 合成一个片段并返回可播放句柄（带缓存、指数退避重试；协程取消即中止） */
     private suspend fun createHandle(text: String, gen: Int): PlayHandle {
         val rate = settings.rate
-        if (settings.provider == TtsProvider.SYSTEM) {
+        if (settings.usesSystemVoice) {
             val file = File(tempDir, "sys-${System.nanoTime()}.wav")
             try {
                 systemTts.synthesizeToFile(text, file)
@@ -600,7 +599,7 @@ class TtsEngine(
         val target = SynthTarget.of(settings) ?: return
         if (!target.hasKey) return
         val want = pipeline.lookaheadCount(
-            avgSegChars = settings.maxChunkChars.coerceAtLeast(40),
+            avgSegChars = Providers.chunkChars(settings).coerceAtLeast(40),
             min = settings.prefetch.coerceIn(1, MAX_LOOKAHEAD),
             max = MAX_LOOKAHEAD
         )
@@ -623,7 +622,7 @@ class TtsEngine(
             val nextIndex = chapterIndex + 1
             val myGen = generation
             scope.launch {
-                val nd = runCatching { chapters.get(bookId, nextIndex, settings.maxChunkChars) }.getOrNull() ?: return@launch
+                val nd = runCatching { chapters.get(bookId, nextIndex, Providers.chunkChars(settings)) }.getOrNull() ?: return@launch
                 if (myGen != generation) return@launch
                 for (j in 0 until min(need, nd.segments.size)) {
                     if (pipeline.inflightCount >= MAX_PARALLEL) break
@@ -636,7 +635,7 @@ class TtsEngine(
 
     companion object {
         /** 缓存键（纯函数，单测锁定它与 0.3.x 逐字一致） */
-        internal fun cacheKeyOf(text: String, t: SynthTarget): String = Hash.cyrb53("v2|${t.provider}|${t.cacheTag}|$text")
+        internal fun cacheKeyOf(text: String, t: SynthTarget): String = Hash.cyrb53("v2|${t.cacheNs}|${t.cacheTag}|$text")
 
         /**
          * 单个片段的合成尝试总数上限（含首次）。

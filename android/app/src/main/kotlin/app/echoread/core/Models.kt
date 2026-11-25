@@ -50,21 +50,69 @@ data class OpenAISpeechConfig(
     val format: String = "mp3"
 )
 
+/**
+ * 一个已添加的朗读服务（0.5.0）：目录里的某家服务商 + 用户自己的 Key 与选择。
+ *
+ * 每个服务各存各的 Key、模型、音色，来回切换互不覆盖 —— 0.4.x 只有「AI 语音」和「Gemini」两个
+ * 写死的槽位，想同时留着 OpenRouter 和硅基流动的配置就做不到。
+ */
+@Serializable
+data class VoiceProfile(
+    /** 实例 ID：内置服务商就是它的目录 ID（每家一个），自定义端点是 custom-xxxx */
+    val id: String,
+    /** 对应目录里的哪家（[ProviderSpec.id]）；自定义的 OpenAI 兼容端点是 "custom" */
+    val spec: String = id,
+    /** 自定义端点的显示名（内置服务商留空，用目录里的品牌名） */
+    val name: String = "",
+    /** 覆盖目录里的地址（自定义端点必填；内置服务商留空） */
+    val baseUrl: String = "",
+    val apiKey: String = "",
+    val model: String = "",
+    val voice: String = "",
+    /** 语气 / 风格（OpenAI 的 instructions、Gemini 的 speech_metadata.style） */
+    val style: String = "",
+    /** OpenAI 兼容接口的 response_format（mp3 / opus / pcm / wav；留空 = 按目录，再不行 mp3） */
+    val format: String = "",
+    /** 目录声明的额外字段（区域、App ID…） */
+    val fields: Map<String, String> = emptyMap(),
+    /** 每个模型记住的音色：切换模型来回不丢 */
+    val voiceByModel: Map<String, String> = emptyMap()
+)
+
 @Serializable
 data class TtsSettings(
+    /**
+     * 0.4.x 及更早的三个字段（引擎 / OpenAI 兼容配置 / Gemini 配置）。0.5.0 起真正生效的是
+     * [active] 与 [profiles]；这三个字段仍然随时回写，降级安装旧版本时配置还在。
+     */
     val provider: TtsProvider = TtsProvider.OPENAI,
     val openai: OpenAISpeechConfig = OpenAISpeechConfig(),
     /** Gemini 原生接口配置（0.4.0 新增；旧存档缺该键时取默认值） */
     val gemini: GeminiTtsConfig = GeminiTtsConfig(),
-    /** 每模型记忆的音色选择（切换模型来回不丢音色） */
+    /** 0.4.x 的「每模型记忆音色」；0.5.0 起迁进各自的 [VoiceProfile.voiceByModel] */
     val voiceByModel: Map<String, String> = emptyMap(),
     /** 播放倍速（客户端变速，避免重复合成） */
     val rate: Float = 1f,
     /** 单个合成片段的最大字符数 */
     val maxChunkChars: Int = 120,
     /** 最少预取片段数（实际窗口按合成耗时自适应放大，最多 6 段） */
-    val prefetch: Int = 3
-)
+    val prefetch: Int = 3,
+    /** 正在使用的服务：某个 [VoiceProfile.id]，或 "system"（系统语音）。空串 = 旧存档，读档时由旧字段迁移 */
+    val active: String = "",
+    /** 已添加的服务 */
+    val profiles: List<VoiceProfile> = emptyList(),
+    /** 用户自己导入的服务定义（与内置目录同一格式） */
+    val customSpecs: List<ProviderSpec> = emptyList()
+) {
+    /** 当前服务；系统语音或尚未迁移时为 null */
+    val activeProfile: VoiceProfile? get() = profiles.firstOrNull { it.id == active }
+
+    val usesSystemVoice: Boolean get() = active == SYSTEM || (active.isEmpty() && provider == TtsProvider.SYSTEM)
+
+    companion object {
+        const val SYSTEM = "system"
+    }
+}
 
 /** 翻页手势轴向：左右滑 / 上下滑 / 关闭滑动翻页 */
 @Serializable
@@ -172,7 +220,9 @@ data class ReaderSettings(
     /** 对比度，对应系统「对比度」设置：0 = 标准，0.5 = 中，1 = 高 */
     val contrast: Float = 0f,
     /** 界面语言（0.4.0 新增；旧存档缺该键时跟随系统） */
-    val language: AppLanguage = AppLanguage.SYSTEM
+    val language: AppLanguage = AppLanguage.SYSTEM,
+    /** 液态玻璃材质（0.5.0）：面板与悬浮件半透明并模糊其后的内容。旧存档缺该键时开启 */
+    val glass: Boolean = true
 ) {
     companion object {
         /** 品牌种子色。0.1.x 起沿用，HCT 色相 273.21 */
@@ -192,6 +242,21 @@ data class TtsModelInfo(
     val promptPrice: Double? = null,
     /** 输出 token 单价（Gemini 等按 token 计费的模型才有） */
     val completionPrice: Double? = null
+)
+
+/**
+ * 一个服务在线拉到的东西（模型表、音色表）的本地缓存：离线也能选，打开设置不必每次都等网络。
+ */
+@Serializable
+data class Discovery(
+    val models: List<TtsModelInfo> = emptyList(),
+    val voices: List<VoiceSpec> = emptyList(),
+    /** 同步时刻（毫秒） */
+    val at: Long = 0,
+    /** 同步时的「端点 + Key」指纹：对不上就得重拉 */
+    val fp: String = "",
+    /** 音色表是给哪个模型拉的（有的服务商音色表按模型分） */
+    val model: String = ""
 )
 
 /**

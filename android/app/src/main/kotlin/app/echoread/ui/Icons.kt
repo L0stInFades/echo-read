@@ -56,8 +56,10 @@ object EchoIcons {
     }
     val Play: ImageVector by lazy { fill("play", "M8 5.5v13l11-6.5z") }
     val Pause: ImageVector by lazy { fill("pause", "M6 5h4v14H6zM14 5h4v14h-4z") }
-    val SkipPrev: ImageVector by lazy { fill("skipPrev", "M6 6h2v12H6zm3.5 6 8.5 6V6z") }
-    val SkipNext: ImageVector by lazy { fill("skipNext", "M16 6h2v12h-2zM6 18l8.5-6L6 6z") }
+    // 每个子路径都用绝对坐标起笔：Compose 的 PathParser 在 `z` 之后不会把当前点复位到子路径起点，
+    // 接着写相对的 `m` 会从上一段的末点算起 —— 「上一章」的三角因此整个画到了视口右下角外面（0.4.0 的实际表现）。
+    val SkipPrev: ImageVector by lazy { fill("skipPrev", "M6 6h2v12H6z", "M9.5 12 18 18V6z") }
+    val SkipNext: ImageVector by lazy { fill("skipNext", "M16 6h2v12h-2z", "M6 18l8.5-6L6 6z") }
     val PlaySmall: ImageVector by lazy { fill("playSmall", "M8 5v14l11-7z") }
 
     /* ---- 0.2.0：导入 / 手势 / 更新 ---- */
