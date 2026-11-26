@@ -640,7 +640,8 @@ private fun progressText(b: BookMeta): String =
 /** 书的篇幅：中文按「万字」，英文按 k / M（各语言包里的 bookLength） */
 fun formatChars(n: Int): String = app.echoread.core.i18n.S.shelf.bookLength(n)
 
-private fun relativeTime(ts: Long): String {
+/** 「刚刚 / 3 分钟前 / 2 天前」，一周以上给日期。书架的「上次阅读」与书签的「什么时候加的」共用 */
+internal fun relativeTime(ts: Long): String {
     val d = System.currentTimeMillis() - ts
     return when {
         d < 60_000 -> S.shelf.justNow

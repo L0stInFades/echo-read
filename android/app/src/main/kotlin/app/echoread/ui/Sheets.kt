@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -25,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -38,45 +40,100 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import app.echoread.AppGraph
+import app.echoread.core.Bookmark
+import app.echoread.core.Bookmarks
 import app.echoread.core.ColorStyle
+import app.echoread.core.Range
 import app.echoread.core.i18n.AppLanguage
 import app.echoread.core.i18n.S
 import app.echoread.ui.motion.PressScale
 import app.echoread.ui.motion.echoPress
+import app.echoread.ui.reader.BookmarkList
 import kotlinx.coroutines.launch
 
-/* ---------- 目录 ---------- */
+/* ---------- 目录与书签 ---------- */
 
+/**
+ * 目录面板：「目录」与「书签」两栏（0.7.0 起），标题是书名。
+ *
+ * 书签放在目录旁边，是读过的几款开源阅读器（Legado、Readium、Readest）共同的做法：
+ * 两者回答的是同一个问题 ——「我要去书里的哪儿」。
+ *
+ * - 面板高度固定（[EchoSheet] 的 fillHeight）：两栏内容一长一短，高度跟着栏目跳会很晕；
+ * - 关掉再打开，回到上次看的那一栏；
+ * - 两栏打开时都滚到当前位置附近。
+ *
+ * @param page 当前页的章内偏移区间：落在里面的书签标成强调色
+ */
 @Composable
-fun BoxScope.ChapterListSheet(open: Boolean, titles: List<String>, current: Int, onClose: () -> Unit, onSelect: (Int) -> Unit) {
+fun BoxScope.ChapterListSheet(
+    open: Boolean,
+    bookTitle: String,
+    titles: List<String>,
+    current: Int,
+    bookmarks: List<Bookmark>,
+    page: Range?,
+    onClose: () -> Unit,
+    onSelect: (Int) -> Unit,
+    onOpenBookmark: (Bookmark) -> Unit,
+    onRemoveBookmark: (Bookmark) -> Unit
+) {
     val c = echo
-    val state = rememberLazyListState()
-    LaunchedEffect(open) {
-        if (open && titles.isNotEmpty()) state.scrollToItem((current - 4).coerceIn(0, maxOf(titles.size - 1, 0)))
+    var tab by remember { mutableIntStateOf(0) }
+    val tocState = rememberLazyListState()
+    val markState = rememberLazyListState()
+    // 章节名是第一次打开时才去库里取的：取到之后也要滚一次，否则第一次打开总停在第一章
+    LaunchedEffect(open, titles.size) {
+        if (open && titles.isNotEmpty()) tocState.scrollToItem((current - 4).coerceIn(0, titles.size - 1))
     }
-    EchoSheet(open = open, onDismiss = onClose, title = S.common.contents, scrollable = false) {
-        LazyColumn(state = state, modifier = Modifier.fillMaxWidth()) {
-            itemsIndexed(titles) { i, t ->
-                val active = i == current
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(if (active) c.accentSoft else Color.Transparent)
-                        .echoPress(pressedScale = 1f, pressedOverlay = c.text.copy(alpha = 0.07f)) { onSelect(i); onClose() }
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("${i + 1}", color = if (active) c.accent else c.text3, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(34.dp))
-                    Text(
-                        t, color = if (active) c.accent else c.text, style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
-                    )
-                    if (active) Icon(EchoIcons.PlaySmall, null, tint = c.accent, modifier = Modifier.size(15.dp))
+    LaunchedEffect(open) {
+        if (open && bookmarks.isNotEmpty()) {
+            val near = Bookmarks.nearestBefore(bookmarks, current, page?.let { it.end - 1 } ?: 0)
+            markState.scrollToItem((near - 1).coerceIn(0, bookmarks.size - 1))
+        }
+    }
+    val here = remember(bookmarks, current, page) {
+        page?.let { r -> Bookmarks.onPage(bookmarks, current, r.start, r.end).map { it.id }.toSet() } ?: emptySet()
+    }
+    EchoSheet(open = open, onDismiss = onClose, title = bookTitle.ifBlank { S.common.contents }, scrollable = false, fillHeight = true) {
+        EchoSegmented(
+            items = listOf(SegmentItem(S.common.contents, EchoIcons.Toc), SegmentItem(S.reader.bookmarksTab(bookmarks.size), EchoIcons.Bookmark)),
+            selectedIndex = tab,
+            height = 40.dp
+        ) { tab = it }
+        Spacer(Modifier.height(10.dp))
+        SheetPages(page = tab, depthOf = { it }, modifier = Modifier.weight(1f).fillMaxWidth()) { shownTab ->
+            if (shownTab == 1) {
+                BookmarkList(
+                    marks = bookmarks, here = here, state = markState,
+                    chapterTitle = { titles.getOrNull(it).orEmpty() },
+                    onOpen = { onOpenBookmark(it); onClose() },
+                    onRemove = onRemoveBookmark,
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else LazyColumn(state = tocState, modifier = Modifier.fillMaxSize()) {
+                itemsIndexed(titles) { i, t ->
+                    val active = i == current
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(if (active) c.accentSoft else Color.Transparent)
+                            .echoPress(pressedScale = 1f, pressedOverlay = c.text.copy(alpha = 0.07f)) { onSelect(i); onClose() }
+                            .padding(horizontal = 12.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("${i + 1}", color = if (active) c.accent else c.text3, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(34.dp))
+                        Text(
+                            t, color = if (active) c.accent else c.text, style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
+                            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                        )
+                        if (active) Icon(EchoIcons.PlaySmall, null, tint = c.accent, modifier = Modifier.size(15.dp))
+                    }
                 }
+                item { Spacer(Modifier.height(8.dp)) }
             }
-            item { Spacer(Modifier.height(8.dp)) }
         }
     }
 }
@@ -252,6 +309,7 @@ fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Un
             S.common.importBooks to listOf(S.settings.helpImport1, S.settings.helpImport2, S.settings.helpImport3),
             S.settings.helpTapToReadTitle to listOf(S.settings.helpTapToRead),
             S.common.pageTurnGestures to listOf(S.settings.helpGestures1, S.settings.helpGestures2),
+            S.reader.bookmarks to listOf(S.settings.helpBookmarks),
             S.common.speech to listOf(S.settings.tapTheGearAnd),
             S.settings.helpOfflineTitle to listOf(S.settings.helpOffline)
         )

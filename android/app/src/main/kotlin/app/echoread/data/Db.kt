@@ -1,6 +1,7 @@
 package app.echoread.data
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -12,8 +13,11 @@ import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.Transaction
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import app.echoread.core.BookFormat
 import app.echoread.core.BookMeta
+import app.echoread.core.Bookmark
 import app.echoread.core.Progress
 
 /** 书籍元数据（封面为缩略 JPEG 字节，章节正文分表存储，大书列表不卡顿） */
@@ -58,6 +62,30 @@ data class ChapterEntity(
 
 data class ChapterTitleRow(val idx: Int, val title: String)
 
+/**
+ * 书签（0.7.0，数据库第 2 版）：书里的一个内容位置，见 [Bookmark]。
+ *
+ * 同一本书的同一个位置只存一枚（唯一索引），重复添加由插入时的 IGNORE 吃掉。
+ * 偏移量这一列叫 `pos`：`offset` 是 SQL 的关键字，写查询时处处要加反引号。
+ * 没有声明外键：books 表是用 REPLACE 写入的，REPLACE 在 SQLite 里是「先删再插」，
+ * 带级联删除的外键会在重写一本书的元数据时把它的书签一并带走。书被删除时由 [BookDao.deleteBook] 显式清掉。
+ */
+@Entity(tableName = "bookmarks", indices = [Index(value = ["bookId", "chapter", "pos"], unique = true)])
+data class BookmarkEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val bookId: String,
+    val chapter: Int,
+    @ColumnInfo(name = "pos") val offset: Int,
+    val excerpt: String,
+    val createdAt: Long
+) {
+    fun toModel(): Bookmark = Bookmark(id, bookId, chapter, offset, excerpt, createdAt)
+
+    companion object {
+        fun of(b: Bookmark): BookmarkEntity = BookmarkEntity(b.id, b.bookId, b.chapter, b.offset, b.excerpt, b.createdAt)
+    }
+}
+
 @Dao
 interface BookDao {
     @Query("SELECT * FROM books")
@@ -92,6 +120,7 @@ interface BookDao {
     suspend fun deleteBook(id: String) {
         deleteBookRow(id)
         deleteChapters(id)
+        deleteBookmarksOf(id)
     }
 
     @Query("SELECT idx, title FROM chapters WHERE bookId = :bookId ORDER BY idx")
@@ -99,15 +128,54 @@ interface BookDao {
 
     @Query("SELECT * FROM chapters WHERE bookId = :bookId AND idx = :index")
     suspend fun chapter(bookId: String, index: Int): ChapterEntity?
+
+    /* ---- 书签 ---- */
+
+    /** 按书里的位置排，同一位置的按创建时间 */
+    @Query("SELECT * FROM bookmarks WHERE bookId = :bookId ORDER BY chapter, pos, createdAt")
+    suspend fun bookmarks(bookId: String): List<BookmarkEntity>
+
+    /** 这个位置已经有书签时什么都不做（返回 -1） */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertBookmark(bookmark: BookmarkEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertBookmarks(bookmarks: List<BookmarkEntity>)
+
+    @Query("DELETE FROM bookmarks WHERE id IN (:ids)")
+    suspend fun deleteBookmarks(ids: List<Long>)
+
+    @Query("DELETE FROM bookmarks WHERE bookId = :bookId")
+    suspend fun deleteBookmarksOf(bookId: String)
 }
 
-@Database(entities = [BookEntity::class, ChapterEntity::class], version = 1, exportSchema = false)
+@Database(entities = [BookEntity::class, ChapterEntity::class, BookmarkEntity::class], version = 2, exportSchema = false)
 abstract class EchoDb : RoomDatabase() {
     abstract fun dao(): BookDao
 
     companion object {
+        /**
+         * 1 → 2（0.7.0）：新增书签表，原有的两张表一个字节都不碰。
+         *
+         * 这两句 SQL 必须与 Room 按 [BookmarkEntity] 生成的建表语句逐字段一致（列名、类型、NOT NULL、
+         * 主键、索引名）：迁移跑完后 Room 会拿实际的表结构去对它期望的那份，对不上就抛异常、应用打不开。
+         * 改 [BookmarkEntity] 的任何一个字段，都要新开一个版本号、另写一条迁移，不能回头改这里。
+         */
+        val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `bookmarks` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                        "`bookId` TEXT NOT NULL, `chapter` INTEGER NOT NULL, `pos` INTEGER NOT NULL, " +
+                        "`excerpt` TEXT NOT NULL, `createdAt` INTEGER NOT NULL)"
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_bookmarks_bookId_chapter_pos` ON `bookmarks` (`bookId`, `chapter`, `pos`)")
+            }
+        }
+
         fun open(context: Context): EchoDb =
             Room.databaseBuilder(context.applicationContext, EchoDb::class.java, "echo-read.db")
+                .addMigrations(MIGRATION_1_2)
+                // 没有对应迁移时宁可启动失败，也不清库：库里是用户的书架和阅读进度
                 .fallbackToDestructiveMigration(false)
                 .build()
     }

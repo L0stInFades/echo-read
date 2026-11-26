@@ -207,6 +207,17 @@ interface Strings {
         val nextChapter: String
         val pause: String
         val play: String
+
+        /* 书签（0.7.0） */
+        val bookmarks: String
+        /** 「目录」面板里那一栏的标签：有书签时带上数量 */
+        fun bookmarksTab(count: Int): String
+        val addBookmark: String
+        val removeBookmark: String
+        val bookmarkRemoved: String
+        val undo: String
+        val noBookmarks: String
+        val noBookmarksHint: String
     }
 
     /** 朗读设置、阅读样式、配色、帮助、模型与音色选择器 */
@@ -282,6 +293,7 @@ interface Strings {
         val helpGestures1: String
         val helpGestures2: String
         val tapTheGearAnd: String
+        val helpBookmarks: String
         val helpOfflineTitle: String
         val helpOffline: String
         val swipeSideways: String

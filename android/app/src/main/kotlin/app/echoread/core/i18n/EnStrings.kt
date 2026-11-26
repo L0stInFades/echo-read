@@ -184,6 +184,14 @@ object EnStrings : Strings {
         override val nextChapter = "Next chapter"
         override val pause = "Pause"
         override val play = "Play"
+        override val bookmarks = "Bookmarks"
+        override fun bookmarksTab(count: Int) = if (count > 0) "Bookmarks ($count)" else "Bookmarks"
+        override val addBookmark = "Add bookmark"
+        override val removeBookmark = "Remove bookmark"
+        override val bookmarkRemoved = "Bookmark removed"
+        override val undo = "Undo"
+        override val noBookmarks = "No bookmarks yet"
+        override val noBookmarksHint = "Tap the bookmark icon at the top of the reader to mark a page."
     }
 
     override val settings = object : Strings.Settings {
@@ -257,6 +265,7 @@ object EnStrings : Strings {
         override val helpGestures1 = "In the reader, tap the T icon and then Page-turn gestures to choose how you swipe, where the tap zones sit and how wide they are."
         override val helpGestures2 = "A live preview shows the zones as you adjust them."
         override val tapTheGearAnd = "Tap the gear (the waveform icon in the reader) to add a voice service: enter its API key, then pick a model and a voice. Many services have a free tier. No key? Choose System voice, which is free and works offline."
+        override val helpBookmarks = "Tap the bookmark icon at the top of the reader to mark the current page; tap it again to remove it. While a book is being read aloud, the bookmark lands on the sentence being spoken. Your bookmarks are listed under Bookmarks in the Contents panel; tap one to go back to it. They stay on the same sentence when you change the font size or layout."
         override val helpOfflineTitle = "Offline"
         override val helpOffline = "Your books and the audio you have already heard stay on this phone (up to 300 MB). Without a connection you can keep reading and replay what is cached."
         override val swipeSideways = "Swipe sideways"

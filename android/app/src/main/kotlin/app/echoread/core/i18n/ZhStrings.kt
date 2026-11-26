@@ -181,6 +181,14 @@ object ZhStrings : Strings {
         override val nextChapter = "下一章"
         override val pause = "暂停"
         override val play = "播放"
+        override val bookmarks = "书签"
+        override fun bookmarksTab(count: Int) = if (count > 0) "书签 · $count" else "书签"
+        override val addBookmark = "添加书签"
+        override val removeBookmark = "移除书签"
+        override val bookmarkRemoved = "已移除书签"
+        override val undo = "撤销"
+        override val noBookmarks = "还没有书签"
+        override val noBookmarksHint = "读到想记住的地方，点一下阅读页右上角的书签图标。"
     }
 
     override val settings = object : Strings.Settings {
@@ -254,6 +262,7 @@ object ZhStrings : Strings {
         override val helpGestures1 = "阅读页 → T 图标 → 「翻页手势」可以改：左右滑 / 上下滑 / 关闭滑动，点击翻页热区放在左右还是上下、各占多宽，以及要不要保留「轻点朗读」。"
         override val helpGestures2 = "顶部有实时预览，拖滑块就能看到热区变化。提示：系统手势导航会吃掉屏幕左右边缘起手的横滑，改成「上下滑」可以完全避开这个冲突。"
         override val tapTheGearAnd = "齿轮里填入 OpenRouter / OpenAI 兼容接口的 API Key，拉取模型后选音色即可；也可以切到「Gemini」，填 Google AI Studio 的 Key 直连 Gemini 3.8 语音（免费层可用）。没有 Key 时切到「系统语音」，用手机自带的离线朗读引擎。"
+        override val helpBookmarks = "点阅读页右上角的书签图标，给当前这一页加一枚书签，再点一下取消；正在朗读时，书签落在正在念的那一句上。书签列在「目录」面板的「书签」一栏里，点一下就回到那里。换字号、换排版之后，书签仍然指着原来那句话。"
         override val helpOfflineTitle = "离线"
         override val helpOffline = "书架和已经听过的片段缓存在本机（最多 300MB，自动淘汰最旧）。断网也能继续读、继续听缓存过的句子。"
         override val swipeSideways = "左右滑"

@@ -10,12 +10,13 @@ import androidx.compose.ui.unit.dp
 
 /** 线性图标集：24×24 viewBox，描边 1.8 圆头 */
 object EchoIcons {
-    private fun stroke(name: String, width: Float, vararg paths: String): ImageVector {
+    /** [filled]：描边之外再把里面填实，轮廓与线性版逐像素重合（「已选中」的那一枚用） */
+    private fun stroke(name: String, width: Float, vararg paths: String, filled: Boolean = false): ImageVector {
         val b = ImageVector.Builder(name = name, defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
         for (d in paths) {
             b.addPath(
                 pathData = PathParser().parsePathString(d).toNodes(),
-                fill = null,
+                fill = if (filled) SolidColor(Color.Black) else null,
                 stroke = SolidColor(Color.Black),
                 strokeLineWidth = width,
                 strokeLineCap = StrokeCap.Round,
@@ -101,6 +102,12 @@ object EchoIcons {
     val CheckCircle: ImageVector by lazy {
         stroke("checkCircle", 1.8f, "M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z", "m7.8 12.2 2.9 2.9 5.5-6")
     }
+    /* ---- 0.7.0：书签 ---- */
+
+    private const val BOOKMARK = "M7.5 3.5h9A1.5 1.5 0 0 1 18 5v15.5l-6-3.9-6 3.9V5a1.5 1.5 0 0 1 1.5-1.5z"
+    val Bookmark: ImageVector by lazy { stroke("bookmark", 1.8f, BOOKMARK) }
+    val BookmarkFilled: ImageVector by lazy { stroke("bookmarkFilled", 1.8f, BOOKMARK, filled = true) }
+
     val Sort: ImageVector by lazy {
         stroke("sort", 1.9f, "M4 6.5h16", "M7 12h10", "M10 17.5h4")
     }

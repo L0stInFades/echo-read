@@ -229,7 +229,7 @@ fun ChevronEnd() {
     Icon(EchoIcons.ChevronRight, null, tint = echo.text3, modifier = Modifier.size(18.dp))
 }
 
-/** 服务商 / 模型的头像：品牌色圆角方块 + 名字首字母。没有任何一家的商标图形 —— 只是一个好认的色块 */
+/** 服务商 / 模型的头像：品牌色圆角方块 + 名字首字母。目录里带标志的服务商改画标志，见 [LogoTile] */
 @Composable
 fun Monogram(text: String, color: Color, size: Dp = 40.dp) {
     val letters = remember(text) { monogramOf(text) }
@@ -259,4 +259,4 @@ internal fun monogramOf(name: String): String {
     }
 }
 
-private fun Color.luminanceApprox(): Float = 0.299f * red + 0.587f * green + 0.114f * blue
+internal fun Color.luminanceApprox(): Float = 0.299f * red + 0.587f * green + 0.114f * blue

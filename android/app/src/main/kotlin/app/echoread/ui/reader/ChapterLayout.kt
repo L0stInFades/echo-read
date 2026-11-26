@@ -17,6 +17,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
+import app.echoread.core.Range
 import app.echoread.core.ReaderSettings
 import app.echoread.data.DerivedChapter
 import app.echoread.ui.ReaderTheme
@@ -59,6 +60,16 @@ class ChapterPages(
 
     /** 本页首字的章节偏移（进度保存用） */
     fun pageStartOffset(p: Int): Int = toChapter(layout.getLineStart(pages[p].first))
+
+    /**
+     * 本页覆盖的章节偏移区间 `[start, end)`：一个位置（书签）在不在这一页上，按它判。
+     * 末页的区间多收一位，章尾那个位置也算在末页上；区间至少一个字符宽。
+     */
+    fun pageRange(p: Int): Range {
+        val start = pageStartOffset(p)
+        val end = if (p + 1 < pages.size) pageStartOffset(p + 1) else chapter.text.length + 1
+        return Range(start, maxOf(end, start + 1))
+    }
 }
 
 /** 排版规格指纹：样式或页面尺寸任一变化即需重排（滑块拖动期由去抖收敛，不再每像素排一次整章） */

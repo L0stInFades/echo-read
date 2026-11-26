@@ -14,3 +14,6 @@ captures/
 keystore/
 keystore.properties
 dist/
+
+# Python 工具脚本的字节码
+__pycache__/

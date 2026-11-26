@@ -100,6 +100,70 @@ class ProviderTest {
         }
     }
 
+    /* ---------------- 标志 ---------------- */
+
+    /**
+     * 目录里的每一个标志都要能被 Compose 的路径解析器读出来：画它的就是这个解析器，没有别的库兜底。
+     * 写法的约定见 android/tools/lobe2logo.py：每条路径以绝对的 M 开头，弧线的两个标志位各自成词。
+     */
+    @Test
+    fun catalogLogosParse() {
+        val withLogo = Providers.builtIn.filter { it.logo.isNotEmpty() }
+        assertTrue("目录里应当有十几家带标志", withLogo.size >= 15)
+        var chars = 0
+        for (s in withLogo) {
+            chars += s.logo.length
+            val vector = app.echoread.ui.ProviderLogos.build(s.logo)
+            assertEquals("${s.id}：24×24 的视口", 24f, vector.viewportWidth, 0f)
+            for (part in s.logo.split('|')) {
+                val d = part.substringAfter('@')
+                val nodes = androidx.compose.ui.graphics.vector.PathParser().parsePathString(d).toNodes()
+                assertTrue("${s.id}：路径是空的", nodes.size >= 3)
+                val first = nodes.first()
+                assertTrue("${s.id}：路径必须以绝对的 M 开头", first is androidx.compose.ui.graphics.vector.PathNode.MoveTo)
+                first as androidx.compose.ui.graphics.vector.PathNode.MoveTo
+                assertTrue("${s.id}：起点落在视口里", first.x in 0f..24f && first.y in 0f..24f)
+                if ('@' in part) assertTrue("${s.id}：不透明度在 0 到 1 之间", part.substringBefore('@').toFloat() in 0.05f..1f)
+            }
+            assertTrue("${s.id}：logoScale", s.logoScale in 0.2f..1f)
+        }
+        // 「省」是这件事的前提：整份目录的标志加起来十几 KB 文本
+        assertTrue("标志总量 $chars 个字符", chars < 20_000)
+        // 国内版与国际版是同一家，同一个标志
+        assertEquals(Providers.spec("minimax")!!.logo, Providers.spec("minimax-cn")!!.logo)
+        // 自定义端点没有标志：它代表的是用户自己的服务，显示名字的首字母
+        assertEquals("", Providers.spec(Providers.CUSTOM)!!.logo)
+    }
+
+    /** 路径写法里用到的几种紧凑形式，解析器必须按 SVG 的语义读对（升级 Compose 时这条先红） */
+    @Test
+    fun logoPathDialect() {
+        fun nodes(d: String) = androidx.compose.ui.graphics.vector.PathParser().parsePathString(d).toNodes()
+        // 省掉前导 0 的小数、以负号当分隔符、同一命令连写
+        val curve = nodes("M1 2c.64 .64 .19 1.74-.72 1.74z")[1] as androidx.compose.ui.graphics.vector.PathNode.RelativeCurveTo
+        assertEquals(0.64f, curve.dx1, 1e-4f); assertEquals(0.64f, curve.dy1, 1e-4f)
+        assertEquals(0.19f, curve.dx2, 1e-4f); assertEquals(1.74f, curve.dy2, 1e-4f)
+        assertEquals(-0.72f, curve.dx3, 1e-4f); assertEquals(1.74f, curve.dy3, 1e-4f)
+        // 弧线：两个标志位各自成词
+        val arc = nodes("M18.654 3.87a5.087 5.087 0 1 1 0 10.174z")[1] as androidx.compose.ui.graphics.vector.PathNode.RelativeArcTo
+        assertTrue(arc.isMoreThanHalf); assertTrue(arc.isPositiveArc)
+        assertEquals(0f, arc.arcStartDx, 1e-4f); assertEquals(10.174f, arc.arcStartDy, 1e-4f)
+        // M 后面连写的坐标是直线
+        val poly = nodes("M5 0h5v24H5V0zM14 0h5v24h-5V0z")
+        assertEquals(12, poly.size)
+        // 画不出来的数据不抛到界面上：返回 null，头像退回首字母
+        assertNull(app.echoread.ui.ProviderLogos.vector(""))
+        assertNotNull(app.echoread.ui.ProviderLogos.vector("M0 0h24v24H0z"))
+    }
+
+    @Test
+    fun importedLogoIsValidated() {
+        val base = Providers.spec("openai")!!.copy(id = "mine-1")
+        assertEquals(emptyList<String>(), Providers.validate(base))
+        assertTrue(Providers.validate(base.copy(logo = "<svg onload=x>")).any { it.startsWith("logo must be") })
+        assertTrue(Providers.validate(base.copy(logo = "M0 0h1z".repeat(3000))).any { it.startsWith("logo must be") })
+    }
+
     /* ---------------- 模板 ---------------- */
 
     @Test

@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -95,6 +96,7 @@ import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.flow.drop
 import androidx.compose.ui.unit.toIntSize
@@ -105,6 +107,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import app.echoread.AppGraph
 import app.echoread.core.BookMeta
+import app.echoread.core.Bookmark
+import app.echoread.core.Bookmarks
 import app.echoread.core.bookFraction
 import app.echoread.core.started
 import app.echoread.core.GestureSettings
@@ -120,6 +124,7 @@ import app.echoread.ui.motion.Haptics
 import app.echoread.ui.motion.drivePaging
 import app.echoread.ui.motion.echoPress
 import app.echoread.ui.motion.preemptable
+import app.echoread.ui.reader.BookmarkRibbon
 import app.echoread.ui.reader.ChapterPages
 import app.echoread.ui.reader.ChapterWindow
 import app.echoread.ui.reader.LayoutSpec
@@ -188,6 +193,9 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
     var meta by remember { mutableStateOf<BookMeta?>(null) }
     var loadFailed by remember { mutableStateOf(false) }
     var titles by remember { mutableStateOf<List<String>>(emptyList()) }
+    /** 这本书的书签，按书里的位置排；增删之后整表换新 */
+    var bookmarks by remember { mutableStateOf<List<Bookmark>>(emptyList()) }
+    LaunchedEffect(bookId) { bookmarks = graph.bookmarks.list(bookId) }
 
     val measurer = rememberTextMeasurer()
     // 排版必须串行：measurer.measure() 是不可协作取消的阻塞调用，放任 Dispatchers.Default 并发，
@@ -618,22 +626,71 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
         }
     }
 
-    fun gotoChapter(index: Int, lastPage: Boolean = false) {
+    /**
+     * 跳到书里的一个位置：目录选章（[offset] = 0）与书签共用。
+     * 正在朗读时朗读跟着过去、从那个位置接着念；没在朗读时只动视图，听书的位置不受影响。
+     */
+    fun gotoChapter(index: Int, offset: Int = 0) {
         val m = meta ?: return
         if (index < 0 || index >= m.chapterCount) return
         scope.launch {
             val wasPlaying = engine.current.state == PlayerState.PLAYING && engine.current.bookId == bookId
             if (wasPlaying) engine.pause()
-            requestChapter(index, if (lastPage) -1 else 0)
+            requestChapter(index, offset)
             if (wasPlaying) {
                 followSpeech = true
                 awaitEngineChapter = index
                 try {
-                    if (player.loadBook(bookId, index, 0)) engine.play()
+                    if (player.loadBook(bookId, index, offset)) engine.play()
                 } catch (e: Exception) {
                     Toaster.error(e.message ?: S.reader.couldntLoadChapter)
                 }
             }
+        }
+    }
+
+    /* ---------- 书签 ---------- */
+
+    /**
+     * 呈现页（页码读的也是它）的章内偏移区间，与落在这一页上的书签：锚点在区间里就算。
+     * 重排版之后区间跟着变，同一枚书签自然亮在它新落到的那一页上。
+     */
+    val shownRange = remember(shown, window.pagesOf(shown.chapter)) {
+        window.pagesOf(shown.chapter)?.takeIf { shown.page in 0 until it.pageCount }?.pageRange(shown.page)
+    }
+    val pageMarks = remember(bookmarks, shown.chapter, shownRange) {
+        shownRange?.let { Bookmarks.onPage(bookmarks, shown.chapter, it.start, it.end) }.orEmpty()
+    }
+
+    /**
+     * 顶栏的书签键：这一页没有书签就加一枚，有就全拿掉（调小字号后，原本分属两页的书签会落到同一页）。
+     * 加和减都不弹任何东西 —— 丝带落下 / 收回就是反馈，按错了再点一下。
+     *
+     * 锚点：这一页正在被朗读时取正在念的那一段的开头 —— 列表里看到的是一句完整的话，
+     * 回来时也正好从这句接着听；否则取这一页的第一个字。
+     */
+    fun toggleBookmark() {
+        val range = shownRange ?: return
+        val text = window.pagesOf(shown.chapter)?.chapter?.text ?: return
+        Haptics.tick(view)
+        scope.launch {
+            bookmarks = if (pageMarks.isNotEmpty()) graph.bookmarks.remove(bookId, pageMarks) else {
+                val at = activeSeg?.start?.takeIf { shown.chapter == engineChapter && it in range } ?: range.start
+                graph.bookmarks.add(bookId, shown.chapter, at, Bookmarks.excerpt(text, at))
+            }
+        }
+    }
+
+    /**
+     * 在书签列表里删一枚：不弹确认，给一个能撤销的轻提示（列表里删掉的没法像顶栏那样再点一下加回来）。
+     * 撤销走应用级协程：点它的时候阅读页也许已经退出了。
+     */
+    fun removeFromList(mark: Bookmark) {
+        scope.launch {
+            bookmarks = graph.bookmarks.remove(bookId, listOf(mark))
+            Toaster.show(S.reader.bookmarkRemoved, durationMs = 4000, action = ToastAction(S.reader.undo) {
+                graph.mainScope.launch { bookmarks = graph.bookmarks.restore(bookId, listOf(mark)) }
+            })
         }
     }
 
@@ -822,10 +879,19 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     )
                     Text(meta?.title ?: "", color = theme.dim, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                ChromeGroup(chromeGlass, chromeShadow) {
-                    GlassIcon(EchoIcons.Toc, S.common.contents, tint = theme.text) { showChapters = true }
-                    GlassIcon(EchoIcons.TextStyle, S.common.readingStyle, tint = theme.text) { showStyle = true }
-                    GlassIcon(EchoIcons.Waves, S.common.voiceSettings, tint = theme.text) { showTts = true }
+                // 四枚图标：每枚收到 40dp 宽（触控高度仍是 44dp），给中间的章节名多留一点地方
+                ChromeGroup(chromeGlass, chromeShadow, inset = 2.dp) {
+                    val slot = Modifier.width(40.dp)
+                    val marked = pageMarks.isNotEmpty()
+                    GlassIcon(
+                        if (marked) EchoIcons.BookmarkFilled else EchoIcons.Bookmark,
+                        if (marked) S.reader.removeBookmark else S.reader.addBookmark,
+                        tint = if (marked) theme.accent else theme.text,
+                        modifier = slot
+                    ) { toggleBookmark() }
+                    GlassIcon(EchoIcons.Toc, S.common.contents, tint = theme.text, modifier = slot) { showChapters = true }
+                    GlassIcon(EchoIcons.TextStyle, S.common.readingStyle, tint = theme.text, modifier = slot) { showStyle = true }
+                    GlassIcon(EchoIcons.Waves, S.common.voiceSettings, tint = theme.text, modifier = slot) { showTts = true }
                 }
             }
             // 排版中的细进度线（固定占位，不改变正文高度）
@@ -916,6 +982,9 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                         if (m != null) Text(S.reader.chapterOf(shown.chapter + 1, m.chapterCount), color = theme.dim, style = MaterialTheme.typography.labelSmall)
                     }
                 }
+
+                // 书签丝带：挂在页面区右上角，向外偏进正文右侧的留白里 —— 不占版面，也不接触摸
+                BookmarkRibbon(pageMarks.isNotEmpty(), theme.accent, Modifier.align(Alignment.TopEnd).offset(x = 16.dp, y = (-6).dp))
 
                 // 状态悬浮层：错误 / 重试 / 合成中 / 回到朗读位置。
                 // 与睡眠面板同款 —— 悬浮在页面区底部、不参与布局，绝不改变正文 pageSize
@@ -1122,8 +1191,11 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
         // 面板是书页的兄弟节点：从上面那块背板采样做玻璃
         CompositionLocalProvider(LocalBackdrop provides backdrop) {
             ChapterListSheet(
-                open = showChapters, titles = titles, current = shown.chapter,
-                onClose = { showChapters = false }, onSelect = { gotoChapter(it) }
+                open = showChapters, bookTitle = meta?.title.orEmpty(), titles = titles, current = shown.chapter,
+                bookmarks = bookmarks, page = shownRange,
+                onClose = { showChapters = false }, onSelect = { gotoChapter(it) },
+                onOpenBookmark = { gotoChapter(it.chapter, it.offset) },
+                onRemoveBookmark = { removeFromList(it) }
             )
             ReaderStyleSheet(
                 open = showStyle,
@@ -1259,14 +1331,15 @@ private fun ThinProgressLine(color: Color, modifier: Modifier) {
 
 /** 阅读器顶栏上的一组玻璃按钮：胶囊形，用阅读主题自己的玻璃面（见 chromeGlass） */
 @Composable
-private fun ChromeGroup(style: GlassStyle, shadow: Color, content: @Composable RowScope.() -> Unit) {
+private fun ChromeGroup(style: GlassStyle, shadow: Color, inset: Dp = 0.dp, content: @Composable RowScope.() -> Unit) {
     val light = rememberGlassLight()
     Row(
         Modifier
             .height(44.dp)
             .glassShadow(CircleShape, shadow, blur = 14.dp, dy = 4.dp)
             .glassSurface(CircleShape, style, light)
-            .glassLight(light),
+            .glassLight(light)
+            .padding(horizontal = inset),
         verticalAlignment = Alignment.CenterVertically,
         content = content
     )

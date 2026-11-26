@@ -130,6 +130,10 @@ object Providers {
             checkVars("list[$i].json", Template.names(r.json))
         }
         if (spec.models.isNotEmpty() && spec.defaultModel.isNotBlank() && spec.models.none { it.id == spec.defaultModel }) out += "defaultModel is not in models"
+        // 标志是要交给路径解析器的数据：只收路径会用到的字符，长度封顶。真画不出来时界面退回首字母头像
+        if (spec.logo.length > ProviderSpec.LOGO_MAX_CHARS || spec.logo.any { it !in ProviderSpec.LOGO_CHARS }) {
+            out += "logo must be SVG path data, at most ${ProviderSpec.LOGO_MAX_CHARS} characters"
+        }
         return out
     }
 

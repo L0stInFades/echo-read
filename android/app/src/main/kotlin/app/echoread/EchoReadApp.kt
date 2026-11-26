@@ -7,6 +7,7 @@ import android.net.Uri
 import app.echoread.data.AccessTier
 import app.echoread.data.AndroidNetworkStatus
 import app.echoread.data.BookCandidate
+import app.echoread.data.BookmarkRepo
 import app.echoread.data.BookScanner
 import app.echoread.data.ChapterCache
 import app.echoread.data.EchoDb
@@ -36,6 +37,7 @@ class AppGraph(context: Context) {
     val settings = SettingsStore(context)
     val chapterCache = ChapterCache(db.dao())
     val library = LibraryRepo(context, db.dao(), chapterCache)
+    val bookmarks = BookmarkRepo(db.dao())
     val audioCache = AudioCache(File(context.cacheDir, "tts-audio"))
     val systemTts = SystemTts(context)
     val playback = Playback(context)

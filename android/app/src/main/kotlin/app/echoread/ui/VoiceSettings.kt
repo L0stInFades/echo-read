@@ -117,9 +117,13 @@ private fun serviceColor(spec: ProviderSpec): Color {
     }
 }
 
+/** 服务的头像：目录里带了标志就画标志，否则（自定义端点、没有标志的服务商）是名字的首字母 */
 @Composable
 private fun ServiceAvatar(spec: ProviderSpec, p: VoiceProfile?, size: Dp = 40.dp) {
-    Monogram(serviceName(spec, p), serviceColor(spec), size)
+    val tile = serviceColor(spec)
+    val logo = remember(spec.logo) { ProviderLogos.vector(spec.logo) }
+    if (logo != null) LogoTile(logo, tile, spec.logoScale, size)
+    else Monogram(serviceName(spec, p), tile, size)
 }
 
 @Composable

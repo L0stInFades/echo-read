@@ -78,7 +78,17 @@ data class ProviderSpec(
     /** 这个接口整体停用的日期（yyyy-mm-dd）。到期前界面提示，到期后不再出现在「添加服务」里 */
     val sunset: String = "",
     /** 头像底色（#RRGGBB），留空按 id 取色 */
-    val color: String = ""
+    val color: String = "",
+    /**
+     * 标志：不是图片，是一段 SVG 路径数据，画在 24×24 的视口里、按奇偶规则填充，颜色按 [color] 的深浅取白或黑。
+     * 多条路径用 `|` 分隔，路径前可以带「不透明度@」（`.5@M…`）表示这一层半透明。
+     * 留空 = 头像显示名字的首字母。
+     *
+     * 内置目录里的标志是 LobeHub Icons 的单色版，由 `android/tools/lobe2logo.py` 转成这种写法。
+     */
+    val logo: String = "",
+    /** 标志占头像边长的比例（LobeHub 给每个标志定的 AVATAR_ICON_MULTIPLE） */
+    val logoScale: Float = 0.75f
 ) {
     companion object {
         const val KIND_OPENAI = "openai"
@@ -87,6 +97,12 @@ data class ProviderSpec(
         const val VOICE_LIST = "list"
         const val VOICE_FREE = "free"
         const val VOICE_NONE = "none"
+
+        /** [logo] 里允许出现的字符：路径命令、数字、分隔符，以及分层用的 `|` 和 `@` */
+        const val LOGO_CHARS = "MmLlHhVvCcSsQqTtAaZz0123456789.,-+eE |@"
+
+        /** [logo] 的长度上限。内置目录里最长的一个是 3.6 KB */
+        const val LOGO_MAX_CHARS = 12_000
     }
 }
 
