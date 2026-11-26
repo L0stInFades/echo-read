@@ -1,15 +1,15 @@
 {
-  "versionCode": 19,
-  "versionName": "0.7.0-exp",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.0-exp/Lector-v0.7.0-exp.apk",
+  "versionCode": 20,
+  "versionName": "0.7.1-exp",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.1-exp/Lector-v0.7.1-exp.apk",
   "mirrors": [
-    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.0-exp/Lector-v0.7.0-exp.apk",
-    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.0-exp/Lector-v0.7.0-exp.apk",
-    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.0-exp/Lector-v0.7.0-exp.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.1-exp/Lector-v0.7.1-exp.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.1-exp/Lector-v0.7.1-exp.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.1-exp/Lector-v0.7.1-exp.apk"
   ],
-  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n新增书签：点阅读页右上角的书签键，给当前页加一枚书签，再点一下取消；有书签的页右上角会垂下一条丝带。书签记的是那句话而不是页码，换字号、换排版之后仍在原处；正在朗读时，书签落在正在念的那一句上。\n书签列表在「目录」面板的「书签」一栏：点一下跳过去（正在朗读就从那里接着念），删掉的可以撤销。\n朗读服务有了标志：OpenRouter、Gemini、ElevenLabs、OpenAI、Azure、xAI、Mistral、Together、MiniMax、Fish Audio、硅基流动、火山引擎、阿里云百炼、智谱、阶跃星辰（图标来自 LobeHub Icons）。\n「目录」面板第一次打开时也会滚到当前章。",
-  "sha256": "d044fe540104b63e813b362c83c287e30264a7fa5127fbdcfa7952c7f28496fb",
+  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n这一版没有新功能，是一轮修补与加固。\n系统语音在 Android 11 及以上能用了（以前会显示「系统语音不可用」）。\n被来电、导航播报这类短暂打断之后，朗读会自己接着念；你自己按的暂停、拔掉耳机不会被续播。\nKey 失效或余额用完时，正在念的那一段念完才停下并提示，暂停键不再失灵。\n朗读设置里的试听，在关掉面板或切换页面时立刻停下。\n自己填的服务地址各用各的音频缓存，同名的模型 / 音色不会串音。\n不在朗读时往回翻页，底部进度条会跟着退回去；换一本书后，「继续阅读」卡片上的封面不再停在上一本。\n导入面板：授权或移除文件夹后列表立刻刷新，EPUB 的「已在书架」判断更准。过大的 EPUB（单个内部文件超过 16MB，或解压后总计超过 64MB）不再导入。\n应用内更新：安装包必须带校验值才会下载，更新信息只从 GitHub 与 jsDelivr 获取。\n系统云备份不再包含书库（书的全文太大，会让整份备份失败），设置照常备份。",
+  "sha256": "f7bbcacf89ace877c0800f5a9be2f715bd5b2d6d0ca8e84bca733b7912230072",
   "minSdk": 26,
   "experimental": true,
-  "notesEn": "[Experimental] Bigger changes; there may be undiscovered issues. To skip it, tap the X on the update card.\nNew: bookmarks. Tap the bookmark button at the top of the reader to mark the current page, and tap it again to remove it; a ribbon hangs from the corner of a bookmarked page. A bookmark remembers the sentence, not the page number, so it stays put when you change the font size or layout. While a book is being read aloud, it lands on the sentence being spoken.\nYour bookmarks are listed under Bookmarks in the Contents panel: tap one to jump there (if the book is being read aloud, reading continues from there). Deleting one can be undone.\nSpeech services now show their logos: OpenRouter, Gemini, ElevenLabs, OpenAI, Azure, xAI, Mistral, Together, MiniMax, Fish Audio, SiliconFlow, Volcengine, Alibaba Bailian, Zhipu and StepFun (icons from LobeHub Icons).\nThe Contents panel now scrolls to the current chapter the first time it opens."
+  "notesEn": "[Experimental] Bigger changes; there may be undiscovered issues. To skip it, tap the X on the update card.\nNo new features in this one: fixes and hardening.\nSystem voice now works on Android 11 and later (it used to say the system voice was unavailable).\nAfter a short interruption such as a phone call or a navigation prompt, reading resumes on its own. Pausing it yourself or unplugging headphones still stops it.\nIf a key is rejected or the balance runs out, the passage being spoken finishes before playback stops with the error, and the pause button keeps working.\nVoice previews stop as soon as you close the panel or switch pages.\nEach custom service address now has its own audio cache, so models or voices with the same name cannot get mixed up.\nPaging back while not listening moves the progress bar back too. The Continue reading card no longer keeps the previous book's cover after you switch books.\nImport panel: the folder list refreshes right after you grant or remove a folder, and the \"already on shelf\" mark for EPUBs is more accurate. Oversized EPUBs (over 16 MB in one internal file, or over 64 MB in total once unpacked) are no longer imported.\nIn-app update: a package is downloaded only when the release carries a valid checksum, and release info is fetched only from GitHub and jsDelivr.\nSystem cloud backup no longer includes the library (book text is large enough to make the whole backup fail). Settings are still backed up."
 }
