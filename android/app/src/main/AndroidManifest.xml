@@ -25,6 +25,17 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
 
+    <!--
+      系统语音：Android 11 起别的应用默认不可见，不声明这一条，TextToSpeech 连手机自带的语音引擎都找不到
+      （实测 Redmi Note 8 / Android 11：AppsFilter 把到 com.xiaomi.mibrain.speech 的查询拦掉，
+      初始化直接失败，界面上就是「系统语音不可用」）。
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".EchoReadApp"
         android:localeConfig="@xml/locales_config"

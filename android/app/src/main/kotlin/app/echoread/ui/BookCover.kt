@@ -11,7 +11,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.Dispatchers
@@ -54,9 +55,11 @@ fun BookCover(book: BookMeta, modifier: Modifier = Modifier, radius: Dp = 14.dp,
     val cacheKey = "${book.id}:${cover?.size ?: 0}"
     // 组合时缓存里就有的那张图：直接显示，不淡入（列表滚回来时重建的格子不该每次都闪一下）
     val cached = remember(cacheKey) { if (cover == null) null else coverCache.get(cacheKey) }
-    val bitmap by produceState(initialValue = cached, cacheKey) {
-        if (cover != null && value == null) {
-            value = withContext(Dispatchers.IO) {
+    // 图跟着书走（remember 带 key）：「继续阅读」卡片与书格换了一本书时，上一本的封面不能留在原地
+    var bitmap by remember(cacheKey) { mutableStateOf(cached) }
+    LaunchedEffect(cacheKey) {
+        if (cover != null && bitmap == null) {
+            bitmap = withContext(Dispatchers.IO) {
                 runCatching { BitmapFactory.decodeByteArray(cover, 0, cover.size)?.asImageBitmap() }.getOrNull()
                     ?.also { coverCache.put(cacheKey, it) }
             }
