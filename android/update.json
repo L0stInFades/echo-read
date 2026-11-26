@@ -1,15 +1,15 @@
 {
-  "versionCode": 18,
-  "versionName": "0.6.0-exp",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.6.0-exp/Lector-v0.6.0-exp.apk",
+  "versionCode": 19,
+  "versionName": "0.7.0-exp",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.0-exp/Lector-v0.7.0-exp.apk",
   "mirrors": [
-    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.6.0-exp/Lector-v0.6.0-exp.apk",
-    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.6.0-exp/Lector-v0.6.0-exp.apk",
-    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.6.0-exp/Lector-v0.6.0-exp.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.0-exp/Lector-v0.7.0-exp.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.0-exp/Lector-v0.7.0-exp.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.0-exp/Lector-v0.7.0-exp.apk"
   ],
-  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n液态玻璃重做：悬浮的按钮组、导入按钮、提示条不再是毛玻璃，而是一枚枚透镜——几乎不模糊，后面的内容透过来仍然清楚，只在边缘被折射掰弯。Android 10 起都是实时的。\n滑杆与开关重写：按住滑块，它会「绽开」成一枚清透镜，里面是被折射的轨道；拖动时跟手、被拉长，松手回弹。分段控件的选中块可以直接拖。\n新增「主题」：跟随系统 / 浅色 / 深色；深色下可开「纯黑」，背景是真正的 #000000，适合 OLED 屏幕。在「怎么用」或「阅读样式」的「外观」里。\n面板改为实心，文字更清楚；书架加了一层很淡的环境光。按钮、面板、提示条的动效更有弹性。",
-  "sha256": "54ed12333ec513376c988fb9d940d255f8c008aaffd06bf53fa5e499759f72f3",
+  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n新增书签：点阅读页右上角的书签键，给当前页加一枚书签，再点一下取消；有书签的页右上角会垂下一条丝带。书签记的是那句话而不是页码，换字号、换排版之后仍在原处；正在朗读时，书签落在正在念的那一句上。\n书签列表在「目录」面板的「书签」一栏：点一下跳过去（正在朗读就从那里接着念），删掉的可以撤销。\n朗读服务有了标志：OpenRouter、Gemini、ElevenLabs、OpenAI、Azure、xAI、Mistral、Together、MiniMax、Fish Audio、硅基流动、火山引擎、阿里云百炼、智谱、阶跃星辰（图标来自 LobeHub Icons）。\n「目录」面板第一次打开时也会滚到当前章。",
+  "sha256": "d044fe540104b63e813b362c83c287e30264a7fa5127fbdcfa7952c7f28496fb",
   "minSdk": 26,
   "experimental": true,
-  "notesEn": "[Experimental] Bigger changes; there may be undiscovered issues. To skip it, tap the X on the update card.\nLiquid glass, rebuilt: the floating button groups, the Import button and toasts are now clear lenses instead of frosted panels. What is behind them stays sharp and bends at the edges. It is live on Android 10 and later.\nNew sliders and switches: hold a thumb and it blooms into a clear lens with the track refracted inside; it follows your finger, stretches as it moves and bounces back on release. The selected segment in a segmented control can be dragged.\nNew Theme setting: System, Light or Dark. In the dark theme you can turn on Pure black, a true #000000 background for OLED screens. Find it under Appearance in How to use or Reading style.\nPanels are now solid, so text is easier to read; the library has a soft ambient glow. Buttons, panels and toasts have bouncier motion."
+  "notesEn": "[Experimental] Bigger changes; there may be undiscovered issues. To skip it, tap the X on the update card.\nNew: bookmarks. Tap the bookmark button at the top of the reader to mark the current page, and tap it again to remove it; a ribbon hangs from the corner of a bookmarked page. A bookmark remembers the sentence, not the page number, so it stays put when you change the font size or layout. While a book is being read aloud, it lands on the sentence being spoken.\nYour bookmarks are listed under Bookmarks in the Contents panel: tap one to jump there (if the book is being read aloud, reading continues from there). Deleting one can be undone.\nSpeech services now show their logos: OpenRouter, Gemini, ElevenLabs, OpenAI, Azure, xAI, Mistral, Together, MiniMax, Fish Audio, SiliconFlow, Volcengine, Alibaba Bailian, Zhipu and StepFun (icons from LobeHub Icons).\nThe Contents panel now scrolls to the current chapter the first time it opens."
 }
