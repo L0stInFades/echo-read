@@ -1,18 +1,13 @@
 [versions]
-agp = "8.13.2"
-kotlin = "2.2.21"
-ksp = "2.2.21-2.0.5"
+agp = "9.5.3"
+kotlin = "2.4.21"
+ksp = "2.3.14"
 coreKtx = "1.17.0"
 activityCompose = "1.11.0"
-composeBom = "2026.06.01"
-# material3 刻意固定在 BOM 之外：直到 2026.08.00，每一个 compose-bom 都仍把 material3 锁在 1.4.0，
-# 而 1.4.0 里 Material 3 Expressive 的入口全是 internal（MaterialExpressiveTheme / MotionScheme 工厂 /
-# emphasized 字体样式都不可调用，MaterialShapes 与全部 expressive 组件干脆不存在）。
-# 1.5.0-alpha18 是仍能在 AGP 8.x 上构建的最后一个 alpha：
-#   alpha18  -> minCompileSdk=35, minAndroidGradlePluginVersion=8.6.0   可用
-#   alpha19+ -> minCompileSdk=37, minAndroidGradlePluginVersion=9.1.0   会强制升 AGP 9
-# 同理 compose-bom 不能升到 2026.08.00（compose ui 1.12.0 同样要求 AGP 9.1 / compileSdk 37）。
-material3 = "1.5.0-alpha18"
+# material3 跟随 BOM：2026.11.01 起 BOM 自带 material3 1.5.0 稳定版（Expressive 的 API 大多已转正）。
+# 此前一直单独钉在 1.5.0-alpha18 —— 那是最后一个还能在 AGP 8.x 上构建的版本；之后的版本
+# （以及 compose ui 1.12+）要求 AGP 9.1+、compileSdk 37（ui 1.13 要 37.1），见 app/build.gradle.kts。
+composeBom = "2026.11.01"
 graphicsShapes = "1.1.0"
 # Google material-color-utilities 的 KMP 移植（纯 Kotlin，不含 Compose 依赖，约 226KB）。
 # 用它在运行时按「种子色 × 变体」生成 M3 配色 —— 这是原生安卓自己用的那套算法。
@@ -26,11 +21,11 @@ coroutines = "1.10.2"
 jsoup = "1.21.2"
 juniversalchardet = "2.5.0"
 junit = "4.13.2"
-benchmarkMacro = "1.4.1"
+benchmarkMacro = "1.5.0"
 uiautomator = "2.3.0"
 testExtJunit = "1.3.0"
 profileinstaller = "1.4.1"
-baselineprofile = "1.4.1"
+baselineprofile = "1.5.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -44,7 +39,7 @@ compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
 compose-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
 compose-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
 compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
-compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 androidx-graphics-shapes = { group = "androidx.graphics", name = "graphics-shapes", version.ref = "graphicsShapes" }
 material-color-utilities = { group = "com.materialkolor", name = "material-color-utilities", version.ref = "materialColorUtilities" }
 room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }

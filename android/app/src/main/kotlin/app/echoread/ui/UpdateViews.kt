@@ -195,6 +195,8 @@ private fun NoteRow(note: ReleaseNote, compact: Boolean) {
 }
 
 /** 卡片与面板共用的那一个动作：立即更新 → 下载进度 → 安装；失败了重试 */
+// LoadingIndicator 在 material3 1.5.0 里仍是实验 API
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun UpdateAction(state: UpdateState, graph: AppGraph) {
     val c = echo

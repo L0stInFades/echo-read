@@ -466,6 +466,8 @@ private fun KeyBanner(graph: AppGraph, onClick: () -> Unit) {
 }
 
 /** 导入中的遮罩。「正在导入」由它自己订阅：每导入一本书它都要开关一次，不该带着整个书架重组 */
+// ContainedLoadingIndicator 在 material3 1.5.0 里仍是实验 API
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun BoxScope.ImportingOverlay(library: app.echoread.data.LibraryRepo) {
     val importing by library.importing.collectAsState()
