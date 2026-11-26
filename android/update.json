@@ -1,15 +1,15 @@
 {
-  "versionCode": 20,
-  "versionName": "0.7.1-exp",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.1-exp/Lector-v0.7.1-exp.apk",
+  "versionCode": 21,
+  "versionName": "0.8.0-exp",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.8.0-exp/Lector-v0.8.0-exp.apk",
   "mirrors": [
-    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.1-exp/Lector-v0.7.1-exp.apk",
-    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.1-exp/Lector-v0.7.1-exp.apk",
-    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.7.1-exp/Lector-v0.7.1-exp.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.8.0-exp/Lector-v0.8.0-exp.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.8.0-exp/Lector-v0.8.0-exp.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.8.0-exp/Lector-v0.8.0-exp.apk"
   ],
-  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n这一版没有新功能，是一轮修补与加固。\n系统语音在 Android 11 及以上能用了（以前会显示「系统语音不可用」）。\n被来电、导航播报这类短暂打断之后，朗读会自己接着念；你自己按的暂停、拔掉耳机不会被续播。\nKey 失效或余额用完时，正在念的那一段念完才停下并提示，暂停键不再失灵。\n朗读设置里的试听，在关掉面板或切换页面时立刻停下。\n自己填的服务地址各用各的音频缓存，同名的模型 / 音色不会串音。\n不在朗读时往回翻页，底部进度条会跟着退回去；换一本书后，「继续阅读」卡片上的封面不再停在上一本。\n导入面板：授权或移除文件夹后列表立刻刷新，EPUB 的「已在书架」判断更准。过大的 EPUB（单个内部文件超过 16MB，或解压后总计超过 64MB）不再导入。\n应用内更新：安装包必须带校验值才会下载，更新信息只从 GitHub 与 jsDelivr 获取。\n系统云备份不再包含书库（书的全文太大，会让整份备份失败），设置照常备份。",
-  "sha256": "f7bbcacf89ace877c0800f5a9be2f715bd5b2d6d0ca8e84bca733b7912230072",
+  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n液态玻璃重写：照 FlClash 的做法从头写了一遍材质 —— 背后的画面几乎不模糊、提饱和后透过来，只在边缘一圈被掰弯，上下两条细高光、最外一圈暗线。悬浮的按钮与提示条都换了新材质。\n分段控件：选中项底下一块浅色托盘；按住它会悬起成一枚透镜，跟着手指走，透镜里的字放大、经过边缘时被掰弯；松手才选中。从分段控件上开始滑动列表不会再误选。\n按下玻璃按钮时整块鼓起、被手指带着走，手指下有一团光；书架右上角与阅读器顶栏的按钮组整组一起鼓。\n导入按钮与书架小标题保留 0.7.1 的玻璃质感，换上新的边；圆形导入按钮正上、正下的两个亮点修掉了。\n面板去掉了一圈发亮的描边。\n更新说明重做：卡片上露出前两条改动，点「更新说明」看全文；下载途中卡片滚出屏幕不再中断下载。",
+  "sha256": "06a69ef61364dc8e0249eb72a12e62d9dbfeba92c3fef4a68e631e449612824e",
   "minSdk": 26,
   "experimental": true,
-  "notesEn": "[Experimental] Bigger changes; there may be undiscovered issues. To skip it, tap the X on the update card.\nNo new features in this one: fixes and hardening.\nSystem voice now works on Android 11 and later (it used to say the system voice was unavailable).\nAfter a short interruption such as a phone call or a navigation prompt, reading resumes on its own. Pausing it yourself or unplugging headphones still stops it.\nIf a key is rejected or the balance runs out, the passage being spoken finishes before playback stops with the error, and the pause button keeps working.\nVoice previews stop as soon as you close the panel or switch pages.\nEach custom service address now has its own audio cache, so models or voices with the same name cannot get mixed up.\nPaging back while not listening moves the progress bar back too. The Continue reading card no longer keeps the previous book's cover after you switch books.\nImport panel: the folder list refreshes right after you grant or remove a folder, and the \"already on shelf\" mark for EPUBs is more accurate. Oversized EPUBs (over 16 MB in one internal file, or over 64 MB in total once unpacked) are no longer imported.\nIn-app update: a package is downloaded only when the release carries a valid checksum, and release info is fetched only from GitHub and jsDelivr.\nSystem cloud backup no longer includes the library (book text is large enough to make the whole backup fail). Settings are still backed up."
+  "notesEn": "[Experimental] Bigger changes; there may be undiscovered issues. To skip it, tap the X on the update card.\nLiquid glass, rebuilt: the material is written from scratch after FlClash. What is behind the glass stays nearly sharp and more saturated, bends only at the rim, with thin highlights along the top and bottom and a fine dark edge. Floating buttons and toasts use the new material.\nSegmented controls: the selected item sits on a soft pill. Hold it and it lifts into a lens that follows your finger; the text inside is magnified and bends at the lens edge. The choice is made when you let go. A scroll that starts on a segmented control no longer selects anything.\nGlass buttons swell as a whole when pressed, lean toward your finger and light up under it. The button groups at the top of the library and the reader swell together.\nThe Import button and the compact library title keep the 0.7.1 glass with the new edge. Fixed two bright dots at the top and bottom of the round Import button.\nPanels no longer have a bright outline.\nWhat's new, redesigned: the update card shows the first two changes and What's new lists them all. A download no longer stops when the card scrolls off screen."
 }
