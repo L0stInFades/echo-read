@@ -1,6 +1,7 @@
 package app.echoread.tts
 
 import app.echoread.core.Discovery
+import app.echoread.core.Providers
 import app.echoread.core.Template
 import app.echoread.core.net.CallKind
 import app.echoread.core.net.NetError

@@ -4,8 +4,8 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import app.echoread.core.GeminiTtsConfig
 import app.echoread.core.OpenAISpeechConfig
+import app.echoread.core.Providers
 import app.echoread.core.TtsSettings
-import app.echoread.tts.Providers
 import java.security.KeyStore
 import java.util.Base64
 import javax.crypto.Cipher

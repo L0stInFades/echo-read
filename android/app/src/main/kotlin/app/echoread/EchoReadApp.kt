@@ -43,7 +43,7 @@ class AppGraph(context: Context) {
     val playback = Playback(context)
     val network = AndroidNetworkStatus(context)
     val engine = TtsEngine(mainScope, chapterCache, audioCache, systemTts, playback, File(context.cacheDir, "tts-tmp"), network)
-    val player = PlayerController(engine, library, settings, mainScope)
+    val player = PlayerController(engine, library, settings, mainScope, onNotice = { Toaster.show(it) })
     val updater = Updater(context)
 
     /** 各朗读服务的同步与连接状态（面板关掉也不取消） */

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.SharedPreferences
 import app.echoread.core.OpenAISpeechConfig
+import app.echoread.core.Providers
 import app.echoread.core.Range
 import app.echoread.core.TtsSettings
 import app.echoread.core.net.NetworkStatus
@@ -18,7 +19,6 @@ import app.echoread.tts.AudioCache
 import app.echoread.tts.AudioOutput
 import app.echoread.tts.AudioPlatform
 import app.echoread.tts.PlayHandle
-import app.echoread.tts.Providers
 import app.echoread.tts.SynthPipeline
 import app.echoread.tts.SynthTarget
 import app.echoread.tts.SystemTts

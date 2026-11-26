@@ -1,10 +1,8 @@
-package app.echoread.tts
+package app.echoread.core
 
 import app.echoread.core.i18n.S
-import app.echoread.core.GeminiVoiceEntry
 import app.echoread.core.i18n.I18n
 import app.echoread.core.i18n.PerLanguage
-import app.echoread.core.TtsModelInfo
 
 /**
  * 音色目录：OpenRouter TTS 模型的精细音色体系。

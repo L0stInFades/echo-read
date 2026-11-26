@@ -3,6 +3,7 @@ package app.echoread.tts
 import app.echoread.core.i18n.S
 import app.echoread.core.Hash
 import app.echoread.core.PlayerState
+import app.echoread.core.Providers
 import app.echoread.core.Range
 import app.echoread.core.Segmenter
 import app.echoread.core.TtsSettings

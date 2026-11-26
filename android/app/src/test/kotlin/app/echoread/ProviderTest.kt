@@ -4,6 +4,7 @@ import app.echoread.core.Discovery
 import app.echoread.core.Hash
 import app.echoread.core.OpenAISpeechConfig
 import app.echoread.core.ProviderSpec
+import app.echoread.core.Providers
 import app.echoread.core.Template
 import app.echoread.core.TextLang
 import app.echoread.core.TtsProvider
@@ -17,12 +18,17 @@ import app.echoread.core.i18n.ZhStrings
 import app.echoread.core.net.Disposition
 import app.echoread.core.net.NetCategory
 import app.echoread.core.net.NetException
+import app.echoread.data.HttpClients
 import app.echoread.data.SettingsStore
 import app.echoread.tts.HttpSpeech
-import app.echoread.tts.Providers
 import app.echoread.tts.SpeechApi
 import app.echoread.tts.SynthTarget
 import app.echoread.tts.TtsEngine
+import app.echoread.tts.openAiOptions
+import app.echoread.tts.ready
+import app.echoread.tts.sync
+import app.echoread.tts.target
+import app.echoread.tts.validBase
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -833,8 +839,8 @@ class ProviderTest {
     /** 系统配了代理时，本机地址仍然直连；别的地址照常交给系统代理 */
     @Test
     fun loopbackBypassesTheSystemProxy() {
-        for (h in listOf("127.0.0.1", "localhost", "LOCALHOST", "127.8.0.1", "[::1]", "tts.localhost")) assertTrue(h, SpeechApi.isLoopback(h))
-        for (h in listOf("192.168.1.5", "10.0.2.2", "127.0.0.1.example.com", "localhost.example.com", "1127.0.0.1")) assertFalse(h, SpeechApi.isLoopback(h))
+        for (h in listOf("127.0.0.1", "localhost", "LOCALHOST", "127.8.0.1", "[::1]", "tts.localhost")) assertTrue(h, HttpClients.isLoopback(h))
+        for (h in listOf("192.168.1.5", "10.0.2.2", "127.0.0.1.example.com", "localhost.example.com", "1127.0.0.1")) assertFalse(h, HttpClients.isLoopback(h))
 
         val proxy = java.net.Proxy(java.net.Proxy.Type.HTTP, java.net.InetSocketAddress.createUnresolved("192.168.31.104", 7890))
         val before = java.net.ProxySelector.getDefault()
@@ -843,7 +849,7 @@ class ProviderTest {
             override fun connectFailed(uri: java.net.URI?, sa: java.net.SocketAddress?, ioe: java.io.IOException?) {}
         })
         try {
-            val selector = SpeechApi.client.proxySelector
+            val selector = HttpClients.client.proxySelector
             assertEquals(listOf(java.net.Proxy.NO_PROXY), selector.select(java.net.URI("http://127.0.0.1:8880/v1/audio/speech")))
             assertEquals(listOf(java.net.Proxy.NO_PROXY), selector.select(java.net.URI("http://localhost:8880/v1")))
             assertEquals(listOf(proxy), selector.select(java.net.URI("https://api.openai.com/v1/audio/speech")))

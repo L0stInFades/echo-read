@@ -3,6 +3,7 @@ package app.echoread.tts
 import app.echoread.core.GeminiTtsConfig
 import app.echoread.core.OpenAISpeechConfig
 import app.echoread.core.ProviderSpec
+import app.echoread.core.Providers
 import app.echoread.core.TtsSettings
 import app.echoread.core.VoiceProfile
 

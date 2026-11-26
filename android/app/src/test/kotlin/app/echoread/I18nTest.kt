@@ -5,6 +5,7 @@ import app.echoread.core.ReaderSettings
 import app.echoread.core.Sample
 import app.echoread.core.TextOps
 import app.echoread.core.TxtParser
+import app.echoread.core.Voices
 import app.echoread.core.i18n.AppLanguage
 import app.echoread.core.i18n.EnStrings
 import app.echoread.core.i18n.I18n
@@ -14,7 +15,6 @@ import app.echoread.core.i18n.ZhStrings
 import app.echoread.core.net.NetErrors
 import app.echoread.tts.GeminiTts
 import app.echoread.tts.SystemTts
-import app.echoread.tts.Voices
 import kotlinx.serialization.json.Json
 import org.junit.After
 import org.junit.Assert.assertEquals

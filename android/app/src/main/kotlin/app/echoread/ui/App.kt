@@ -53,11 +53,11 @@ private fun androidx.compose.foundation.layout.BoxScope.ConfigConfirmSheet(graph
     EchoSheet(open = pending != null, onDismiss = { graph.configRequests.value = null }, title = S.settings.externalConfigTitle, maxHeightFraction = 0.6f) {
         if (p != null) {
             val tts = graph.settings.tts.value
-            val key = p.apiKey?.let { app.echoread.tts.Providers.cleanSecret(it) }?.takeIf { it.isNotBlank() }
-            val address = p.baseUrl?.let { app.echoread.tts.Providers.cleanAddress(it) }?.takeIf { it.isNotBlank() }
-            val named = p.provider?.takeIf { it.isNotBlank() }?.let { app.echoread.tts.Providers.spec(it, tts) }
-            val spec = named ?: address?.let { app.echoread.tts.Providers.specForBase(it) }
-            val known = spec != null && spec.id != app.echoread.tts.Providers.CUSTOM
+            val key = p.apiKey?.let { app.echoread.core.Providers.cleanSecret(it) }?.takeIf { it.isNotBlank() }
+            val address = p.baseUrl?.let { app.echoread.core.Providers.cleanAddress(it) }?.takeIf { it.isNotBlank() }
+            val named = p.provider?.takeIf { it.isNotBlank() }?.let { app.echoread.core.Providers.spec(it, tts) }
+            val spec = named ?: address?.let { app.echoread.core.Providers.specForBase(it) }
+            val known = spec != null && spec.id != app.echoread.core.Providers.CUSTOM
             // 目录里地址本来就要自己填的那几家（自建服务）：每次都是新建一个服务，直接用传入的地址
             val selfHosted = known && named != null && named.baseUrl.isBlank()
             // 给目录里的服务换地址（中转、自建网关）：只有这份配置自己带了 Key 才照办。
@@ -84,14 +84,14 @@ private fun androidx.compose.foundation.layout.BoxScope.ConfigConfirmSheet(graph
                     val settings = graph.settings
                     val cur = settings.tts.value
                     val target = when {
-                        spec != null && spec.id != app.echoread.tts.Providers.CUSTOM -> settings.addProfile(spec)
+                        spec != null && spec.id != app.echoread.core.Providers.CUSTOM -> settings.addProfile(spec)
                         address != null ->
                             // 认不出的地址：新建一个自定义端点，不覆盖已有服务的配置
                             cur.profiles.firstOrNull { it.baseUrl.trimEnd('/') == address.trimEnd('/') }
-                                ?: settings.addProfile(app.echoread.tts.Providers.spec(app.echoread.tts.Providers.CUSTOM)!!)
-                        else -> cur.activeProfile?.takeIf { app.echoread.tts.Providers.specOf(it, cur).kind == app.echoread.core.ProviderSpec.KIND_OPENAI }
-                            ?: cur.profiles.firstOrNull { app.echoread.tts.Providers.specOf(it, cur).kind == app.echoread.core.ProviderSpec.KIND_OPENAI }
-                            ?: settings.addProfile(app.echoread.tts.Providers.spec(app.echoread.tts.Providers.OPENROUTER)!!)
+                                ?: settings.addProfile(app.echoread.core.Providers.spec(app.echoread.core.Providers.CUSTOM)!!)
+                        else -> cur.activeProfile?.takeIf { app.echoread.core.Providers.specOf(it, cur).kind == app.echoread.core.ProviderSpec.KIND_OPENAI }
+                            ?: cur.profiles.firstOrNull { app.echoread.core.Providers.specOf(it, cur).kind == app.echoread.core.ProviderSpec.KIND_OPENAI }
+                            ?: settings.addProfile(app.echoread.core.Providers.spec(app.echoread.core.Providers.OPENROUTER)!!)
                     }
                     settings.updateProfile(target.id) { prof ->
                         prof.copy(

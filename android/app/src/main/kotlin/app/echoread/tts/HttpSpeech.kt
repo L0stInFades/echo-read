@@ -3,6 +3,7 @@ package app.echoread.tts
 import app.echoread.core.HttpRecipe
 import app.echoread.core.ListRecipe
 import app.echoread.core.ProviderSpec
+import app.echoread.core.Providers
 import app.echoread.core.ResponseSpec
 import app.echoread.core.Template
 import app.echoread.core.TextLang

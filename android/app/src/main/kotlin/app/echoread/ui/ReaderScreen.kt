@@ -264,7 +264,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
 
     suspend fun layoutOne(index: Int, sp: LayoutSpec): ChapterPages? {
         val d = try {
-            graph.chapterCache.get(bookId, index, app.echoread.tts.Providers.chunkChars(settings.tts.value))
+            graph.chapterCache.get(bookId, index, app.echoread.core.Providers.chunkChars(settings.tts.value))
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
@@ -358,7 +358,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                 for (n in intArrayOf(target + 1, target - 1)) {
                     if (n < 0 || n >= total) continue
                     if (window.pagesOf(n) != null && window.specOf(n) == sp) continue
-                    graph.chapterCache.prefetch(bookId, n, app.echoread.tts.Providers.chunkChars(settings.tts.value))
+                    graph.chapterCache.prefetch(bookId, n, app.echoread.core.Providers.chunkChars(settings.tts.value))
                     val laid = layoutOne(n, sp) ?: continue
                     window.put(n, laid, sp)
                 }

@@ -3,9 +3,9 @@ package app.echoread.tts
 import app.echoread.core.i18n.S
 import app.echoread.core.BookMeta
 import app.echoread.core.PlayerState
+import app.echoread.core.Providers
 import app.echoread.data.LibraryRepo
 import app.echoread.data.SettingsStore
-import app.echoread.ui.Toaster
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
@@ -36,6 +36,8 @@ class PlayerController(
     private val library: LibraryRepo,
     private val settings: SettingsStore,
     private val scope: CoroutineScope,
+    /** 给用户的一句提示（睡眠定时到点）。tts 不认识界面层：怎么显示由 AppGraph 接到 toast 上 */
+    private val onNotice: (String) -> Unit,
     /** 时钟（毫秒）；参数化只为单测换成虚拟时间，生产用默认值 */
     private val now: () -> Long = System::currentTimeMillis
 ) {
@@ -128,7 +130,7 @@ class PlayerController(
             return
         }
         setSleepTimer(SleepMode.Off)
-        Toaster.show(S.playback.sleepTimerEnded)
+        onNotice(S.playback.sleepTimerEnded)
     }
 
     fun setSleepTimer(mode: SleepMode) {

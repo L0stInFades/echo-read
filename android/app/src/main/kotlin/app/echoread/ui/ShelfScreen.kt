@@ -67,7 +67,8 @@ import app.echoread.AppGraph
 import app.echoread.core.BookMeta
 import app.echoread.core.readFraction
 import app.echoread.core.started
-import app.echoread.tts.Providers
+import app.echoread.core.Providers
+import app.echoread.tts.ready
 import app.echoread.ui.glass.LocalBackdrop
 import app.echoread.ui.glass.GlassStyle
 import app.echoread.ui.glass.glass

@@ -2,6 +2,7 @@ package app.echoread
 
 import app.echoread.core.Hash
 import app.echoread.core.OpenAISpeechConfig
+import app.echoread.core.Voices
 import app.echoread.core.net.Disposition
 import app.echoread.core.net.NetCategory
 import app.echoread.core.net.NetErrors
@@ -13,7 +14,6 @@ import java.net.UnknownHostException
 import javax.net.ssl.SSLHandshakeException
 import javax.net.ssl.SSLPeerUnverifiedException
 import app.echoread.tts.SpeechApi
-import app.echoread.tts.Voices
 import app.echoread.tts.backoffDelay
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonPrimitive

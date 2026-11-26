@@ -9,7 +9,6 @@ import android.os.Build
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
-import app.echoread.tts.SpeechApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -104,7 +103,7 @@ class Updater(
                     for (url in manifestUrls) {
                         try {
                             val req = Request.Builder().url(url).header("Cache-Control", "no-cache").get().build()
-                            SpeechApi.clientFor(app.echoread.core.net.CallKind.UPDATE_MANIFEST).newCall(req).execute().use { res ->
+                            HttpClients.clientFor(app.echoread.core.net.CallKind.UPDATE_MANIFEST).newCall(req).execute().use { res ->
                                 if (!res.isSuccessful) {
                                     throw app.echoread.core.net.NetException(
                                         app.echoread.core.net.NetErrors.fromHttp(
@@ -197,7 +196,7 @@ class Updater(
                     val req = Request.Builder().url(url).get().build()
                     // 首字节 12s 未到 / 传输中 20s 无进展即放弃当前地址换镜像（GitHub 直连在部分网络下会长时间挂起）。
                     // 刻意不设 callTimeout：APK 有十几 MB，慢网下整包耗时本就可能超过任何合理的总时限。
-                    val client = SpeechApi.clientFor(app.echoread.core.net.CallKind.UPDATE_APK).newBuilder()
+                    val client = HttpClients.clientFor(app.echoread.core.net.CallKind.UPDATE_APK).newBuilder()
                         .connectTimeout(12, java.util.concurrent.TimeUnit.SECONDS)
                         .readTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
                         .build()

@@ -3,11 +3,13 @@ package app.echoread.tts
 import app.echoread.core.i18n.S
 import app.echoread.core.OpenAISpeechConfig
 import app.echoread.core.TtsModelInfo
+import app.echoread.core.Voices
 import app.echoread.core.net.CallKind
 import app.echoread.core.net.NetCategory
 import app.echoread.core.net.NetError
 import app.echoread.core.net.NetErrors
 import app.echoread.core.net.NetException
+import app.echoread.data.HttpClients
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -24,7 +26,6 @@ import kotlinx.serialization.json.put
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
@@ -32,7 +33,6 @@ import java.io.IOException
 import java.net.URI
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -54,60 +54,6 @@ import kotlin.coroutines.resumeWithException
  */
 object SpeechApi {
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
-
-    /**
-     * 基础客户端。**没有 callTimeout** —— 仅供 APK 下载这种长任务使用。
-     * 其余调用一律走 [clientFor]，否则单次请求最坏可挂到 connect 20s + read 90s，
-     * 乘上重试次数就是十几分钟看不到任何错误。
-     */
-    val client: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .proxySelector(LoopbackDirect)
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(90, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
-            .build()
-    }
-
-    /** 是不是本机地址（localhost、127.x.x.x、::1） */
-    fun isLoopback(host: String): Boolean {
-        val h = host.trim().trim('[', ']').lowercase()
-        return h == "localhost" || h.endsWith(".localhost") || h == "::1" || Regex("^127(\\.\\d{1,3}){3}$").matches(h)
-    }
-
-    /**
-     * 本机地址一律直连，不交给系统代理。
-     * Wi-Fi 上配了 HTTP 代理而没填排除列表时，系统会把 http://127.0.0.1:8880 也交给代理 ——
-     * 代理那头的 127.0.0.1 是它自己，于是跑在手机上的朗读服务只会得到一个 503（真机实测）。
-     * 浏览器对 localhost 也是这么处理的。其余地址仍按系统设置走。
-     */
-    internal object LoopbackDirect : java.net.ProxySelector() {
-        override fun select(uri: java.net.URI?): List<java.net.Proxy> {
-            if (uri?.host?.let { isLoopback(it) } == true) return listOf(java.net.Proxy.NO_PROXY)
-            val system = runCatching { getDefault()?.takeIf { it !== this }?.select(uri) }.getOrNull()
-            return system?.takeIf { it.isNotEmpty() } ?: listOf(java.net.Proxy.NO_PROXY)
-        }
-
-        override fun connectFailed(uri: java.net.URI?, sa: java.net.SocketAddress?, ioe: java.io.IOException?) {
-            runCatching { getDefault()?.takeIf { it !== this }?.connectFailed(uri, sa, ioe) }
-        }
-    }
-
-    /** 合成：整次调用 75s 封顶（含连接、写、读、重定向），保证退避预算可预测 */
-    private val synthClient: OkHttpClient by lazy {
-        client.newBuilder().callTimeout(75, TimeUnit.SECONDS).readTimeout(60, TimeUnit.SECONDS).build()
-    }
-
-    /** 元数据（模型列表 / 余额 / 更新清单）：25s 封顶，用户正盯着转圈 */
-    private val metaClient: OkHttpClient by lazy {
-        client.newBuilder().callTimeout(25, TimeUnit.SECONDS).readTimeout(20, TimeUnit.SECONDS).build()
-    }
-
-    fun clientFor(kind: CallKind): OkHttpClient = when (kind) {
-        CallKind.SYNTHESIS -> synthClient
-        CallKind.UPDATE_APK -> client
-        else -> metaClient
-    }
 
     /** 是否 OpenRouter 端点（决定请求体方言）：按主机名判定 */
     fun isOpenRouterBase(baseUrl: String): Boolean = try {
@@ -273,7 +219,7 @@ object SpeechApi {
     ): Response {
         val t0 = System.currentTimeMillis()
         return try {
-            clientFor(kind).newCall(req).await()
+            HttpClients.clientFor(kind).newCall(req).await()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {

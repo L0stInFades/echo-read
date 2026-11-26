@@ -3,6 +3,7 @@ package app.echoread
 import app.echoread.core.PlayerState
 import app.echoread.core.i18n.AppLanguage
 import app.echoread.core.i18n.I18n
+import app.echoread.core.i18n.S
 import app.echoread.data.LibraryRepo
 import app.echoread.data.SettingsStore
 import app.echoread.data.Vault
@@ -39,9 +40,12 @@ class PlayerControllerTest {
     private inner class Rig(test: TestScope) {
         val engine = EngineRig(test, root)
         private val context = TestContext()
+        /** 控制器交给界面层的提示（生产里由 AppGraph 接到 toast 上） */
+        val notices = ArrayList<String>()
         /** 时钟加一个大偏移：生产里 lastSave 的初值 0 离「现在」很远，装载后第一次落库不受节流 */
         val controller = PlayerController(
-            engine.engine, LibraryRepo(context, engine.dao, engine.chapters), SettingsStore(context, plainVault), engine.main
+            engine.engine, LibraryRepo(context, engine.dao, engine.chapters), SettingsStore(context, plainVault), engine.main,
+            onNotice = { notices += it }
         ) { 1_000_000L + test.testScheduler.currentTime }
         val saves get() = engine.dao.progress
     }
@@ -83,6 +87,7 @@ class PlayerControllerTest {
         assertEquals(PlayerState.PAUSED, e.current.state)
         assertEquals(SleepMode.Off, r.controller.sleepMode.value)
         assertEquals("新的一章一个字都没读出来", 1, r.engine.fake.handles.size)
+        assertEquals("暂停的同时提示一次", listOf(S.playback.sleepTimerEnded), r.notices)
     }
 
     /** 分钟定时：每秒倒数，到点暂停并关掉定时（虚拟时间里走完一整分钟） */
@@ -104,10 +109,12 @@ class PlayerControllerTest {
         runCurrent()
         assertEquals(1, r.controller.sleepRemaining.value)
         assertEquals(PlayerState.PLAYING, e.current.state)
+        assertEquals("没到点不提示", emptyList<String>(), r.notices)
         advanceTimeBy(1000)
         runCurrent()
         assertEquals(PlayerState.PAUSED, e.current.state)
         assertEquals(SleepMode.Off, r.controller.sleepMode.value)
         assertEquals(0, r.controller.sleepRemaining.value)
+        assertEquals("到点暂停并提示一次", listOf(S.playback.sleepTimerEnded), r.notices)
     }
 }

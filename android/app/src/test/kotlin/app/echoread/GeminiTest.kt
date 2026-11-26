@@ -6,6 +6,7 @@ import app.echoread.core.Hash
 import app.echoread.core.OpenAISpeechConfig
 import app.echoread.core.TtsProvider
 import app.echoread.core.TtsSettings
+import app.echoread.core.Voices
 import app.echoread.core.net.Disposition
 import app.echoread.core.net.NetCategory
 import app.echoread.core.net.NetErrors
@@ -15,7 +16,6 @@ import app.echoread.tts.GeminiTts
 import app.echoread.tts.SpeechApi
 import app.echoread.tts.SynthTarget
 import app.echoread.tts.TtsEngine
-import app.echoread.tts.Voices
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray

@@ -1,35 +1,20 @@
-package app.echoread.tts
+package app.echoread.core
 
-import app.echoread.core.Discovery
-import app.echoread.core.GeminiTtsConfig
-import app.echoread.core.Hash
-import app.echoread.core.OpenAISpeechConfig
-import app.echoread.core.ProviderCatalog
-import app.echoread.core.ProviderSpec
-import app.echoread.core.ResponseSpec
-import app.echoread.core.Template
-import app.echoread.core.TtsModelInfo
-import app.echoread.core.TtsSettings
-import app.echoread.core.VoiceProfile
-import app.echoread.core.VoiceSpec
 import app.echoread.core.i18n.I18n
-import app.echoread.core.net.CallKind
-import app.echoread.core.net.NetCategory
-import app.echoread.core.net.NetError
-import app.echoread.core.net.NetErrors
-import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.net.URI
 
 /**
  * 朗读服务的登记处：内置目录（`resources/tts-providers.json`）+ 用户导入的定义，
- * 以及「一个已添加的服务 → 一次可执行的合成」这一步解析。
+ * 以及从目录推得出的一切：校验、规整、默认值、各家的配置。
+ * 都是纯数据与纯函数，所以放在 core：设置读档时的迁移与值域守卫（data 层）离不开它，又不能反过来依赖 tts。
+ * 要用到网络库与合成接口的几步（「一个已添加的服务 → 一次可执行的合成」的解析、同步、试听）
+ * 是它在 tts 层的扩展，见 tts/ProviderCalls.kt；调用处照旧写 `Providers.target(...)`。
  *
  * 接入一家新服务商的全部工作量，按可能性从大到小：
  * 1. 它讲 OpenAI 的 /audio/speech：目录里加一段，`kind` 写 `openai`，填地址、模型、音色；
  * 2. 它是别的 REST 形状：`kind` 写 `http`，再写一段 `synth` 模板（地址、头、请求体、音频在响应的哪）；
- * 3. 模板表达不了（要在响应里做判断、要签名、要 WebSocket）：这时才写适配器，并在 [target] 里接上。
+ * 3. 模板表达不了（要在响应里做判断、要签名、要 WebSocket）：这时才写适配器，并在 tts 层的 `Providers.target` 里接上。
  */
 object Providers {
     /** 通用的 OpenAI 兼容端点（地址由用户填，可以加很多个） */
@@ -167,9 +152,6 @@ object Providers {
     /** 规整 Key / 额外字段：全角转半角、去掉首尾空白 */
     fun cleanSecret(raw: String): String = halfWidth(raw).trim()
 
-    /** 是一个能发请求的 http(s) 地址 */
-    fun validBase(base: String): Boolean = base.toHttpUrlOrNull() != null
-
     fun fieldVars(spec: ProviderSpec, p: VoiceProfile): Map<String, String> =
         spec.fields.associate { f -> "f.${f.id}" to (p.fields[f.id]?.trim()?.takeIf { it.isNotEmpty() } ?: f.default) }
 
@@ -214,9 +196,6 @@ object Providers {
     /** 缺 Key 就没法用（自建服务除外） */
     fun needsKey(spec: ProviderSpec, p: VoiceProfile): Boolean = !spec.keyOptional && p.apiKey.isBlank()
 
-    /** 配置够不够发出第一次请求（不保证 Key 有效） */
-    fun ready(spec: ProviderSpec, p: VoiceProfile): Boolean = !needsKey(spec, p) && validBase(baseOf(spec, p))
-
     fun openAiConfig(spec: ProviderSpec, p: VoiceProfile): OpenAISpeechConfig {
         val model = modelOf(spec, p)
         return OpenAISpeechConfig(
@@ -231,9 +210,6 @@ object Providers {
         )
     }
 
-    fun openAiOptions(spec: ProviderSpec): SpeechApi.Options =
-        SpeechApi.Options(keyOptional = spec.keyOptional, styleParam = spec.styleParam, pcmRate = spec.pcmRate)
-
     fun geminiConfig(spec: ProviderSpec, p: VoiceProfile): GeminiTtsConfig =
         GeminiTtsConfig(apiKey = p.apiKey.trim(), model = modelOf(spec, p), voice = p.voice, style = p.style)
 
@@ -247,31 +223,6 @@ object Providers {
         spec.id == CUSTOM -> "OPENAI@$base"
         spec.kind == ProviderSpec.KIND_GEMINI -> "GEMINI"
         else -> spec.id
-    }
-
-    fun target(p: VoiceProfile, s: TtsSettings? = null): SynthTarget {
-        val spec = specOf(p, s)
-        return when (spec.kind) {
-            ProviderSpec.KIND_GEMINI -> SynthTarget.Gemini(geminiConfig(spec, p), baseOf(spec, p).ifEmpty { GeminiTts.BASE_URL })
-            ProviderSpec.KIND_HTTP -> SynthTarget.Http(spec, p)
-            else -> {
-                val cfg = openAiConfig(spec, p)
-                SynthTarget.OpenAI(cfg, openAiOptions(spec), cacheNs(spec, cfg.baseUrl))
-            }
-        }
-    }
-
-    /** 当前设置对应的远程合成目标；系统语音为 null */
-    fun target(s: TtsSettings): SynthTarget? {
-        if (s.usesSystemVoice) return null
-        val p = s.activeProfile
-        if (p != null) return target(p, s)
-        // 还没迁移过的旧存档（只在单元测试里直接构造 TtsSettings 时出现；真机读档必经 sanitize）
-        return when (s.provider) {
-            app.echoread.core.TtsProvider.GEMINI -> SynthTarget.Gemini(s.gemini)
-            app.echoread.core.TtsProvider.SYSTEM -> null
-            else -> SynthTarget.OpenAI(s.openai)
-        }
     }
 
     /* ---------------- 给界面用的目录视图 ---------------- */
@@ -357,117 +308,8 @@ object Providers {
         )
     }
 
-    /* ---------------- 同步：模型表、音色表、顺带验证 Key ---------------- */
-
-    data class SyncResult(
-        val models: List<TtsModelInfo>,
-        val voices: List<VoiceSpec>,
-        /** 至少有一次带鉴权的请求成功了：Key 是通的 */
-        val verified: Boolean,
-        val credits: SpeechApi.Credits? = null,
-        val creditsError: NetError? = null,
-        /** 带过滤的请求被拒、不带的却成功：鉴权可疑（见 [SpeechApi.fetchTtsModels]） */
-        val suspiciousAuth: NetError? = null
-    )
+    /* ---------------- 同步（拉列表、验证 Key 要发请求，在 tts 层） ---------------- */
 
     /** 「端点 + Key」指纹：变了就得重新同步（自建音色属于 Key 所在的账户，换了 Key 不能把上一家的私有音色摆出来） */
     fun fingerprint(spec: ProviderSpec, p: VoiceProfile): String = Hash.cyrb53("${spec.id}|${baseOf(spec, p)}|${p.apiKey.trim()}")
-
-    /**
-     * 拉取这家服务的模型表与音色表。任何一步的鉴权失败都上抛（这就是「连接检查」）；
-     * 目录里没有声明任何列表接口的服务商返回 `verified = false` —— 那就只能靠试听来验证。
-     */
-    suspend fun sync(p: VoiceProfile, s: TtsSettings? = null): SyncResult {
-        val spec = specOf(p, s)
-        val model = modelOf(spec, p)
-        var models: List<TtsModelInfo> = emptyList()
-        var voices: List<VoiceSpec> = emptyList()
-        var verified = false
-        var credits: SpeechApi.Credits? = null
-        var creditsError: NetError? = null
-        var suspicious: NetError? = null
-
-        when (spec.kind) {
-            ProviderSpec.KIND_GEMINI -> {
-                val cfg = geminiConfig(spec, p)
-                voices = GeminiTts.listVoices(cfg, baseOf(spec, p).ifEmpty { GeminiTts.BASE_URL }).map { v ->
-                    VoiceSpec(
-                        id = v.id, name = v.displayName, lang = v.languageCode.orEmpty(),
-                        gender = when (v.gender) { "female" -> "f"; "male" -> "m"; else -> "" },
-                        tags = listOfNotNull(v.accent, v.context ?: v.persona).distinct(),
-                        mine = Voices.isGeminiCustom(v)
-                    )
-                }
-                verified = true
-            }
-            ProviderSpec.KIND_OPENAI -> {
-                val cfg = openAiConfig(spec, p)
-                // 目录里没写模型表的（OpenRouter、自定义端点）去问服务端；写了的以目录为准，不多发一次请求
-                if (spec.models.isEmpty() && spec.listModels == null) {
-                    try {
-                        val r = SpeechApi.fetchTtsModels(cfg)
-                        models = r.models
-                        suspicious = r.suspiciousAuth
-                        verified = r.suspiciousAuth == null
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Throwable) {
-                        val err = NetErrors.fromThrowable(e, endpoint = cfg.baseUrl, method = "GET", kind = CallKind.MODEL_LIST)
-                        // 自建 / 小众服务常常没有 /models：这不等于连不上，只是没有列表可选
-                        val noList = spec.id != OPENROUTER && (err.category == NetCategory.NOT_FOUND || err.status == 405 || err.category == NetCategory.PARSE)
-                        if (!noList) throw e
-                    }
-                }
-                if (SpeechApi.isOpenRouterBase(cfg.baseUrl)) {
-                    val c = SpeechApi.fetchCredits(cfg)
-                    credits = c.getOrNull()
-                    creditsError = c.exceptionOrNull()?.let { NetErrors.fromThrowable(it, endpoint = cfg.baseUrl, kind = CallKind.CREDITS) }
-                }
-            }
-        }
-
-        spec.listModels?.let { r ->
-            models = HttpSpeech.list(r, spec, p).map { TtsModelInfo(id = it.id, name = it.name.ifBlank { it.id }) }
-            verified = true
-        }
-        if (spec.listVoices.isNotEmpty()) {
-            val all = LinkedHashMap<String, VoiceSpec>()
-            var firstError: Throwable? = null
-            var anyOk = false
-            for (r in spec.listVoices) {
-                try {
-                    HttpSpeech.list(r, spec, p.copy(model = model)).forEach { all.putIfAbsent(it.id, it) }
-                    anyOk = true
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Throwable) {
-                    if (firstError == null) firstError = e
-                }
-            }
-            // 公共音色库常常不要鉴权（Fish Audio）：别的表拉下来了不代表 Key 是对的。
-            // 只要有一张表是因为 Key / 额度被拒的，这次检查就算失败
-            firstError?.let { e ->
-                val cat = (e as? app.echoread.core.net.NetException)?.error?.category
-                if (!anyOk || cat == NetCategory.AUTH || cat == NetCategory.QUOTA) throw e
-            }
-            voices = all.values.toList()
-            verified = true
-        }
-        return SyncResult(models, voices, verified, credits, creditsError, suspicious)
-    }
-
-    /** 试听：合成一句短话，成功时把音频一并返回（调用方负责播放） */
-    suspend fun test(p: VoiceProfile, s: TtsSettings? = null): SpeechApi.TestResult {
-        val t = target(p, s)
-        return try {
-            val text = if (t is SynthTarget.Gemini) GeminiTts.PREVIEW_TEXT else app.echoread.core.i18n.S.providers.previewText
-            SpeechApi.TestResult(true, app.echoread.core.i18n.S.common.connectionOk, t.synthesize(text))
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Throwable) {
-            val err = NetErrors.fromThrowable(e, endpoint = t.endpoint, kind = CallKind.SYNTHESIS, model = t.model)
-                .let { if (it.model == null) it.copy(model = t.model) else it }
-            SpeechApi.TestResult(false, err.headline(), error = err)
-        }
-    }
 }
