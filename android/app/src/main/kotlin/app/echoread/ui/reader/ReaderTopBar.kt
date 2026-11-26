@@ -27,8 +27,9 @@ import app.echoread.core.i18n.S
 import app.echoread.ui.EchoIcons
 import app.echoread.ui.GlassIcon
 import app.echoread.ui.ReaderTheme
-import app.echoread.ui.glass.GlassStyle
-import app.echoread.ui.glass.glassLight
+import app.echoread.ui.glass.SurfaceStyle
+import app.echoread.ui.motion.elasticPress
+import app.echoread.ui.motion.rememberPressMotion
 import app.echoread.ui.glass.glassShadow
 import app.echoread.ui.glass.glassSurface
 import app.echoread.ui.motion.rememberGlassLight
@@ -42,7 +43,7 @@ import app.echoread.ui.motion.rememberGlassLight
 @Composable
 internal fun ReaderTopBar(
     theme: ReaderTheme,
-    glass: GlassStyle,
+    glass: SurfaceStyle,
     shadow: Color,
     chapterTitle: String,
     bookTitle: String,
@@ -90,14 +91,16 @@ internal fun ReaderTopBar(
 
 /** 阅读器顶栏上的一组玻璃按钮：胶囊形，用阅读主题自己的玻璃面（见 chromeGlass） */
 @Composable
-private fun ChromeGroup(style: GlassStyle, shadow: Color, inset: Dp = 0.dp, content: @Composable RowScope.() -> Unit) {
+private fun ChromeGroup(style: SurfaceStyle, shadow: Color, inset: Dp = 0.dp, content: @Composable RowScope.() -> Unit) {
     val light = rememberGlassLight()
+    val press = rememberPressMotion()
     Row(
         Modifier
             .height(44.dp)
+            // 整组一起鼓起、被手指拉着走（组里的按钮自己不缩放）
+            .elasticPress(press, light)
             .glassShadow(CircleShape, shadow, blur = 14.dp, dy = 4.dp)
             .glassSurface(CircleShape, style, light)
-            .glassLight(light)
             .padding(horizontal = inset),
         verticalAlignment = Alignment.CenterVertically,
         content = content

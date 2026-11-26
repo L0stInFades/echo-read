@@ -127,7 +127,7 @@ private fun ToastPill(text: String, color: Color, action: ToastAction? = null) {
             .padding(horizontal = 14.dp, vertical = 8.dp)
             .widthIn(max = 340.dp)
             .glassShadow(shape, Color.Black.copy(alpha = if (c.isDark) 0.45f else 0.16f), blur = 16.dp, dy = 5.dp)
-            .glass(shape, c.pillGlass, LocalBackdrop.current.takeIf { c.glassOn })
+            .glass(shape, c.panes.banner, LocalBackdrop.current.takeIf { c.glassOn })
             .padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

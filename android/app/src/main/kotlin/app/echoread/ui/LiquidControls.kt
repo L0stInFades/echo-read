@@ -52,7 +52,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.echoread.ui.glass.Backdrop
-import app.echoread.ui.glass.GlassStyle
 import app.echoread.ui.glass.backdropSource
 import app.echoread.ui.glass.glass
 import app.echoread.ui.glass.glassShadow
@@ -193,20 +192,6 @@ internal class ThumbMotion(initial: Float, private val scope: CoroutineScope) {
 }
 
 /**
- * 滑块的透镜：不模糊、不着色。斜面 7dp、玻璃厚 12dp，边缘的位移约 7dp —— 与斜面同宽，轨道在滑块两端鼓起来，但不至于翻成倒像。
- * （参考实现是 5dp / 10dp，位移是斜面的两倍；逐像素算的着色器上那是一圈顺滑的倒像，
- * 而 Android 10 ~ 12L 上折射是一片片拼出来的，滑块又只有二十几 dp 高，倒像会碎成几块。两档取同一组温和的值，观感才一致。）
- */
-private fun thumbLens(dark: Boolean) = GlassStyle(
-    tint = Color.Transparent, fallback = Color.Transparent,
-    rimHi = Color.White.copy(alpha = if (dark) 0.80f else 0.95f),
-    rimLo = Color.White.copy(alpha = 0.25f),
-    rimWidth = 1.dp,
-    lensDepth = 7.dp, lensAmount = 12.dp, dispersion = 0.5f,
-    innerShade = 0.12f
-)
-
-/**
  * 画那颗滑块。它的位置与大小在布局期按 [motion] 定（而不是用图层缩放）：这样透镜量到的就是自己真实的外形，
  * 折射出来的画面与底下严丝合缝，不需要再把缩放反算回去。
  */
@@ -214,7 +199,8 @@ private fun thumbLens(dark: Boolean) = GlassStyle(
 private fun BoxScope.LiquidThumb(motion: ThumbMotion, backdrop: Backdrop?, start: Dp, travel: Density.(width: Float) -> Float) {
     val c = echo
     val dark = c.isDark
-    val style = remember(dark) { thumbLens(dark) }
+    // 与分段控件同一种透镜（GlassRecipes.kt 的 lens）：鼓起、往外取样、红蓝分开
+    val style = c.panes.lens
     // 画得出透镜时白色才褪掉；画不出（关了玻璃、或系统太旧）就一直是实心的，只是照样会绽开
     val clears = backdrop != null && lensAvailable
     val fill = if (dark) Color(0xFFD0D2D6) else Color.White

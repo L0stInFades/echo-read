@@ -87,6 +87,8 @@ interface Strings {
         val retry: String
         val skipThisVersion: String
         val experimentalWarning: String
+        val whatsNew: String
+        fun whatsNewIn(versionName: String): String
         val continueReading: String
         fun bookMeta(author: String, format: String, chapterCount: Int, length: String): String
         val deleteFromLibrary: String

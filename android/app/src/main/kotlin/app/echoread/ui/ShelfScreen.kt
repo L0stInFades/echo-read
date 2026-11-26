@@ -7,7 +7,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -33,7 +32,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ContainedLoadingIndicator
-import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -70,11 +68,11 @@ import app.echoread.core.started
 import app.echoread.core.Providers
 import app.echoread.tts.ready
 import app.echoread.ui.glass.LocalBackdrop
-import app.echoread.ui.glass.GlassStyle
 import app.echoread.ui.glass.glass
 import app.echoread.ui.glass.glassShadow
 import app.echoread.ui.glass.glassSurface
-import app.echoread.ui.motion.liquidPress
+import app.echoread.ui.motion.elasticPress
+import app.echoread.ui.motion.rememberPressMotion
 import app.echoread.ui.motion.rememberGlassLight
 import androidx.compose.animation.animateContentSize
 import androidx.compose.ui.graphics.Brush
@@ -84,8 +82,6 @@ import app.echoread.ui.glass.backdropSource
 import app.echoread.ui.glass.rememberBackdrop
 import androidx.compose.runtime.CompositionLocalProvider
 import app.echoread.core.i18n.I18n
-import app.echoread.data.UpdateState
-import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.text.Collator
@@ -130,6 +126,7 @@ fun ShelfScreen(
     var showSettings by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
     var showImport by remember { mutableStateOf(false) }
+    var showNotes by remember { mutableStateOf(false) }
     var actionBook by remember { mutableStateOf<BookMeta?>(null) }
 
     LaunchedEffect(Unit) { library.refresh() }
@@ -220,7 +217,7 @@ fun ShelfScreen(
                 }
             }
 
-            item("update") { UpdateCard(graph) }
+            item("update") { UpdateCard(graph) { showNotes = true } }
 
             // 当前服务还缺 Key（或自建服务还没填地址）：书架顶上提醒一次，点了直接进设置
             item("keyBanner") { KeyBanner(graph) { showSettings = true } }
@@ -332,22 +329,31 @@ fun ShelfScreen(
               .padding(horizontal = 12.dp),
           verticalAlignment = Alignment.CenterVertically
       ) {
-          // 小标题：大标题滚出去之后才浮现的一枚玻璃药丸。没浮现时不组合它 —— 看不见的玻璃照样要采样背板
+          // 小标题：大标题滚出去之后才浮现的一枚玻璃药丸（0.7.1 的样子，材质见 GlassRecipes 的 pill）。
+          // 没浮现时不组合它 —— 看不见的玻璃照样要采样背板
           val showPill by remember { derivedStateOf { collapse.value > 0.6f } }
-          if (showPill) Box(
-              Modifier
-                  .graphicsLayer {
-                      val sm = ((collapse.value - 0.6f) / 0.4f).coerceIn(0f, 1f)
-                      alpha = sm
-                      translationY = (1f - sm) * 10f
-                      scaleX = 0.9f + 0.1f * sm
-                      scaleY = 0.9f + 0.1f * sm
-                  }
-                  .glassShadow(CircleShape, Color.Black.copy(alpha = if (c.isDark) 0.20f else 0.10f))
-                  .glass(CircleShape, c.pillGlass, glassBackdrop)
-                  .padding(horizontal = 16.dp, vertical = 10.dp)
-          ) {
-              Text("Lector", style = TextStyle(brush = compactTitleBrush, fontSize = 17.sp, fontWeight = FontWeight.Black))
+          if (showPill) {
+              val appear = { ((collapse.value - 0.6f) / 0.4f).coerceIn(0f, 1f) }
+              Box(
+                  Modifier
+                      .graphicsLayer {
+                          val sm = appear()
+                          alpha = sm
+                          translationY = (1f - sm) * 10f
+                          scaleX = 0.9f + 0.1f * sm
+                          scaleY = 0.9f + 0.1f * sm
+                      }
+                      .glassShadow(CircleShape, Color.Black.copy(alpha = if (c.isDark) 0.20f else 0.10f))
+                      // 浮现途中药丸被平移、缩放：告诉玻璃，取样时反算回去，背后的画面不跟着动
+                      .glass(
+                          CircleShape, c.panes.pill, glassBackdrop,
+                          offset = { Offset(0f, (1f - appear()) * 10f) },
+                          scale = { Offset(0.9f + 0.1f * appear(), 0.9f + 0.1f * appear()) }
+                      )
+                      .padding(horizontal = 16.dp, vertical = 10.dp)
+              ) {
+                  Text("Lector", style = TextStyle(brush = compactTitleBrush, fontSize = 17.sp, fontWeight = FontWeight.Black))
+              }
           }
           Spacer(Modifier.weight(1f))
           GlassIconGroup(glassBackdrop) {
@@ -359,16 +365,10 @@ fun ShelfScreen(
       // 底部主动作：拇指可达的「导入」。一枚染了强调色的玻璃胶囊，常驻；
       // 往下翻书时它收成只剩加号的一颗圆（尺寸走弹簧，像一滴水缩回去），回到顶部再展开
       val fabLight = rememberGlassLight()
+      val fabPress = rememberPressMotion()
       val fabCompact by remember { derivedStateOf { collapse.value >= 0.85f } }
-      val fabStyle = remember(c) {
-          GlassStyle(
-              // 一颗染了强调色的玻璃：与其它悬浮件同一个配方（提饱和、4dp、边缘透镜），只是着色换成强调色、浓一些
-              tint = c.accent.copy(alpha = if (c.glassOn) 0.62f else 1f), fallback = c.accent,
-              blur = if (c.glassOn) 4.dp else 0.dp, saturation = if (c.glassOn) 1.5f else 1f,
-              rimHi = Color.White.copy(alpha = 0.75f), rimLo = Color.White.copy(alpha = 0.06f),
-              inputScale = 1, lensDepth = 18.dp, lensAmount = 42.dp, dispersion = 0.3f
-          )
-      }
+      // 一颗染了强调色的玻璃（着色玻璃：强调色八成浓，与其它悬浮件同一种材质）
+      val fabStyle = c.panes.accent
       Row(
           Modifier
               .align(Alignment.BottomCenter)
@@ -376,9 +376,9 @@ fun ShelfScreen(
               .padding(bottom = 22.dp)
               .zIndex(10f)
               .testTag("shelf.import")
-              .liquidPress(light = fabLight, onClickLabel = S.common.importBooks) { showImport = true }
+              .elasticPress(fabPress, fabLight, onClickLabel = S.common.importBooks) { showImport = true }
               .glassShadow(CircleShape, Color.Black.copy(alpha = if (c.isDark) 0.30f else 0.14f), blur = 14.dp, dy = 5.dp)
-              .glass(CircleShape, fabStyle, glassBackdrop, light = fabLight)
+              .glass(CircleShape, fabStyle, glassBackdrop, light = fabLight, offset = { fabPress.pull }, scale = { fabPress.scaleOf(it) })
               .animateContentSize(EchoMotion.Playful.spec(IntSize.VisibilityThreshold))
               .height(54.dp)
               .padding(horizontal = if (fabCompact) 17.dp else 22.dp),
@@ -401,6 +401,7 @@ fun ShelfScreen(
         ImportSheet(open = showImport, graph = graph) { showImport = false }
         TtsSettingsSheet(open = showSettings, graph = graph) { showSettings = false }
         HelpSheet(open = showHelp, graph = graph) { showHelp = false }
+        UpdateNotesSheet(open = showNotes, graph = graph) { showNotes = false }
         BookActionSheet(book = actionBook, onClose = { actionBook = null }, onOpen = { b -> actionBook = null; onOpenBook(b.id) }) { b ->
             scope.launch {
                 library.remove(b.id)
@@ -469,87 +470,6 @@ private fun BoxScope.ImportingOverlay(library: app.echoread.data.LibraryRepo) {
             ContainedLoadingIndicator(modifier = Modifier.size(56.dp))
             Spacer(Modifier.height(14.dp))
             Text(S.shelf.importingBook, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
-        }
-    }
-}
-
-/** 应用内更新卡片：发现新版本 → 下载进度 → 安装 */
-@Composable
-private fun UpdateCard(graph: AppGraph) {
-    val c = echo
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
-    val state by graph.updater.state.collectAsState()
-    val visible = state is UpdateState.Available || state is UpdateState.Downloading || state is UpdateState.Ready || (state is UpdateState.Error && (state as UpdateState.Error).info != null)
-    AnimatedVisibility(visible, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut) {
-        val s = state
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .padding(bottom = 14.dp)
-                .glassSurface(RoundedCornerShape(Radius.lgPlus), c.surfaceGlass())
-                .border(1.dp, c.accent.copy(alpha = 0.3f), RoundedCornerShape(Radius.lgPlus))
-                .padding(14.dp)
-        ) {
-            val info = when (s) {
-                is UpdateState.Available -> s.info
-                is UpdateState.Downloading -> s.info
-                is UpdateState.Ready -> s.info
-                is UpdateState.Error -> s.info
-                else -> null
-            }
-            Row(verticalAlignment = Alignment.Top) {
-                Column(Modifier.weight(1f)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (info?.experimental == true) {
-                            Text(
-                                S.shelf.experimental, color = warningColor(c.isDark), fontSize = 9.sp, fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(end = 6.dp).background(warningColor(c.isDark).copy(alpha = 0.16f), RoundedCornerShape(5.dp)).padding(horizontal = 5.dp, vertical = 1.dp)
-                            )
-                        }
-                    }
-                    Text(
-                        when (s) {
-                            is UpdateState.Ready -> S.shelf.updateDownloaded(s.info.versionName)
-                            is UpdateState.Downloading -> if (s.progress <= 0f) S.shelf.connectingToDownloadServer
-                            else S.shelf.downloadingUpdate(s.info.versionName, (s.progress * 100).toInt())
-                            is UpdateState.Error -> S.shelf.updateFailed
-                            else -> S.shelf.updateAvailable(info?.versionName.orEmpty())
-                        },
-                        color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold
-                    )
-                    val sub = when (s) {
-                        is UpdateState.Error -> s.message
-                        else -> info?.displayNotes?.ifBlank { S.shelf.currentVersionShort(graph.updater.currentVersionName) } ?: ""
-                    }
-                    if (sub.isNotEmpty()) Text(sub, color = c.text2, style = MaterialTheme.typography.bodySmall, lineHeight = 17.sp, maxLines = 4, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 2.dp))
-                }
-                Spacer(Modifier.width(10.dp))
-                when (s) {
-                    is UpdateState.Downloading -> LoadingIndicator(progress = { s.progress }, modifier = Modifier.size(34.dp), color = c.accent)
-                    is UpdateState.Ready -> GradientButton(S.shelf.install, height = 38.dp, fontSize = 13) {
-                        if (!graph.updater.install(context, s.file)) Toaster.show(S.shelf.allowInstallHint, durationMs = 4000)
-                    }
-                    is UpdateState.Available -> GradientButton(S.shelf.updateNow, height = 38.dp, fontSize = 13) { scope.launch { graph.updater.download(s.info) } }
-                    is UpdateState.Error -> if (info != null) GradientButton(S.shelf.retry, height = 38.dp, fontSize = 13) { scope.launch { graph.updater.download(info) } }
-                    else -> {}
-                }
-                // 可以叉掉：按版本永久忽略，重启也不会再弹。手动「检查更新」仍能找到它。
-                if (s !is UpdateState.Downloading) {
-                    IconButtonEcho(EchoIcons.Close, S.shelf.skipThisVersion, size = 30.dp, iconSize = 15.dp, tint = c.text3) { graph.updater.dismiss() }
-                }
-            }
-            if (info?.experimental == true) {
-                Spacer(Modifier.height(8.dp))
-                Row(verticalAlignment = Alignment.Top) {
-                    Icon(EchoIcons.Warning, null, tint = warningColor(c.isDark), modifier = Modifier.size(14.dp).padding(top = 1.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        S.shelf.experimentalWarning,
-                        color = c.text3, style = MaterialTheme.typography.labelSmall, lineHeight = 16.sp
-                    )
-                }
-            }
         }
     }
 }

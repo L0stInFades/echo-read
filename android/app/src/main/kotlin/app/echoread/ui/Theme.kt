@@ -62,26 +62,21 @@ data class EchoColors(
     val accentSoft: Color,
     val danger: Color,
     val isDark: Boolean,
+    /** 这套配色下的几种玻璃（常规、强调色、横幅、透镜），见 GlassRecipes.kt */
+    val panes: GlassStyles,
     /* ---- 层级用的半透明填充 ----
      * 卡片、输入框、分段控件的轨道叠在面板或带环境光的页面上：浅色是白、深色是很淡的白，叠出来是一级一级的层次，
      * 底下的色调还透得上来。用户关掉玻璃时它们退回对应的不透明色调容器，观感与 0.4.x 一致。 */
-    /** 悬浮件（按钮组、提示条、状态药丸）玻璃的着色 */
-    val glassThin: Color,
     /** 玻璃上的分组卡片 */
     val fill: Color,
     /** 卡片里的内嵌控件（输入框、分段控件的轨道、筛选标签） */
     val fillStrong: Color,
     /** 组内分隔线 */
     val hairline: Color,
-    /** 玻璃的高光描边：亮端 / 暗端 */
-    val rimHi: Color,
-    val rimLo: Color,
     /** 浮层背后的遮罩。玻璃面板用得很淡（20% / 48%），底下的内容还看得出轮廓 */
     val scrim: Color,
     /** 玻璃是否开启 */
     val glassOn: Boolean,
-    /** 压在高光外侧的暗发丝线：浅色界面上玻璃的轮廓靠它 */
-    val edge: Color = Color.Transparent,
     /** 纯黑模式（深色 + 用户打开了「纯黑」）：页面底色是 #000，不画任何环境光 */
     val isBlack: Boolean = false
 )
@@ -126,87 +121,14 @@ fun echoColorsFrom(s: ColorScheme, dark: Boolean, glass: Boolean = true, black: 
     accentSoft = s.primaryContainer,
     danger = s.error,
     isDark = dark,
-    // 悬浮件玻璃的着色，整块同一个浓度（见 GlassStyle.tint）：取参考实现「均衡」档的配方 ——
-    // 容器色四成，再叠一层 13% 的白（深色下是黑）让上面的图标站得住，合起来不到五成
-    glassThin = if (!glass) s.surfaceContainerHigh
-    else androidx.compose.ui.graphics.lerp(s.surfaceContainer, if (dark) Color.Black else Color.White, 0.22f).copy(alpha = 0.47f),
+    panes = glassStylesFor(s, dark),
     fill = if (!glass) s.surfaceContainerHigh else if (dark) Color.White.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.38f),
     fillStrong = if (!glass) s.surfaceContainerHighest else s.onSurface.copy(alpha = if (dark) 0.10f else 0.065f),
     hairline = s.onSurface.copy(alpha = if (dark) 0.11f else 0.09f),
-    rimHi = if (dark) Color.White.copy(alpha = 0.60f) else Color.White.copy(alpha = 0.80f),
-    rimLo = if (dark) Color.White.copy(alpha = 0.04f) else Color.White.copy(alpha = 0.12f),
     scrim = Color.Black.copy(alpha = if (glass) (if (dark) 0.48f else 0.24f) else 0.5f),
     glassOn = glass,
-    edge = if (dark) Color.Black.copy(alpha = 0.30f) else Color.Black.copy(alpha = 0.06f),
     isBlack = dark && black
 )
-
-/**
- * 面板 / 大浮层：**实心**的面板色，棱上一线反光。
- *
- * 面板上是成段的文字，两个参考对象的面板与对话框都是实心的，玻璃留给悬浮件。这里试过三种「玻璃面板」，都不成立：
- * - 模糊 + 着色：那是毛玻璃；
- * - 中部近乎不透、四周一圈清：真机上那一圈透出来的画面像是面板底下另垫了一块更大的玻璃，面板与它的玻璃成了分开的两层；
- * - 整块九成浓的清玻璃：透过来的那一成只是在文字后面添一层鬼影，而代价是每一帧把整屏内容多画一遍 ——
- *   Android 11 测试机上面板滑动从每帧 19ms 掉到 32ms。
- */
-val EchoColors.sheetSurface: app.echoread.ui.glass.GlassStyle
-    get() = app.echoread.ui.glass.GlassStyle(
-        tint = sheet, fallback = sheet,
-        rimHi = if (!glassOn) Color.Transparent else rimHi, rimLo = if (!glassOn) Color.Transparent else rimLo, rimWidth = 1.dp,
-        edge = if (!glassOn) Color.Transparent else edge
-    )
-
-/**
- * 悬浮件的玻璃（按钮组、小标题药丸、提示条、状态药丸）。配方照参考实现「均衡」那一档：
- * 背板提饱和度 1.5 → 只模糊 4dp → 边缘一圈透镜（64dp 高的条上斜面 24dp，这里的件矮一些，按比例取 16dp）→
- * 容器色不到五成 → 棱上一线反光 → 一圈小而淡的投影。
- * 后面的内容辨得清形状与颜色，在边缘被明显地掰弯；上面的图标与一行字仍然站得住。
- */
-val EchoColors.pillGlass: app.echoread.ui.glass.GlassStyle
-    get() = app.echoread.ui.glass.GlassStyle(
-        tint = glassThin, fallback = cardAlt,
-        blur = if (glassOn) 4.dp else 0.dp, saturation = if (glassOn) 1.5f else 1f,
-        rimHi = rimHi, rimLo = rimLo, rimWidth = 1.dp, inputScale = 1,
-        lensDepth = 16.dp, lensAmount = 38.dp, dispersion = 0.3f,
-        edge = edge
-    )
-
-/** 只承载图标的小玻璃件：与 [pillGlass] 同一种材质（以前单列了更清的一档；参考对象那里它们是同一块玻璃） */
-val EchoColors.clearGlass: app.echoread.ui.glass.GlassStyle get() = pillGlass
-
-/**
- * 不采样背板的玻璃面（卡片、次级按钮）：半透明的填充 + 一条很淡的高光描边。
- * 参考对象对卡片的处理相同 —— 实心（这里是半透明）填充加 0.7dp 的棱，不做折射：卡片背后没有值得折射的东西。
- */
-fun EchoColors.surfaceGlass(color: Color = fill): app.echoread.ui.glass.GlassStyle =
-    app.echoread.ui.glass.GlassStyle(
-        tint = color, fallback = color,
-        rimHi = if (!glassOn) Color.Transparent else if (isDark) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.95f),
-        rimLo = if (!glassOn) Color.Transparent else if (isDark) Color.White.copy(alpha = 0.03f) else Color.White.copy(alpha = 0.25f),
-        rimWidth = 0.7.dp
-    )
-
-/** 分段控件里那枚悬起的透镜：不模糊、不着色，只有折射、色散、高光与内侧暗影 */
-fun segmentLens(dark: Boolean): app.echoread.ui.glass.GlassStyle =
-    app.echoread.ui.glass.GlassStyle(
-        tint = Color.Transparent, fallback = Color.Transparent,
-        rimHi = Color.White.copy(alpha = if (dark) 0.75f else 0.95f),
-        rimLo = Color.White.copy(alpha = 0.18f),
-        rimWidth = 1.dp,
-        lensDepth = 11.dp, lensAmount = 24.dp, dispersion = 0.6f,
-        innerShade = 0.15f
-    )
-
-/** 品牌渐变按钮上的那层光：不着色，只有顶部反光、高光描边与一条暗边 */
-val EchoColors.glossGlass: app.echoread.ui.glass.GlassStyle
-    get() = app.echoread.ui.glass.GlassStyle(
-        tint = Color.Transparent, fallback = Color.Transparent,
-        rimHi = Color.White.copy(alpha = if (isDark) 0.55f else 0.75f),
-        rimLo = Color.White.copy(alpha = 0.10f),
-        rimWidth = 1.dp,
-        sheen = if (isDark) 0.08f else 0.12f
-    )
 
 /**
  * 默认值只在「主题尚未提供」的极短窗口里被读到（例如预览）。

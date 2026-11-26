@@ -54,6 +54,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.CornerRadius
@@ -86,10 +91,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import app.echoread.ui.glass.glass
-import app.echoread.ui.glass.glassLight
 import app.echoread.ui.glass.glassShadow
 import app.echoread.ui.glass.glassSurface
+import app.echoread.ui.motion.elasticPress
 import app.echoread.ui.motion.liquidPress
+import app.echoread.ui.motion.rememberPressMotion
 import app.echoread.ui.motion.rememberGlassLight
 import app.echoread.ui.motion.Dur
 import app.echoread.ui.motion.Ease
@@ -197,33 +203,36 @@ fun IconButtonEcho(
 
 /**
  * 悬浮的玻璃按钮组：一枚胶囊里并排几个图标（只有一个时就是一个圆）。
- * 真玻璃 —— 采样 [backdrop]，底下的内容滚过时在它边缘被掰弯；每个图标各自有按压反馈，整枚胶囊共用一团触点光。
+ * 真玻璃 —— 采样 [backdrop]，底下的内容滚过时在它边缘被掰弯。按下时**整枚胶囊**鼓起、被手指拉着走，
+ * 光从触点晕开（FlClash 的按钮组就是这样：组里的按钮自己不缩放，按压交给整组的鼓起）。
  */
 @Composable
 fun GlassIconGroup(
     backdrop: app.echoread.ui.glass.Backdrop?,
     modifier: Modifier = Modifier,
-    style: app.echoread.ui.glass.GlassStyle = echo.clearGlass,
+    style: app.echoread.ui.glass.GlassStyle = echo.panes.regular,
     shadow: Color = Color.Black.copy(alpha = if (echo.isDark) 0.20f else 0.10f),
     height: Dp = 44.dp,
     content: @Composable RowScope.() -> Unit
 ) {
     val light = rememberGlassLight()
+    val press = rememberPressMotion()
     Row(
         modifier
             .height(height)
+            .elasticPress(press, light)
             .glassShadow(CircleShape, shadow)
-            .glass(CircleShape, style, backdrop, light = light)
-            .glassLight(light)
+            .glass(CircleShape, style, backdrop, light = light, offset = { press.pull }, scale = { press.scaleOf(it) })
             .padding(horizontal = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         content = content
     )
 }
 
-/** [GlassIconGroup] 里的一个图标：绘制 40dp，触控区由胶囊的高度撑到 44dp */
+/** [GlassIconGroup] 里的一个图标：触控区 44dp。它自己没有按压画面 —— 按下去鼓起的是整组（或者阅读器顶栏的那一组） */
 @Composable
 fun GlassIcon(icon: ImageVector, contentDescription: String?, tint: Color = echo.text, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    val clickRef = rememberUpdatedState(onClick)
     Box(
         modifier
             .size(44.dp)
@@ -231,7 +240,12 @@ fun GlassIcon(icon: ImageVector, contentDescription: String?, tint: Color = echo
                 alpha = if (enabled) 1f else 0.3f
                 compositingStrategy = CompositingStrategy.ModulateAlpha
             }
-            .liquidPress(enabled = enabled, lift = 6.dp, onClickLabel = contentDescription, onClick = onClick),
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                onClick(label = contentDescription) { if (enabled) clickRef.value(); enabled }
+                if (!enabled) disabled()
+            }
+            .echoTap(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, contentDescription, tint = tint, modifier = Modifier.size(20.dp))

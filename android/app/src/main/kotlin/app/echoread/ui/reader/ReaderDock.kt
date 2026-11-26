@@ -46,7 +46,7 @@ import app.echoread.ui.IconButtonEcho
 import app.echoread.ui.ReaderTheme
 import app.echoread.ui.Toaster
 import app.echoread.ui.dangerColor
-import app.echoread.ui.glass.GlassStyle
+import app.echoread.ui.glass.SurfaceStyle
 import app.echoread.ui.glass.glassShadow
 import app.echoread.ui.glass.glassSurface
 import app.echoread.ui.motion.PressScale
@@ -69,7 +69,7 @@ internal fun ReaderDock(
     pager: ReaderPager,
     window: ChapterWindow,
     theme: ReaderTheme,
-    glass: GlassStyle,
+    glass: SurfaceStyle,
     shadow: Color,
     onSleep: () -> Unit,
     onPrev: () -> Unit,

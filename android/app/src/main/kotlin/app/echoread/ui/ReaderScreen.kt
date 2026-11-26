@@ -24,7 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import app.echoread.ui.glass.GlassStyle
+import app.echoread.ui.glass.SurfaceStyle
 import app.echoread.ui.glass.LocalBackdrop
 import app.echoread.ui.glass.backdropSource
 import app.echoread.ui.glass.rememberBackdrop
@@ -566,27 +566,12 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
 
     val dockBg = if (theme.isDark) Color(0xFF15171E) else Color.White
     // 阅读页上的悬浮件用阅读主题自己的颜色做玻璃着色：阅读主题独立于系统深浅色，取 app 配色会错配
-    val floatGlass = remember(theme.id) {
-        GlassStyle(
-            tint = dockBg.copy(alpha = 0.50f),
-            fallback = dockBg,
-            blur = 4.dp,
-            saturation = 1.5f,
-            rimHi = Color.White.copy(alpha = if (theme.isDark) 0.60f else 0.80f),
-            rimLo = Color.White.copy(alpha = if (theme.isDark) 0.04f else 0.12f),
-            inputScale = 1,
-            lensDepth = 16.dp,
-            lensAmount = 38.dp,
-            dispersion = 0.3f,
-            edge = Color.Black.copy(alpha = if (theme.isDark) 0.30f else 0.06f)
-        )
-    }
+    val floatGlass = remember(theme.id) { regularGlass(theme.isDark, card = dockBg, fallback = dockBg) }
     // 顶栏按钮组与播放坞：浮在书页底色上的玻璃面。它们背后只有纯色的纸，不采样背板，
     // 玻璃感来自半透明的提亮、顶部反光、高光描边与投影
     val chromeGlass = remember(theme.id, c.glassOn) {
-        GlassStyle(
-            tint = if (!c.glassOn) Color.Transparent else if (theme.isDark) Color.White.copy(alpha = 0.065f) else Color.White.copy(alpha = 0.46f),
-            fallback = Color.Transparent,
+        SurfaceStyle(
+            fill = if (!c.glassOn) Color.Transparent else if (theme.isDark) Color.White.copy(alpha = 0.065f) else Color.White.copy(alpha = 0.46f),
             rimHi = if (!c.glassOn) Color.Transparent else Color.White.copy(alpha = if (theme.isDark) 0.40f else 0.90f),
             rimLo = if (!c.glassOn) Color.Transparent else Color.White.copy(alpha = if (theme.isDark) 0.03f else 0.12f),
             rimWidth = 1.dp,

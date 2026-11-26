@@ -56,6 +56,16 @@ sealed interface UpdateState {
     data class Error(val message: String, val info: UpdateInfo? = null, val error: app.echoread.core.net.NetError? = null) : UpdateState
 }
 
+/** 正摆在用户面前的那一版（发现、下载中、已下载、下载失败）；没有就是 null */
+val UpdateState.offered: UpdateInfo?
+    get() = when (this) {
+        is UpdateState.Available -> info
+        is UpdateState.Downloading -> info
+        is UpdateState.Ready -> info
+        is UpdateState.Error -> info
+        else -> null
+    }
+
 /**
  * 应用内更新（无后端）：清单走 jsDelivr CDN（国内可达）→ GitHub raw 兜底；
  * APK 挂 GitHub Release（可配镜像），下载后校验 SHA-256，再拉起系统安装器覆盖安装。
@@ -244,6 +254,8 @@ class Updater(
             throw lastErr ?: IllegalStateException(S.update.downloadFailed)
             })
         } catch (e: kotlinx.coroutines.CancellationException) {
+            // 下载被取消：退回「发现新版本」，否则卡片会一直停在进度上，再也点不了
+            _state.value = UpdateState.Available(info)
             throw e
         } catch (e: Exception) {
             Result.failure(e)
@@ -288,13 +300,7 @@ class Updater(
      * 「怎么用 → 检查更新」的手动路径也照常能找到它。
      */
     fun dismiss() {
-        val info = when (val s = _state.value) {
-            is UpdateState.Available -> s.info
-            is UpdateState.Ready -> s.info
-            is UpdateState.Error -> s.info
-            is UpdateState.Downloading -> s.info
-            else -> null
-        }
+        val info = _state.value.offered
         if (info != null) prefs.edit().putLong(KEY_DISMISSED, info.versionCode).apply()
         _state.value = UpdateState.Idle
     }

@@ -1,10 +1,11 @@
 package app.echoread.ui
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.Animatable
+import android.os.SystemClock
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -21,31 +22,38 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.selectableGroup
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -55,16 +63,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.echoread.ui.glass.backdropSource
 import app.echoread.ui.glass.glass
+import app.echoread.ui.glass.glassShadow
+import app.echoread.ui.glass.lensAvailable
 import app.echoread.ui.glass.rememberBackdrop
 import app.echoread.ui.motion.Dur
 import app.echoread.ui.motion.Ease
 import app.echoread.ui.motion.Haptics
-import app.echoread.ui.motion.Liquid
-import app.echoread.ui.motion.Retarget
-import app.echoread.ui.motion.dragToPos
-import app.echoread.ui.motion.settleIndex
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
+import app.echoread.ui.motion.LensMotion
+import app.echoread.ui.motion.LensRules
+import app.echoread.ui.motion.SegmentLayout
+import com.materialkolor.hct.Hct
 import kotlin.math.abs
 import kotlin.math.roundToInt
 
@@ -75,21 +83,26 @@ data class SegmentItem(
     val enabled: Boolean = true
 )
 
+/** 轨道四周的留白；相邻两项透镜互相压住的宽度；悬起时透镜四周各长出去的量（共 16dp） */
+private val Pad = 4.dp
+private val Overlap = 8.dp
+private val Growth = 16.dp
+
+/** 在可以滚动的容器里，手指按住多久没动才算「按下」（之前动了就交给滚动，透镜一下都不动） */
+private const val PRESS_DELAY_MS = 100L
+
 /**
- * 分段单选：一条胶囊轨道，选中项是一滴在轨道里滑动的「水」。
+ * 分段单选：一条胶囊轨道，选中项底下垫着一块托盘；按住它，托盘悬起成一枚液态透镜。
  *
- * 0.4.x 用的是 M3 的 connected button group（几个相连的按钮各自变形）。换掉它有两个具体原因：
- * 1. **英文标签被切断**。按钮内部左右各 24dp 内边距，375dp 宽的屏上三等分后文字只剩 60dp；
- *    「Left/right」在斜杠处折成两行，而 `maxLines = 1` 把第二行直接裁掉 —— 界面上只剩「Left/」。
- *    这里的文字区几乎占满整格，放不下时先缩字号（14 → 11sp），再不行才省略，绝不折行。
- * 2. 选中态是「跳」过去的。
+ * 0.8.0 起按 FlClash（prism_ui）导航栏选中透镜的做法重写（仿其行为与数值，未用其代码），规则见 [LensMotion]：
+ * - 静止：选中项底下一块浅色的托盘，那一项的字是强调色（托盘盖住的部分逐像素变色，托盘滑过去时字跟着它变）；
+ * - 按下：托盘悬起 —— 长大 16dp、褪成透明，变成一枚透镜：透镜只折射轨道与托盘，
+ *   **字不进透镜**：透镜里的字是另画的一份，放大 16%、强调色，叠在玻璃上面（所以不会出现以前那种
+ *   「透明的透镜底下透出原来的字，与折射过的字叠成两层」）；
+ * - 拖动：透镜追着手指，两端有橡皮筋，每换一项一下触感；松手按速度往前看一小段，最多越过一项；
+ * - 松手才提交；透镜要升满、到位之后才落回托盘。
  *
- * 0.6.0 起滑块是一枚**液态透镜**（规则见 [Liquid]）：
- * - 静止时是一块浅色的托盘；换到另一项的途中它悬起来 —— 变大、褪成透明、边缘出现高光与折射
- *   （旁边的标签被它的边缘「掰」进来），越快越扁越长，落位时回弹一下再落回实心；
- * - 可以直接按住它拖：跟手、两端有橡皮筋，松手按速度落到相邻一项。
- *
- * 读屏语义：整组是 selectableGroup，每项是 RadioButton，与原来一致。
+ * 放不下的字先缩字号（14 → 11sp），再不行才省略，绝不折行。读屏：整组是 selectableGroup，每项是 RadioButton。
  */
 @Composable
 fun EchoSegmented(
@@ -98,12 +111,13 @@ fun EchoSegmented(
     modifier: Modifier = Modifier,
     /**
      * 显式配色。阅读器里的面板必须传入阅读主题色 —— 默认取的是 app 配色，
-     * 而阅读主题是独立于系统深浅色的用户选择，直接落在书页上会错配
-     * （最常见的一种：浅色系统 + 暗夜阅读主题，深色底上出现浅色容器）。
+     * 而阅读主题是独立于系统深浅色的用户选择，直接落在书页上会错配。
      */
     containerColor: Color? = null,
     contentColor: Color? = null,
+    /** 托盘的颜色（默认：次要色在 HCT 里的 90 / 4 色调，85% 浓） */
     checkedContainerColor: Color? = null,
+    /** 选中项文字的颜色（默认：强调色） */
     checkedContentColor: Color? = null,
     height: Dp = 44.dp,
     onSelect: (Int) -> Unit
@@ -112,185 +126,251 @@ fun EchoSegmented(
     val c = echo
     val view = LocalView.current
     val n = items.size
-    val track = containerColor ?: c.fillStrong
-    // 滑块静止时是一块浅色的「托盘」（两个参考对象与系统控件都是这个样子），不是强调色的实心块：
-    // 它悬起来要褪成一枚清透镜，里面的标签得一直读得清 —— 深色字在托盘上、在透镜里都站得住，白字不行
-    val thumb = checkedContainerColor ?: if (c.isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.92f)
-    val onThumb = checkedContentColor ?: c.text
-    val fade = if (c.glassOn) 0.88f else 0f
-    val idle = contentColor ?: c.text2
     val scope = rememberCoroutineScope()
+    val valid = selectedIndex in 0 until n
+    val motion = remember { LensMotion(if (valid) selectedIndex.toFloat() else 0f, scope) }
     val selectedRef = rememberUpdatedState(selectedIndex)
     val selectRef = rememberUpdatedState(onSelect)
     val itemsRef = rememberUpdatedState(items)
+    val shown = animateFloatAsState(if (valid) 1f else 0f, tween(Dur.Short, easing = Ease.Linear), label = "segShown")
 
-    // 滑块中心在第几项上（小数）、悬起进度、落位回弹量、有无选中项
-    val valid = selectedIndex in 0 until n
-    val pos = remember { Animatable(if (valid) selectedIndex.toFloat() else 0f) }
-    val lift = remember { Animatable(0f) }
-    val recoil = remember { Animatable(0f) }
-    val shown = remember { Animatable(if (valid) 1f else 0f) }
-    var dragging by remember { mutableStateOf(false) }
-    // 拖动途中滑块压着哪一项（-1 = 没在拖）：标签的选中色跟着它走，松手才真正改选择
-    var hover by remember { mutableIntStateOf(-1) }
-    // 松手后正在自己落向的那一项：宿主随后把 selectedIndex 改成它时，下面的 effect 不必再驱动一遍
-    val settlingTo = remember { intArrayOf(-1) }
-
-    suspend fun land(speed: Float) {
-        coroutineScope {
-            launch { lift.animateTo(0f, Liquid.Lift) }
-            recoil.snapTo(0f)
-            recoil.animateTo(0f, Liquid.Recoil, initialVelocity = Liquid.recoilKick(speed))
+    // 玻璃画得出（Android 10 起、用户没关）：悬起时是一枚透镜；画不出就是一块实心托盘照样长大、变形
+    val lensGlass = c.glassOn && lensAvailable
+    val lensBackdrop = rememberBackdrop(snapshots = false).takeIf { lensGlass }
+    // 透镜里那份强调色的字：悬起时不直接上屏，由一块「透镜内容」玻璃读着它、在透镜边缘掰弯了再画 —— 玻璃对字也起作用
+    val labelBackdrop = rememberBackdrop(snapshots = false).takeIf { lensGlass }
+    val track = containerColor ?: c.fillStrong
+    val idle = contentColor ?: c.text2
+    val tint = checkedContentColor ?: c.accent
+    val secondary = MaterialTheme.colorScheme.secondary
+    val platter = checkedContainerColor ?: remember(secondary, track, c.isDark, lensGlass, c.text) {
+        when {
+            lensGlass -> withTone(secondary, if (c.isDark) 4.0 else 90.0).copy(alpha = 0.85f)
+            c.isDark -> lerp(track, c.text, 0.14f).copy(alpha = 1f)
+            else -> Color.White
         }
     }
+    val lensStyle = c.panes.lens
+    val shadowColor = Color.Black.copy(alpha = 0.055f * (if (c.isDark) 3f else 1f))
+    val geometry = remember { GeometryCache() }
 
+    motion.onIdle = {
+        // 宿主没接受这次选择（或者选择在别处又变了）：回到它认的那一项
+        val now = selectedRef.value
+        if (motion.released && now in 0 until n && abs(motion.heading - now) > 0.001f) motion.slide(now)
+    }
     LaunchedEffect(selectedIndex, n) {
-        if (dragging) return@LaunchedEffect
-        if (selectedIndex !in 0 until n) {
-            shown.animateTo(0f, tween(Dur.Short, easing = Ease.Linear))
-            return@LaunchedEffect
-        }
+        if (!valid || !motion.released) return@LaunchedEffect
         // 从「没有选中项」出现：直接落位再淡入，不要从别处滑过来
-        if (shown.value < 0.01f) pos.snapTo(selectedIndex.toFloat())
-        launch { shown.animateTo(1f, tween(Dur.Short, easing = Ease.Linear)) }
-        if (settlingTo[0] == selectedIndex) return@LaunchedEffect
-        val target = selectedIndex.toFloat()
-        if (abs(pos.value - target) > 0.01f) {
-            val distance = abs(pos.value - target)
-            launch { lift.animateTo(1f, Liquid.Lift) }
-            pos.animateTo(target, Liquid.Travel)
-            land(distance * 2f)
-        } else if (lift.value > 0.01f) {
-            lift.animateTo(0f, Liquid.Lift)
-        }
+        if (shown.value < 0.01f) motion.jumpTo(selectedIndex)
+        else if (abs(motion.heading - selectedIndex) > 0.001f) motion.slide(selectedIndex)
     }
-
-    val lensBackdrop = rememberBackdrop(snapshots = false).takeIf { c.glassOn }
-    val lensStyle = remember(c.isDark) { segmentLens(c.isDark) }
 
     Box(
         modifier
             .fillMaxWidth()
             .height(height)
             .pointerInput(n) {
-                coroutineScope {
-                    // 拖动中滑块追着手指走：每个样本重新瞄准一次，由常驻的协程接手（见 Retarget），不再每个样本起协程
-                    val chase = Retarget { pos.animateTo(it, Liquid.Lift) }
-                    launch { chase.run() }
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        val item = size.width.toFloat() / n
-                        val downIndex = (down.position.x / item).toInt().coerceIn(0, n - 1)
-                        // 按在滑块上：立刻悬起来，等着被拖
-                        val onThumb = shown.value > 0.5f && downIndex == pos.value.roundToInt()
-                        if (onThumb) launch { lift.animateTo(1f, Liquid.Lift) }
-                        val tracker = VelocityTracker()
-                        var moved = false
-                        var upAt: androidx.compose.ui.geometry.Offset? = null
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    val geo = geometry.of(size.width.toFloat(), size.height.toFloat(), n, Pad.toPx(), Overlap.toPx())
+                    var pressed = geo.indexAt(geo.positionAt(down.position.x))
+                    var engaged = false
+                    var dragging = false
+                    var cancelled = false
+                    val tracker = VelocityTracker()
+                    tracker.addPosition(down.uptimeMillis, down.position)
+                    fun engage() {
+                        if (engaged) return
+                        engaged = true
+                        // 原来没有选中项：透镜就在按住的地方冒出来
+                        if (shown.value < 0.5f) motion.jumpTo(pressed)
+                        motion.press(pressed)
+                    }
+                    try {
                         while (true) {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            val event = if (engaged) awaitPointerEvent() else {
+                                val left = PRESS_DELAY_MS - (SystemClock.uptimeMillis() - down.uptimeMillis)
+                                withTimeoutOrNull(left.coerceAtLeast(1L)) { awaitPointerEvent() }
+                            }
+                            if (event == null) {
+                                engage()
+                                continue
+                            }
+                            val change = event.changes.firstOrNull { it.id == down.id }
+                            if (change == null) {
+                                cancelled = true
+                                break
+                            }
                             if (!change.pressed) {
-                                upAt = change.position
-                                if (moved || !change.isConsumed) change.consume() else upAt = null
+                                // 已被消费的抬起 = 手势被取消（系统截屏手势、窗口失焦时 Compose 发来的就是这样一个抬起）：拖到一半也不提交
+                                if (change.isConsumed) cancelled = true else change.consume()
+                                break
+                            }
+                            if (change.isConsumed) {
+                                cancelled = true
+                                break
+                            }
+                            // 父节点（列表、面板的滚动）在中间那一遍之后才消费：最后一遍（Final）上看它有没有把这次手势拿走。
+                            // 内容跟着手指滚动时，手指相对这个控件几乎不动，单看位移判断不出来
+                            if (!dragging && awaitPointerEvent(PointerEventPass.Final).changes.any { it.id == down.id && it.isConsumed }) {
+                                cancelled = true
                                 break
                             }
                             val d = change.position - down.position
-                            if (!moved) {
-                                // 被别人拿走（面板的竖向滚动）或明显是竖着划：这次手势不归这里
-                                if (change.isConsumed || abs(d.y) > viewConfiguration.touchSlop && abs(d.y) > abs(d.x)) break
+                            if (!dragging) {
+                                // 明显是竖着划（面板、书架在滚动）：这次手势不归这里
+                                if (abs(d.y) > viewConfiguration.touchSlop && abs(d.y) > abs(d.x)) {
+                                    cancelled = true
+                                    break
+                                }
                                 if (abs(d.x) > viewConfiguration.touchSlop) {
-                                    moved = true
                                     dragging = true
-                                    launch { lift.animateTo(1f, Liquid.Lift) }
-                                    launch { shown.animateTo(1f, tween(Dur.Short, easing = Ease.Linear)) }
+                                    engage()
                                 }
                             }
-                            if (moved) {
+                            if (dragging) {
                                 change.consume()
                                 tracker.addPosition(change.uptimeMillis, change.position)
-                                val p = dragToPos(change.position.x, size.width.toFloat(), n)
-                                chase.offer(p)
-                                val over = p.roundToInt().coerceIn(0, n - 1)
-                                if (over != hover) {
-                                    if (hover >= 0) Haptics.tick(view)
-                                    hover = over
+                                val p = geo.positionAt(change.position.x)
+                                motion.follow(p)
+                                val over = geo.indexAt(p)
+                                if (over != pressed) {
+                                    Haptics.tick(view)
+                                    pressed = over
                                 }
                             }
                         }
-                        val current = selectedRef.value
-                        if (moved) {
-                            val v = tracker.calculateVelocity().x / item
-                            var target = settleIndex(pos.value, v, n, current)
-                            if (!itemsRef.value[target].enabled) target = if (current in 0 until n) current else target
-                            settlingTo[0] = target
-                            dragging = false
-                            hover = -1
-                            if (target != current) selectRef.value(target)
-                            scope.launch {
-                                pos.animateTo(target.toFloat(), Liquid.Travel, initialVelocity = v)
-                                land(abs(v))
-                                settlingTo[0] = -1
-                                // 宿主没有接受这次选择：回到它认的那一项
-                                val now = selectedRef.value
-                                if (now in 0 until n && now != target) pos.animateTo(now.toFloat(), Liquid.Travel)
-                            }
-                        } else {
-                            val at = upAt
-                            val tapped = if (at != null) (at.x / item).toInt().coerceIn(0, n - 1) else -1
-                            if (tapped >= 0 && tapped != current && itemsRef.value[tapped].enabled) {
-                                Haptics.tick(view)
-                                selectRef.value(tapped)
-                            } else {
-                                launch { lift.animateTo(0f, Liquid.Lift) }
-                            }
-                        }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        // 手势协程被取消（控件离开界面、项数变了）：透镜照样落回宿主认的那一项，不会一直悬着
+                        if (engaged) selectedRef.value.let { motion.release(if (it in 0 until n) it else pressed) }
+                        throw e
                     }
+                    val current = selectedRef.value
+                    val fallback = if (current in 0 until n) current else pressed
+                    if (cancelled) {
+                        if (engaged) motion.release(fallback)
+                        return@awaitEachGesture
+                    }
+                    if (dragging) {
+                        val flung = LensRules.flingTarget(motion.heading, tracker.calculateVelocity().x / geo.pitch, pressed, n)
+                        if (flung != pressed) {
+                            Haptics.tick(view)
+                            pressed = flung
+                        }
+                    } else {
+                        engage()
+                    }
+                    // 停用的项选不中：回到原来那一项（原来也没有选中项，就只是落回去）
+                    val target = if (itemsRef.value[pressed].enabled) pressed else fallback
+                    motion.release(target)
+                    if (target != current && itemsRef.value[target].enabled) selectRef.value(target)
                 }
             }
             .semantics { selectableGroup() }
     ) {
-        val insetPx = 4.dp
-        val growW = 12.dp
-        val growH = 9.dp
-        // 轨道、实心的滑块与标签：它们同时也是透镜采样的背板
-        Row(
+        // 1. 轨道与托盘。悬起时屏幕上这一份在透镜底下挖掉（透镜画的是它的折射版）；录给透镜的那一份是完整的
+        Spacer(
             Modifier
-                .fillMaxWidth()
-                .fillMaxHeight()
+                .matchParentSize()
+                .drawWithContent {
+                    val lifted = motion.lifted
+                    if (lensBackdrop == null || lifted < 0.004f) {
+                        drawContent()
+                        return@drawWithContent
+                    }
+                    clipPath(geometry.lensPath(this.size, n, Pad.toPx(), Overlap.toPx(), Growth.toPx(), motion), ClipOp.Difference) {
+                        this@drawWithContent.drawContent()
+                    }
+                }
                 .backdropSource(lensBackdrop, Color.Transparent)
                 .drawBehind {
                     drawRoundRect(track, cornerRadius = CornerRadius(size.height / 2f))
-                    if (shown.value > 0.01f) {
-                        val r = Liquid.thumbRect(
-                            size.width, size.height, n, pos.value, lift.value, pos.velocity / n, recoil.value,
-                            insetPx.toPx(), growW.toPx(), growH.toPx()
-                        )
-                        val corner = CornerRadius(r.height / 2f)
-                        val solid = shown.value * (1f - fade * lift.value)
-                        // 托盘底下一线很淡的影子：它是浮在轨道上的
-                        drawRoundRect(
-                            Color.Black, topLeft = r.topLeft + androidx.compose.ui.geometry.Offset(0f, 1.dp.toPx()), size = r.size,
-                            cornerRadius = corner, alpha = 0.10f * solid
-                        )
-                        // 悬起时托盘褪掉：它正在从「一块浅色的托盘」变成「一枚清透镜」
-                        drawRoundRect(thumb, topLeft = r.topLeft, size = r.size, cornerRadius = corner, alpha = solid)
-                    }
+                    val shownNow = shown.value
+                    if (shownNow < 0.01f) return@drawBehind
+                    val r = geometry.lensRect(size, n, Pad.toPx(), Overlap.toPx(), Growth.toPx(), motion)
+                    val corner = CornerRadius(r.height / 2f)
+                    val lifted = motion.lifted
+                    // 有玻璃时托盘随悬起褪掉（它正在变成透镜）；没有玻璃时它一直实心，悬起时压上一层 8% 的前景色
+                    val alpha = shownNow * (if (lensBackdrop != null) 1f - lifted else 1f)
+                    if (alpha > 0.004f) drawRoundRect(platter, r.topLeft, r.size, corner, alpha = alpha)
+                    if (lensBackdrop == null && lifted > 0.004f) drawRoundRect(c.text, r.topLeft, r.size, corner, alpha = 0.08f * lifted * shownNow)
                 }
-        ) {
-            val visual = if (dragging && hover >= 0) hover else selectedIndex
-            items.forEachIndexed { i, item ->
-                val checked = i == visual
-                val fg by animateColorAsState(if (checked) onThumb else idle, tween(Dur.Short, easing = Ease.Standard), label = "segFg")
-                Row(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .graphicsLayer {
-                            alpha = if (item.enabled) 1f else 0.38f
-                            compositingStrategy = CompositingStrategy.ModulateAlpha
-                        }
-                        .semantics(mergeDescendants = true) {
+        )
+        // 2. 透镜：只在悬起时显形（玻璃一点点弯出来），只折射轨道与托盘
+        if (lensBackdrop != null) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .then(lensPlacement(geometry, n, motion))
+                    .glassShadow(CircleShape, shadowColor, blur = 5.dp, dy = 8.dp, alpha = { motion.lifted })
+                    .glass(CircleShape, lensStyle, lensBackdrop, power = { motion.lifted })
+            )
+        }
+        // 3. 字：透镜外是原样的一份；透镜（或托盘）里是另一份，强调色，悬起时放大
+        val clipOut: Modifier = Modifier.drawWithContent {
+            // 没有选中项、也没在按：没有托盘，字原样画全
+            if (shown.value < 0.01f && motion.lifted < 0.004f) {
+                drawContent()
+                return@drawWithContent
+            }
+            clipPath(geometry.lensPath(size, n, Pad.toPx(), Overlap.toPx(), Growth.toPx(), motion), ClipOp.Difference) {
+                this@drawWithContent.drawContent()
+            }
+        }
+        val clipIn: Modifier = Modifier.drawWithContent {
+            if (shown.value < 0.01f && motion.lifted < 0.004f) return@drawWithContent
+            clipPath(geometry.lensPath(size, n, Pad.toPx(), Overlap.toPx(), Growth.toPx(), motion)) {
+                this@drawWithContent.drawContent()
+            }
+        }
+        Labels(items, selectedIndex, idle, magnify = null, modifier = Modifier.matchParentSize().then(clipOut), onSelect = onSelect)
+        Labels(
+            items, selectedIndex, tint, magnify = { 1f + LensRules.MAGNIFY * motion.lifted },
+            modifier = Modifier
+                .matchParentSize()
+                .then(clipIn)
+                .backdropSource(labelBackdrop, Color.Transparent, show = { labelBackdrop == null || motion.lifted < 0.004f })
+                .clearAndSetSemantics { },
+            onSelect = null
+        )
+        if (labelBackdrop != null) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .then(lensPlacement(geometry, n, motion))
+                    .glass(CircleShape, c.panes.lensContent, labelBackdrop, power = { motion.lifted })
+            )
+        }
+    }
+}
+
+/** 一排字。[magnify] 不为空时每一项绕自己的中心放大（透镜里那一份）；[onSelect] 为空时不带读屏语义 */
+@Composable
+private fun Labels(
+    items: List<SegmentItem>,
+    selectedIndex: Int,
+    color: Color,
+    magnify: (() -> Float)?,
+    modifier: Modifier,
+    onSelect: ((Int) -> Unit)?
+) {
+    // 每格宽 = 相邻两项中心的距离：两端各让出 轨道留白 + 半个重叠，与透镜的几何一致
+    Row(modifier.padding(horizontal = Pad + Overlap / 2)) {
+        items.forEachIndexed { i, item ->
+            Row(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .graphicsLayer {
+                        alpha = if (item.enabled) 1f else 0.38f
+                        val k = magnify?.invoke() ?: 1f
+                        scaleX = k
+                        scaleY = k
+                        compositingStrategy = CompositingStrategy.ModulateAlpha
+                    }
+                    .then(
+                        if (onSelect == null) Modifier else Modifier.semantics(mergeDescendants = true) {
                             role = Role.RadioButton
                             selected = i == selectedIndex
                             if (!item.enabled) disabled()
@@ -299,46 +379,73 @@ fun EchoSegmented(
                                 true
                             }
                         }
-                        .padding(horizontal = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = androidx.compose.foundation.layout.Arrangement.Center
-                ) {
-                    if (item.icon != null) {
-                        Icon(item.icon, null, tint = fg, modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(5.dp))
-                    }
-                    Text(
-                        item.label,
-                        color = fg,
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = if (checked) FontWeight.SemiBold else FontWeight.Medium,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis,
-                        // 放不下先缩字号，缩到 11sp 还放不下才省略
-                        autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 14.sp, stepSize = 0.5.sp),
-                        modifier = Modifier.weight(1f, fill = false)
                     )
+                    .padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                if (item.icon != null) {
+                    Icon(item.icon, null, tint = color, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(5.dp))
                 }
+                Text(
+                    item.label,
+                    color = color,
+                    style = MaterialTheme.typography.labelLarge,
+                    // 选中与否不换字重：透镜里那一份要与原来的字形一笔一笔重合
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    // 放不下先缩字号，缩到 11sp 还放不下才省略
+                    autoSize = TextAutoSize.StepBased(minFontSize = 11.sp, maxFontSize = 14.sp, stepSize = 0.5.sp),
+                    modifier = Modifier.weight(1f, fill = false)
+                )
             }
         }
-        // 透镜：与实心滑块同一个外形，叠在它上面。悬起进度为 0 时什么都不画
-        Box(
-            Modifier
-                .matchParentSize()
-                .layout { measurable, constraints ->
-                    val r = Liquid.thumbRect(
-                        constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat(), n, pos.value, lift.value, pos.velocity / n, recoil.value,
-                        insetPx.toPx(), growW.toPx(), growH.toPx()
-                    )
-                    val placeable = measurable.measure(
-                        Constraints.fixed(r.width.roundToInt().coerceAtLeast(1), r.height.roundToInt().coerceAtLeast(1))
-                    )
-                    layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(r.left.roundToInt(), r.top.roundToInt()) }
-                }
-                .glass(CircleShape, lensStyle, lensBackdrop, power = { lift.value * shown.value })
-        )
     }
+}
+
+/** 把一个盒子摆到透镜此刻的位置与大小上（在布局期读运动状态，不引起重组） */
+private fun lensPlacement(geometry: GeometryCache, n: Int, motion: LensMotion): Modifier = Modifier.layout { measurable, constraints ->
+    val r = geometry.lensRect(
+        Size(constraints.maxWidth.toFloat(), constraints.maxHeight.toFloat()),
+        n, Pad.toPx(), Overlap.toPx(), Growth.toPx(), motion
+    )
+    val placeable = measurable.measure(Constraints.fixed(r.width.roundToInt().coerceAtLeast(1), r.height.roundToInt().coerceAtLeast(1)))
+    layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(r.left.roundToInt(), r.top.roundToInt()) }
+}
+
+/** 几何缓存：尺寸不变时复用同一份 [SegmentLayout]；透镜的外形路径每帧改写同一条 */
+private class GeometryCache {
+    private var layout: SegmentLayout? = null
+    private val path = Path()
+
+    fun of(width: Float, height: Float, n: Int, pad: Float, overlap: Float): SegmentLayout {
+        layout?.let { if (it.width == width && it.height == height && it.n == n) return it }
+        return SegmentLayout(width, height, n, pad, overlap).also { layout = it }
+    }
+
+    /** 吸附到整像素：透镜那个盒子只能摆在整像素上，挖洞与字的裁剪必须用同一个矩形，否则棱边上会漏出一线 */
+    fun lensRect(size: Size, n: Int, pad: Float, overlap: Float, growth: Float, motion: LensMotion): Rect {
+        val r = of(size.width, size.height, n, pad, overlap).lensRect(motion.position, motion.lifted, motion.stretch, growth)
+        val left = r.left.roundToInt().toFloat()
+        val top = r.top.roundToInt().toFloat()
+        return Rect(left, top, left + r.width.roundToInt().coerceAtLeast(1), top + r.height.roundToInt().coerceAtLeast(1))
+    }
+
+    fun lensPath(size: Size, n: Int, pad: Float, overlap: Float, growth: Float, motion: LensMotion): Path {
+        val r = lensRect(size, n, pad, overlap, growth, motion)
+        path.rewind()
+        path.addRoundRect(RoundRect(r, CornerRadius(r.height / 2f)))
+        return path
+    }
+}
+
+/** 同一个色相与彩度、换一个 HCT 色调 */
+private fun withTone(color: Color, tone: Double): Color {
+    val h = Hct.fromInt(color.toArgb())
+    return Color(Hct.from(h.hue, h.chroma, tone).toInt())
 }
 
 /** 两项的常用简写（开/关、A/B） */
