@@ -16,7 +16,6 @@ import androidx.compose.ui.Modifier
 import app.echoread.AppGraph
 import app.echoread.core.Providers
 import app.echoread.core.i18n.S
-import app.echoread.tts.ready
 import app.echoread.ui.EchoSheet
 import app.echoread.ui.SheetPages
 import kotlinx.coroutines.delay
@@ -61,13 +60,8 @@ fun BoxScope.TtsSettingsSheet(open: Boolean, graph: AppGraph, onClose: () -> Uni
 
     var stack by remember { mutableStateOf(listOf<VoicePage>(VoicePage.Main)) }
     LaunchedEffect(open) {
-        if (!open) return@LaunchedEffect
-        // 当前服务还缺 Key（或地址）：打开面板直接落在它的设置页 —— 那是此刻唯一要做的事，
-        // 不该让人先在主页上找入口。返回箭头仍然回到主页
-        val cur = settings.tts.value
-        val p = cur.activeProfile
-        stack = if (p != null && !cur.usesSystemVoice && !Providers.ready(Providers.specOf(p, cur), p)) listOf(VoicePage.Main, VoicePage.Service(p.id))
-        else listOf(VoicePage.Main)
+        // 每次打开都从主页开始：缺 Key 时主页顶上的服务卡片就是「填入 Key」的按钮，不必替人跳进服务页
+        if (open) stack = listOf(VoicePage.Main)
     }
     val page = stack.last()
     fun push(p: VoicePage) { stack = stack + p }

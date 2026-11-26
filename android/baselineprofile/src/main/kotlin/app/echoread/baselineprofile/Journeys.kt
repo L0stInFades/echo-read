@@ -19,9 +19,10 @@ fun UiDevice.tag(t: String): BySelector = By.res(t)
 private fun UiDevice.waitFor(t: String, timeout: Long = LONG_TIMEOUT): UiObject2? =
     wait(Until.findObject(tag(t)), timeout)
 
-/** 书架为空时点「没有书？先听示例 →」导入示例书，直到出现书籍单元格。 */
+/** 书架为空时：点「导入第一本书」打开导入面板，再点面板底部的「没有书？先听示例 →」，直到出现书籍单元格。 */
 fun MacrobenchmarkScope.ensureSampleBook() {
     if (device.waitFor("shelf.book", SHORT_TIMEOUT) != null) return
+    device.waitFor("shelf.import", SHORT_TIMEOUT)?.click()
     val sample = device.waitFor("shelf.sample", SHORT_TIMEOUT)
         ?: device.wait(Until.findObject(By.textContains("示例")), SHORT_TIMEOUT)
     sample?.click()

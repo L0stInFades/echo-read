@@ -50,6 +50,7 @@ interface Strings {
         val readingStyle: String
         val voiceSettings: String
         val howToUse: String
+        val settings: String
         val close: String
     }
 
@@ -69,7 +70,6 @@ interface Strings {
         val emptyHint: String
         val importYourFirstBook: String
         val trySample: String
-        val howToUseLink: String
         val searchTitleOrAuthor: String
         fun noResultsFor(query: String): String
         val importingBook: String
@@ -294,14 +294,13 @@ interface Strings {
         val checkingForUpdates: String
         val checkForUpdates: String
         fun currentVersion(currentVersionName: String): String
-        val helpImport1: String
-        val helpImport2: String
-        val helpImport3: String
+        val helpGetStarted: String
+        val helpTips: String
+        val helpImport: String
         val helpTapToReadTitle: String
         val helpTapToRead: String
-        val helpGestures1: String
-        val helpGestures2: String
-        val tapTheGearAnd: String
+        val helpGestures: String
+        val helpVoice: String
         val helpBookmarks: String
         val helpOfflineTitle: String
         val helpOffline: String

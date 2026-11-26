@@ -23,4 +23,4 @@ ANDROID_SERIAL=70976d ./gradlew :baselineprofile:connectedBenchmarkReleaseAndroi
 
 ## 依赖的 testTag
 
-`shelf.sample`、`shelf.book`、`reader.page`、`reader.back`（app 开启 `testTagsAsResourceId`，用 `By.res(tag)` 匹配）。
+`shelf.import`、`shelf.sample`、`shelf.book`、`reader.page`、`reader.back`（app 开启 `testTagsAsResourceId`，用 `By.res(tag)` 匹配）。

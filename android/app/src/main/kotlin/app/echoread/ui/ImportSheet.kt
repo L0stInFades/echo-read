@@ -29,11 +29,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import android.os.SystemClock
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
@@ -71,13 +78,14 @@ private enum class TypeFilter {
  * 顶部的引导卡片会按当前档位给出唯一有意义的那一步操作，而不是把所有权限一股脑要一遍。
  */
 @Composable
-fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
+fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onSample: () -> Unit = {}, onClose: () -> Unit) {
     val c = echo
     val context = LocalContext.current
     val scanner = graph.scanner
 
     val candidates by graph.scanResults.collectAsState()
     val busy by graph.scanBusy.collectAsState()
+    val shownBusy = rememberSettledBusy(busy)
     val progress by graph.scanProgress.collectAsState()
     val truncated by graph.scanTruncated.collectAsState()
     val books by graph.library.books.collectAsState()
@@ -169,35 +177,39 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
         // 它是一个「当前状态 + 一个动作」的单元，不是浮在底板上的一行字
         SettingsSection {
             custom {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text(
-                    when {
-                        busy -> S.importer.scanningFound(progress.first)
-                        candidates.isEmpty() -> S.importer.noBooksFoundYet
-                        else -> S.importer.foundBooks(candidates.size) +
-                            if (shown.size != candidates.size) S.importer.shown(shown.size) else ""
-                    },
-                    color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium
-                )
-                if (busy && progress.second > 0) {
-                    Text(S.importer.checkedFiles(progress.second), color = c.text3, style = MaterialTheme.typography.labelSmall)
-                } else if (!busy && truncated) {
-                    // 触到遍历上限就如实说：把截断结果当完整结果展示，用户会以为「书就这些」
-                    Text(S.importer.scanTruncated, color = warningColor(c.isDark), style = MaterialTheme.typography.bodySmall)
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            when {
+                                shownBusy -> S.importer.scanningFound(progress.first)
+                                candidates.isEmpty() -> S.importer.noBooksFoundYet
+                                else -> S.importer.foundBooks(candidates.size) +
+                                    if (shown.size != candidates.size) S.importer.shown(shown.size) else ""
+                            },
+                            color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium
+                        )
+                        if (shownBusy && progress.second > 0) {
+                            Text(S.importer.checkedFiles(progress.second), color = c.text3, style = MaterialTheme.typography.labelSmall)
+                        } else if (!shownBusy && truncated) {
+                            // 触到遍历上限就如实说：把截断结果当完整结果展示，用户会以为「书就这些」
+                            Text(S.importer.scanTruncated, color = warningColor(c.isDark), style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    // 始终是同一枚按钮、只换文字：换成另一个组件会在按压中途被卸载重建，回弹被打断、按钮闪一下
+                    SoftButton(
+                        if (shownBusy) S.importer.stop else S.importer.rescan,
+                        Modifier.widthIn(min = 104.dp),
+                        color = if (shownBusy) c.danger else c.accent,
+                        height = 34.dp,
+                        icon = if (shownBusy) EchoIcons.Close else EchoIcons.Refresh
+                    ) { if (shownBusy) { if (busy) graph.cancelScan() } else graph.rescan() }
                 }
-            }
-            Spacer(Modifier.width(8.dp))
-            if (busy) {
-                TextAction(S.importer.stop, color = c.danger) { graph.cancelScan() }
-            } else {
-                SoftButton(S.importer.rescan, color = c.accent, height = 34.dp, icon = EchoIcons.Refresh) { graph.rescan() }
-            }
-        }
-        // M3 Expressive 的波形进度条：扫描是不定时长的任务，正好用不定态
-        Box(Modifier.fillMaxWidth().height(10.dp).padding(top = 6.dp)) {
-            if (busy) LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth())
-        }
+                // M3 Expressive 的波形进度条（扫描是不定时长的任务，正好用不定态）。
+                // 不扫描时不占位：常驻的空槽会让卡片底部多出一截，文字和按钮看着偏上
+                AnimatedVisibility(shownBusy) {
+                    LinearWavyProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 12.dp))
+                }
             }
         }
 
@@ -242,7 +254,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
             if (shown.isEmpty()) {
                 item {
                     Text(
-                        if (busy) S.importer.scanning
+                        if (shownBusy) S.importer.scanning
                         else if (candidates.isEmpty()) S.importer.noBooksScannedHint
                         else S.importer.noMatchingBooks,
                         color = c.text3, style = MaterialTheme.typography.bodyMedium,
@@ -278,6 +290,11 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
         Spacer(Modifier.height(8.dp))
         SoftButton(S.importer.browseFiles, Modifier.fillMaxWidth()) {
             filePicker.launch(arrayOf("text/plain", "application/epub+zip", "application/octet-stream", "*/*"))
+        }
+        // 书架还是空的：给一条不必先找书的路 —— 内置的示例书
+        if (books.isEmpty()) {
+            Spacer(Modifier.height(4.dp))
+            TextAction(S.shelf.trySample, Modifier.align(Alignment.CenterHorizontally).testTag("shelf.sample"), color = c.text2, onClick = onSample)
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -417,3 +434,26 @@ private fun sourceLabel(s: ScanSource): String = when (s) {
     ScanSource.MEDIA_STORE -> S.importer.mediaLibrary
     ScanSource.FOLDER -> S.importer.grantedFolder
 }
+
+/**
+ * 扫描状态的「显示版」：扫描超过 [BUSY_SHOW_DELAY_MS] 才显示「扫描中」，显示后至少停留 [BUSY_MIN_SHOW_MS]。
+ * 没有授权时一次扫描几毫秒就结束 —— 界面直接跟着 busy 走，文字、按钮、进度条会在一两帧里闪一下又变回去。
+ */
+@Composable
+private fun rememberSettledBusy(busy: Boolean): Boolean {
+    var shownAt by remember { mutableLongStateOf(0L) }
+    val settled by produceState(initialValue = busy, busy) {
+        if (busy && !value) {
+            delay(BUSY_SHOW_DELAY_MS)
+            shownAt = SystemClock.uptimeMillis()
+            value = true
+        } else if (!busy && value) {
+            delay((BUSY_MIN_SHOW_MS - (SystemClock.uptimeMillis() - shownAt)).coerceAtLeast(0L))
+            value = false
+        }
+    }
+    return settled
+}
+
+private const val BUSY_SHOW_DELAY_MS = 300L
+private const val BUSY_MIN_SHOW_MS = 600L

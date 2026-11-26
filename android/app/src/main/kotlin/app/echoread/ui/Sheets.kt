@@ -4,9 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -205,13 +205,20 @@ fun BoxScope.ReaderStyleSheet(open: Boolean, graph: AppGraph, onOpenGestures: ()
         AppearanceSection(graph)
         Spacer(Modifier.height(22.dp))
 
-        SettingsSection(S.providers.general) {
-            switch(S.settings.haptics, value = S.settings.hapticsHint, checked = reader.haptics) { on ->
-                graph.settings.updateReader { r -> r.copy(haptics = on) }
-            }
-            custom { LanguagePicker(graph) }
-        }
+        GeneralSection(graph)
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** 通用：触感 + 界面语言。阅读样式与书架的设置共用这一份 */
+@Composable
+private fun GeneralSection(graph: AppGraph) {
+    val reader by graph.settings.reader.collectAsState()
+    SettingsSection(S.providers.general) {
+        switch(S.settings.haptics, value = S.settings.hapticsHint, checked = reader.haptics) { on ->
+            graph.settings.updateReader { r -> r.copy(haptics = on) }
+        }
+        custom { LanguagePicker(graph) }
     }
 }
 
@@ -297,66 +304,99 @@ private fun AppearanceSection(graph: AppGraph) {
     }
 }
 
-/* ---------- 帮助 ---------- */
+/* ---------- 书架的设置 ---------- */
 
+/**
+ * 书架右上角齿轮：整个应用的设置（外观、通用、关于）。朗读声音有自己的入口（声波图标，与阅读页一致），
+ * 「怎么用」按 Material 的惯例收在设置的最后一组，不再和设置项挤在同一张说明里。
+ */
 @Composable
-fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Unit) {
-    val c = echo
+fun BoxScope.AppSettingsSheet(open: Boolean, graph: AppGraph, onOpenHelp: () -> Unit, onClose: () -> Unit) {
     val scope = rememberCoroutineScope()
     var checking by remember { mutableStateOf(false) }
-    EchoSheet(open = open, onDismiss = onClose, title = S.common.howToUse, maxHeightFraction = 0.86f) {
-        val topics = listOf(
-            S.common.importBooks to listOf(S.settings.helpImport1, S.settings.helpImport2, S.settings.helpImport3),
-            S.settings.helpTapToReadTitle to listOf(S.settings.helpTapToRead),
-            S.common.pageTurnGestures to listOf(S.settings.helpGestures1, S.settings.helpGestures2),
-            S.reader.bookmarks to listOf(S.settings.helpBookmarks),
-            S.common.speech to listOf(S.settings.tapTheGearAnd),
-            S.settings.helpOfflineTitle to listOf(S.settings.helpOffline)
-        )
-        // 一个话题一张卡片：一整面不分段的说明文字没有人会读，分开之后扫标题就能找到要看的那一段
-        for ((title, paragraphs) in topics) {
-            EchoCard(padding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(title, color = c.text, style = MaterialTheme.typography.titleSmallEmphasized)
-                for (p in paragraphs) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(p.trim(), color = c.text2, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-            Spacer(Modifier.height(10.dp))
-        }
-        if (graph != null) {
-            Spacer(Modifier.height(12.dp))
-            // 外观也放一份在这里：主题、纯黑、玻璃是整个应用的事，不该只藏在「阅读样式」里
-            AppearanceSection(graph)
-            Spacer(Modifier.height(22.dp))
-            // 书架上就能找到的地方：中文系统的用户想用英文界面，不必先打开一本书
-            SettingsSection(S.providers.general) {
-                custom { LanguagePicker(graph) }
-            }
-            Spacer(Modifier.height(22.dp))
-            SettingsSection(S.providers.about) {
-                row(
-                    if (checking) S.settings.checkingForUpdates else S.settings.checkForUpdates,
-                    value = S.settings.currentVersion(graph.updater.currentVersionName),
-                    trailing = { ChevronEnd() },
-                    enabled = !checking,
-                    onClick = {
-                        checking = true
-                        scope.launch {
-                            val r = runCatching { graph.updater.check(force = true) }.getOrNull()
-                            checking = false
-                            when (r) {
-                                is app.echoread.data.UpdateState.UpToDate -> Toaster.success(S.settings.youreUpToDate(graph.updater.currentVersionName))
-                                is app.echoread.data.UpdateState.Available, is app.echoread.data.UpdateState.Ready -> { Toaster.show(S.settings.updateFoundSeeLibrary); onClose() }
-                                is app.echoread.data.UpdateState.Error -> r.error?.let { ErrorDetails.toast(it) } ?: Toaster.error(r.message)
-                                else -> Toaster.error(S.settings.couldntCheckForUpdates)
-                            }
+    EchoSheet(open = open, onDismiss = onClose, title = S.common.settings, maxHeightFraction = 0.86f) {
+        AppearanceSection(graph)
+        Spacer(Modifier.height(22.dp))
+        GeneralSection(graph)
+        Spacer(Modifier.height(22.dp))
+        SettingsSection(S.providers.about) {
+            row(S.common.howToUse, icon = EchoIcons.Help, trailing = { ChevronEnd() }, onClick = onOpenHelp)
+            row(
+                if (checking) S.settings.checkingForUpdates else S.settings.checkForUpdates,
+                value = S.settings.currentVersion(graph.updater.currentVersionName),
+                icon = EchoIcons.Refresh,
+                trailing = { ChevronEnd() },
+                enabled = !checking,
+                onClick = {
+                    checking = true
+                    scope.launch {
+                        val r = runCatching { graph.updater.check(force = true) }.getOrNull()
+                        checking = false
+                        when (r) {
+                            is app.echoread.data.UpdateState.UpToDate -> Toaster.success(S.settings.youreUpToDate(graph.updater.currentVersionName))
+                            is app.echoread.data.UpdateState.Available, is app.echoread.data.UpdateState.Ready -> { Toaster.show(S.settings.updateFoundSeeLibrary); onClose() }
+                            is app.echoread.data.UpdateState.Error -> r.error?.let { ErrorDetails.toast(it) } ?: Toaster.error(r.message)
+                            else -> Toaster.error(S.settings.couldntCheckForUpdates)
                         }
                     }
-                )
-            }
+                }
+            )
         }
         Spacer(Modifier.height(8.dp))
+    }
+}
+
+/* ---------- 帮助 ---------- */
+
+/**
+ * 怎么用：只讲用法，一条一句。先是编了号的三步主线（导入 → 选声音 → 点读），
+ * 再是可以晚点知道的小技巧 —— 扫一眼编号就知道从哪开始，不必读完一整面说明。
+ */
+@Composable
+fun BoxScope.HelpSheet(open: Boolean, onClose: () -> Unit) {
+    EchoSheet(open = open, onDismiss = onClose, title = S.common.howToUse, maxHeightFraction = 0.86f) {
+        SettingsSection(S.settings.helpGetStarted) {
+            helpRow(S.common.importBooks, S.settings.helpImport) { HelpStep(1) }
+            helpRow(S.common.speech, S.settings.helpVoice) { HelpStep(2) }
+            helpRow(S.settings.helpTapToReadTitle, S.settings.helpTapToRead) { HelpStep(3) }
+        }
+        Spacer(Modifier.height(22.dp))
+        SettingsSection(S.settings.helpTips) {
+            helpRow(S.common.pageTurnGestures, S.settings.helpGestures) { HelpIcon(EchoIcons.SwipeH) }
+            helpRow(S.reader.bookmarks, S.settings.helpBookmarks) { HelpIcon(EchoIcons.Bookmark) }
+            helpRow(S.settings.helpOfflineTitle, S.settings.helpOffline) { HelpIcon(EchoIcons.Download) }
+        }
+        Spacer(Modifier.height(8.dp))
+    }
+}
+
+/** 帮助的一条：前置标记 + 标题 + 一句话。说明不截断（设置行的副标题封顶两行，这里不能省略半句） */
+private fun SettingsScope.helpRow(title: String, body: String, leading: @Composable () -> Unit) = custom {
+    val c = echo
+    Row {
+        leading()
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(title, color = c.text, style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(2.dp))
+            Text(body, color = c.text2, style = MaterialTheme.typography.bodyMedium)
+        }
+    }
+}
+
+/** 主线步骤的编号：强调色小圆，和小技巧的灰色图标一眼区分开主次 */
+@Composable
+private fun HelpStep(n: Int) {
+    val c = echo
+    Box(Modifier.size(24.dp).background(c.accent, CircleShape), contentAlignment = Alignment.Center) {
+        Text("$n", color = c.onAccent, style = MaterialTheme.typography.labelMediumEmphasized)
+    }
+}
+
+@Composable
+private fun HelpIcon(icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+        Icon(icon, null, tint = echo.text2, modifier = Modifier.size(22.dp))
     }
 }
 

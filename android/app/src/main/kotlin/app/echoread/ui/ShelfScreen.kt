@@ -124,6 +124,7 @@ fun ShelfScreen(
     var query by remember { mutableStateOf("") }
     var sort by remember { mutableStateOf(SortMode.RECENT) }
     var showSettings by remember { mutableStateOf(false) }
+    var showAppSettings by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
     var showImport by remember { mutableStateOf(false) }
     var showNotes by remember { mutableStateOf(false) }
@@ -219,12 +220,16 @@ fun ShelfScreen(
 
             item("update") { UpdateCard(graph) { showNotes = true } }
 
-            // 当前服务还缺 Key（或自建服务还没填地址）：书架顶上提醒一次，点了直接进设置
-            item("keyBanner") { KeyBanner(graph) { showSettings = true } }
-
             if (books.isEmpty()) {
+                // 空书架只讲一件事：导入第一本书（或先试试样书）。缺 Key 的横幅、底部的导入胶囊都不出现 ——
+                // 同一屏上两个「导入」、一张设置卡片，会把唯一的下一步淹掉。声音在第一次朗读时才需要，
+                // 那时阅读页会告诉人去填 Key（Apple HIG：让人马上开始用，需要设置时再在当下提出）
                 item("empty") {
-                    Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        Modifier.fillMaxWidth().fillParentMaxHeight(0.68f),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
                         Box(
                             Modifier.size(96.dp).glassSurface(RoundedCornerShape(Radius.xl), c.surfaceGlass()),
                             contentAlignment = Alignment.Center
@@ -233,15 +238,17 @@ fun ShelfScreen(
                         Text(S.shelf.emptyTitle, color = c.text, style = MaterialTheme.typography.titleLargeEmphasized)
                         Spacer(Modifier.height(6.dp))
                         Text(S.shelf.emptyHint, color = c.text2, style = MaterialTheme.typography.bodyMedium, textAlign = androidx.compose.ui.text.style.TextAlign.Center, modifier = Modifier.padding(horizontal = 24.dp))
-                        Spacer(Modifier.height(24.dp))
-                        GradientButton(S.shelf.importYourFirstBook, height = 46.dp) { showImport = true }
-                        Spacer(Modifier.height(10.dp))
-                        SoftButton(S.shelf.trySample, Modifier.testTag("shelf.sample")) { openSample() }
-                        Spacer(Modifier.height(12.dp))
-                        TextAction(S.shelf.howToUseLink, color = c.text2) { showHelp = true }
+                        Spacer(Modifier.height(28.dp))
+                        // 唯一的动作：一枚大号的强调色胶囊。示例书收进导入面板的底部（没有书时才出现）
+                        GradientButton(
+                            S.shelf.importYourFirstBook, Modifier.testTag("shelf.import"),
+                            icon = EchoIcons.Plus, height = 54.dp, fontSize = 16
+                        ) { showImport = true }
                     }
                 }
             } else {
+                // 当前服务还缺 Key（或自建服务还没填地址）：书架顶上提醒一次，点了直接进设置
+                item("keyBanner") { KeyBanner(graph) { showSettings = true } }
                 if (continueBook != null) {
                     item("continue") {
                         ContinueCard(continueBook, Modifier.padding(bottom = 14.dp)) { onOpenBook(continueBook.id) }
@@ -357,8 +364,9 @@ fun ShelfScreen(
           }
           Spacer(Modifier.weight(1f))
           GlassIconGroup(glassBackdrop) {
-              GlassIcon(EchoIcons.Help, S.common.howToUse) { showHelp = true }
-              GlassIcon(EchoIcons.Settings, S.common.voiceSettings) { showSettings = true }
+              // 声音用声波图标（与阅读页同一枚），齿轮留给整个应用的设置；「怎么用」收进设置的最后一组
+              GlassIcon(EchoIcons.Waves, S.common.voiceSettings) { showSettings = true }
+              GlassIcon(EchoIcons.Settings, S.common.settings) { showAppSettings = true }
           }
       }
 
@@ -367,40 +375,44 @@ fun ShelfScreen(
       val fabLight = rememberGlassLight()
       val fabPress = rememberPressMotion()
       val fabCompact by remember { derivedStateOf { collapse.value >= 0.85f } }
-      // 一颗染了强调色的玻璃（着色玻璃：强调色八成浓，与其它悬浮件同一种材质）
-      val fabStyle = c.panes.accent
-      Row(
-          Modifier
-              .align(Alignment.BottomCenter)
-              .windowInsetsPadding(WindowInsets.navigationBars)
-              .padding(bottom = 22.dp)
-              .zIndex(10f)
-              .testTag("shelf.import")
-              .elasticPress(fabPress, fabLight, onClickLabel = S.common.importBooks) { showImport = true }
-              .glassShadow(CircleShape, Color.Black.copy(alpha = if (c.isDark) 0.30f else 0.14f), blur = 14.dp, dy = 5.dp)
-              .glass(CircleShape, fabStyle, glassBackdrop, light = fabLight, offset = { fabPress.pull }, scale = { fabPress.scaleOf(it) })
-              .animateContentSize(EchoMotion.Playful.spec(IntSize.VisibilityThreshold))
-              .height(54.dp)
-              .padding(horizontal = if (fabCompact) 17.dp else 22.dp),
-          verticalAlignment = Alignment.CenterVertically
-      ) {
-          Icon(EchoIcons.Plus, null, tint = c.onAccent, modifier = Modifier.size(20.dp))
-          if (!fabCompact) {
-              Spacer(Modifier.width(8.dp))
-              Text(
-                  S.common.importBooks, color = c.onAccent, fontSize = 15.sp, style = MaterialTheme.typography.labelLargeEmphasized,
-                  maxLines = 1, softWrap = false
-              )
-          }
+      // 空书架上不画：空状态里已经有「导入第一本书」，同一屏两个导入按钮只会互相抢
+      if (books.isNotEmpty()) {
+        // 一颗染了强调色的玻璃（着色玻璃：强调色八成浓，与其它悬浮件同一种材质）
+        val fabStyle = c.panes.accent
+        Row(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(bottom = 22.dp)
+                .zIndex(10f)
+                .testTag("shelf.import")
+                .elasticPress(fabPress, fabLight, onClickLabel = S.common.importBooks) { showImport = true }
+                .glassShadow(CircleShape, Color.Black.copy(alpha = if (c.isDark) 0.30f else 0.14f), blur = 14.dp, dy = 5.dp)
+                .glass(CircleShape, fabStyle, glassBackdrop, light = fabLight, offset = { fabPress.pull }, scale = { fabPress.scaleOf(it) })
+                .animateContentSize(EchoMotion.Playful.spec(IntSize.VisibilityThreshold))
+                .height(54.dp)
+                .padding(horizontal = if (fabCompact) 17.dp else 22.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(EchoIcons.Plus, null, tint = c.onAccent, modifier = Modifier.size(20.dp))
+            if (!fabCompact) {
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    S.common.importBooks, color = c.onAccent, fontSize = 15.sp, style = MaterialTheme.typography.labelLargeEmphasized,
+                    maxLines = 1, softWrap = false
+                )
+            }
+        }
       }
 
       // 导入中遮罩
       ImportingOverlay(library)
 
       CompositionLocalProvider(LocalBackdrop provides backdrop) {
-        ImportSheet(open = showImport, graph = graph) { showImport = false }
+        ImportSheet(open = showImport, graph = graph, onSample = { showImport = false; openSample() }) { showImport = false }
         TtsSettingsSheet(open = showSettings, graph = graph) { showSettings = false }
-        HelpSheet(open = showHelp, graph = graph) { showHelp = false }
+        AppSettingsSheet(open = showAppSettings, graph = graph, onOpenHelp = { showAppSettings = false; showHelp = true }) { showAppSettings = false }
+        HelpSheet(open = showHelp) { showHelp = false }
         UpdateNotesSheet(open = showNotes, graph = graph) { showNotes = false }
         BookActionSheet(book = actionBook, onClose = { actionBook = null }, onOpen = { b -> actionBook = null; onOpenBook(b.id) }) { b ->
             scope.launch {
