@@ -64,13 +64,10 @@ data class EchoColors(
     val accentSoft: Color,
     val danger: Color,
     val isDark: Boolean,
-    /* ---- 0.5.0：玻璃材质上的层级 ----
-     * 面板本身是半透明的玻璃，面板上的卡片就不能再用不透明的色调容器（会把玻璃整块盖死）。
-     * 这一组是「叠在玻璃上的半透明填充」：浅色是白、深色是很淡的白，叠出来仍然是一级一级的层次。
-     * 用户关掉玻璃时它们退回对应的不透明色调容器，观感与 0.4.x 一致。 */
-    /** 面板 / 浮层的玻璃着色（盖在模糊背板上） */
-    val glass: Color,
-    /** 小型悬浮件（提示条、状态药丸、圆形按钮）的玻璃着色，比面板更薄 */
+    /* ---- 层级用的半透明填充 ----
+     * 卡片、输入框、分段控件的轨道叠在面板或带环境光的页面上：浅色是白、深色是很淡的白，叠出来是一级一级的层次，
+     * 底下的色调还透得上来。用户关掉玻璃时它们退回对应的不透明色调容器，观感与 0.4.x 一致。 */
+    /** 悬浮件（按钮组、提示条、状态药丸）玻璃的着色 */
     val glassThin: Color,
     /** 玻璃上的分组卡片 */
     val fill: Color,
@@ -84,7 +81,11 @@ data class EchoColors(
     /** 浮层背后的遮罩。玻璃面板用得很淡（20% / 48%），底下的内容还看得出轮廓 */
     val scrim: Color,
     /** 玻璃是否开启 */
-    val glassOn: Boolean
+    val glassOn: Boolean,
+    /** 压在高光外侧的暗发丝线：浅色界面上玻璃的轮廓靠它 */
+    val edge: Color = Color.Transparent,
+    /** 纯黑模式（深色 + 用户打开了「纯黑」）：页面底色是 #000，不画任何环境光 */
+    val isBlack: Boolean = false
 )
 
 /* ---------------- M3 色板（seed #7C9BFF · SchemeTonalSpot · 2021 spec） ---------------- */
@@ -113,7 +114,7 @@ data class EchoColors(
  * 取 `outline` 是最接近的真实角色：浅色 4.27:1、深色 5.85:1，稳过 3:1 的非文本/大字门槛，
  * 且远优于旧实现（onSurface @0.35~0.40 ≈ 2.3:1）。
  */
-fun echoColorsFrom(s: ColorScheme, dark: Boolean, glass: Boolean = true) = EchoColors(
+fun echoColorsFrom(s: ColorScheme, dark: Boolean, glass: Boolean = true, black: Boolean = false) = EchoColors(
     canvas = s.surface,
     card = s.surfaceContainer,
     cardAlt = s.surfaceContainerHigh,
@@ -127,34 +128,86 @@ fun echoColorsFrom(s: ColorScheme, dark: Boolean, glass: Boolean = true) = EchoC
     accentSoft = s.primaryContainer,
     danger = s.error,
     isDark = dark,
-    // 着色取面板自己的底色再降透明度：背板被模糊成大色块之后，叠上去的仍是这套配色的色相
-    // 0.8 上下：阅读主题与应用配色各自独立，浅色面板可能盖在深色书页上。
-    // 再薄的话，面板上的次要文字（组下方的说明）在那种组合里对比度不够（真机上量过）
-    glass = if (!glass) s.surfaceContainerLow else s.surfaceContainerLow.copy(alpha = if (dark) 0.78f else 0.82f),
-    glassThin = if (!glass) s.surfaceContainerHigh else s.surfaceContainerHigh.copy(alpha = if (dark) 0.66f else 0.62f),
-    fill = if (!glass) s.surfaceContainerHigh else if (dark) Color.White.copy(alpha = 0.075f) else Color.White.copy(alpha = 0.66f),
+    // 悬浮件玻璃的着色，整块同一个浓度（见 GlassStyle.tint）：取参考实现「均衡」档的配方 ——
+    // 容器色四成，再叠一层 13% 的白（深色下是黑）让上面的图标站得住，合起来不到五成
+    glassThin = if (!glass) s.surfaceContainerHigh
+    else androidx.compose.ui.graphics.lerp(s.surfaceContainer, if (dark) Color.Black else Color.White, 0.22f).copy(alpha = 0.47f),
+    fill = if (!glass) s.surfaceContainerHigh else if (dark) Color.White.copy(alpha = 0.06f) else Color.White.copy(alpha = 0.38f),
     fillStrong = if (!glass) s.surfaceContainerHighest else s.onSurface.copy(alpha = if (dark) 0.10f else 0.065f),
     hairline = s.onSurface.copy(alpha = if (dark) 0.11f else 0.09f),
-    rimHi = if (dark) Color.White.copy(alpha = 0.26f) else Color.White.copy(alpha = 0.85f),
-    rimLo = if (dark) Color.White.copy(alpha = 0.07f) else Color.White.copy(alpha = 0.22f),
-    scrim = Color.Black.copy(alpha = if (glass) (if (dark) 0.48f else 0.22f) else 0.5f),
-    glassOn = glass
+    rimHi = if (dark) Color.White.copy(alpha = 0.60f) else Color.White.copy(alpha = 0.80f),
+    rimLo = if (dark) Color.White.copy(alpha = 0.04f) else Color.White.copy(alpha = 0.12f),
+    scrim = Color.Black.copy(alpha = if (glass) (if (dark) 0.48f else 0.24f) else 0.5f),
+    glassOn = glass,
+    edge = if (dark) Color.Black.copy(alpha = 0.30f) else Color.Black.copy(alpha = 0.06f),
+    isBlack = dark && black
 )
 
-/** 面板 / 大浮层的玻璃 */
-val EchoColors.sheetGlass: app.echoread.ui.glass.GlassStyle
+/**
+ * 面板 / 大浮层：**实心**的面板色，棱上一线反光。
+ *
+ * 面板上是成段的文字，两个参考对象的面板与对话框都是实心的，玻璃留给悬浮件。这里试过三种「玻璃面板」，都不成立：
+ * - 模糊 + 着色：那是毛玻璃；
+ * - 中部近乎不透、四周一圈清：真机上那一圈透出来的画面像是面板底下另垫了一块更大的玻璃，面板与它的玻璃成了分开的两层；
+ * - 整块九成浓的清玻璃：透过来的那一成只是在文字后面添一层鬼影，而代价是每一帧把整屏内容多画一遍 ——
+ *   Android 11 测试机上面板滑动从每帧 19ms 掉到 32ms。
+ */
+val EchoColors.sheetSurface: app.echoread.ui.glass.GlassStyle
     get() = app.echoread.ui.glass.GlassStyle(
-        tint = glass, fallback = sheet, blur = 26.dp, saturation = if (isDark) 1.5f else 1.7f,
-        rimHi = rimHi, rimLo = rimLo, rimWidth = 1.dp, inputScale = 3,
-        lensDepth = 18.dp, lensAmount = 22.dp
+        tint = sheet, fallback = sheet,
+        rimHi = if (!glassOn) Color.Transparent else rimHi, rimLo = if (!glassOn) Color.Transparent else rimLo, rimWidth = 1.dp,
+        edge = if (!glassOn) Color.Transparent else edge
     )
 
-/** 小型悬浮件的玻璃：更薄、模糊更轻，底下的内容还辨得出形状 */
+/**
+ * 悬浮件的玻璃（按钮组、小标题药丸、提示条、状态药丸）。配方照参考实现「均衡」那一档：
+ * 背板提饱和度 1.5 → 只模糊 4dp → 边缘一圈透镜（64dp 高的条上斜面 24dp，这里的件矮一些，按比例取 16dp）→
+ * 容器色不到五成 → 棱上一线反光 → 一圈小而淡的投影。
+ * 后面的内容辨得清形状与颜色，在边缘被明显地掰弯；上面的图标与一行字仍然站得住。
+ */
 val EchoColors.pillGlass: app.echoread.ui.glass.GlassStyle
     get() = app.echoread.ui.glass.GlassStyle(
-        tint = glassThin, fallback = cardAlt, blur = 14.dp, saturation = if (isDark) 1.5f else 1.8f,
+        tint = glassThin, fallback = cardAlt,
+        blur = if (glassOn) 4.dp else 0.dp, saturation = if (glassOn) 1.5f else 1f,
         rimHi = rimHi, rimLo = rimLo, rimWidth = 1.dp, inputScale = 1,
-        lensDepth = 12.dp, lensAmount = 14.dp
+        lensDepth = 16.dp, lensAmount = 38.dp, dispersion = 0.3f,
+        edge = edge
+    )
+
+/** 只承载图标的小玻璃件：与 [pillGlass] 同一种材质（以前单列了更清的一档；参考对象那里它们是同一块玻璃） */
+val EchoColors.clearGlass: app.echoread.ui.glass.GlassStyle get() = pillGlass
+
+/**
+ * 不采样背板的玻璃面（卡片、次级按钮）：半透明的填充 + 一条很淡的高光描边。
+ * 参考对象对卡片的处理相同 —— 实心（这里是半透明）填充加 0.7dp 的棱，不做折射：卡片背后没有值得折射的东西。
+ */
+fun EchoColors.surfaceGlass(color: Color = fill): app.echoread.ui.glass.GlassStyle =
+    app.echoread.ui.glass.GlassStyle(
+        tint = color, fallback = color,
+        rimHi = if (!glassOn) Color.Transparent else if (isDark) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.95f),
+        rimLo = if (!glassOn) Color.Transparent else if (isDark) Color.White.copy(alpha = 0.03f) else Color.White.copy(alpha = 0.25f),
+        rimWidth = 0.7.dp
+    )
+
+/** 分段控件里那枚悬起的透镜：不模糊、不着色，只有折射、色散、高光与内侧暗影 */
+fun segmentLens(dark: Boolean): app.echoread.ui.glass.GlassStyle =
+    app.echoread.ui.glass.GlassStyle(
+        tint = Color.Transparent, fallback = Color.Transparent,
+        rimHi = Color.White.copy(alpha = if (dark) 0.75f else 0.95f),
+        rimLo = Color.White.copy(alpha = 0.18f),
+        rimWidth = 1.dp,
+        lensDepth = 11.dp, lensAmount = 24.dp, dispersion = 0.6f,
+        innerShade = 0.15f
+    )
+
+/** 品牌渐变按钮上的那层光：不着色，只有顶部反光、高光描边与一条暗边 */
+val EchoColors.glossGlass: app.echoread.ui.glass.GlassStyle
+    get() = app.echoread.ui.glass.GlassStyle(
+        tint = Color.Transparent, fallback = Color.Transparent,
+        rimHi = Color.White.copy(alpha = if (isDark) 0.55f else 0.75f),
+        rimLo = Color.White.copy(alpha = 0.10f),
+        rimWidth = 1.dp,
+        sheen = if (isDark) 0.08f else 0.12f
     )
 
 /**
@@ -408,6 +461,8 @@ fun EchoTheme(
     dark: Boolean = isSystemInDarkTheme(),
     dynamic: Boolean = false,
     glass: Boolean = true,
+    /** 纯黑：只在深色下生效 */
+    black: Boolean = false,
     seed: Color = Color(ReaderSettings.DEFAULT_SEED),
     style: ColorStyle = ColorStyle.TONAL_SPOT,
     contrast: Float = 0f,
@@ -422,8 +477,9 @@ fun EchoTheme(
         } else null
     }
     val generated = rememberGeneratedScheme(seed, style, dark, contrast)
-    val scheme = dynamicScheme ?: generated
-    val colors = remember(scheme, dark, glass) { echoColorsFrom(scheme, dark, glass) }
+    val base = dynamicScheme ?: generated
+    val scheme = remember(base, dark, black) { if (dark && black) base.toPureBlack() else base }
+    val colors = remember(scheme, dark, glass, black) { echoColorsFrom(scheme, dark, glass, black) }
     CompositionLocalProvider(LocalEchoColors provides colors) {
         MaterialExpressiveTheme(
             colorScheme = scheme,

@@ -111,14 +111,14 @@ fun Modifier.echoPress(
             scaleX = s
             scaleY = s
             if (pressedAlpha != 1f) {
-                alpha = 1f + (pressedAlpha - 1f) * p
+                alpha = (1f + (pressedAlpha - 1f) * p).coerceIn(0f, 1f)
                 // 按钮内容互不重叠，用 ModulateAlpha 把 alpha 下推到每个 draw op，不建离屏缓冲
                 compositingStrategy = CompositingStrategy.ModulateAlpha
             }
             if (pressedCorner != null) {
                 // 起点用「足够大的半径」代表胶囊：RoundedCornerShape 会自动收敛到半高，
                 // 因此这一档在任何高度上都等价于 CircleShape，无需知道实际尺寸。
-                shape = RoundedCornerShape(lerp(PILL_CORNER, pressedCorner, p))
+                shape = RoundedCornerShape(lerp(PILL_CORNER, pressedCorner, p.coerceIn(0f, 1f)))
                 clip = true
             }
         }
@@ -153,7 +153,8 @@ fun Modifier.echoPress(
                     launch {
                         val held = SystemClock.uptimeMillis() - downAt
                         if (held < MIN_PRESS_MS) delay(MIN_PRESS_MS - held)
-                        if (state.gen == gen) state.progress.animateTo(0f, EchoMotion.Instant.spec(Thr.SCALE))
+                        // 松手带一点过冲的回弹（进度会短暂变负 = 比原大小略大），按下去仍是即时的
+                        if (state.gen == gen) state.progress.animateTo(0f, Liquid.Rebound)
                     }
                     if (!longFired && up != null && enabledRef.value) {
                         up.consume()

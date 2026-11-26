@@ -108,3 +108,28 @@ fun DynamicScheme.toColorScheme(): ColorScheme = ColorScheme(
 @Composable
 fun rememberGeneratedScheme(seed: Color, style: ColorStyle, dark: Boolean, contrast: Float): ColorScheme =
     remember(seed, style, dark, contrast) { dynamicSchemeOf(seed, style, dark, contrast).toColorScheme() }
+
+/**
+ * 纯黑变体（只用于深色方案）。页面底色与最低一级容器变成 #000000 —— OLED 屏上这些像素是关着的；
+ * 其余几级容器各自减去原页面底色的明度（M3 深色里是 T6），色相与彩度不动。
+ * 这样卡片、面板仍然一级一级地浮在黑底上，而且还带着这套配色自己的色相，不会变成一堆中性灰。
+ * 强调色、文字色完全不变（做法与参考对象 FlClash 一致；BiliPai 用的是一组固定的中性灰阶）。
+ */
+fun ColorScheme.toPureBlack(): ColorScheme {
+    val base = Hct.fromInt(surface.toArgb()).tone
+    fun drop(c: Color): Color {
+        val h = Hct.fromInt(c.toArgb())
+        return Color(Hct.from(h.hue, h.chroma, (h.tone - base).coerceAtLeast(0.0)).toInt())
+    }
+    return copy(
+        background = Color.Black,
+        surface = Color.Black,
+        surfaceDim = Color.Black,
+        surfaceContainerLowest = Color.Black,
+        surfaceContainerLow = drop(surfaceContainerLow),
+        surfaceContainer = drop(surfaceContainer),
+        surfaceContainerHigh = drop(surfaceContainerHigh),
+        surfaceContainerHighest = drop(surfaceContainerHighest),
+        surfaceBright = drop(surfaceBright)
+    )
+}

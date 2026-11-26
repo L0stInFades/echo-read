@@ -139,7 +139,7 @@ object EchoTransitions {
 
     /** 轻提示上浮入场 */
     val riseIn: EnterTransition =
-        fadeIn(tween(Dur.Short, easing = Ease.Linear)) + slideInVertically(offsetSpec) { -it / 3 }
+        fadeIn(tween(Dur.Short, easing = Ease.Linear)) + slideInVertically(EchoMotion.Playful.spec(IntOffset.VisibilityThreshold)) { -it }
     val sinkOut: ExitTransition =
         fadeOut(tween(Dur.Micro, easing = Ease.Linear)) + slideOutVertically(offsetSpec) { -it / 4 }
 

@@ -75,6 +75,16 @@ import app.echoread.core.readFraction
 import app.echoread.core.started
 import app.echoread.tts.Providers
 import app.echoread.ui.glass.LocalBackdrop
+import app.echoread.ui.glass.GlassStyle
+import app.echoread.ui.glass.glass
+import app.echoread.ui.glass.glassShadow
+import app.echoread.ui.glass.glassSurface
+import app.echoread.ui.motion.liquidPress
+import app.echoread.ui.motion.rememberGlassLight
+import androidx.compose.animation.animateContentSize
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntSize
 import app.echoread.ui.glass.backdropSource
 import app.echoread.ui.glass.rememberBackdrop
 import androidx.compose.runtime.CompositionLocalProvider
@@ -108,7 +118,12 @@ private enum class SortMode {
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
+fun ShelfScreen(
+    graph: AppGraph,
+    /** 书架此刻是否被阅读器完全盖住：盖住时悬浮件不再采样背板（它们看不见，没有理由每帧去模糊书架） */
+    covered: () -> Boolean = { false },
+    onOpenBook: (String) -> Unit
+) {
     val c = echo
     val scope = rememberCoroutineScope()
     val library = graph.library
@@ -168,6 +183,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
     Box(Modifier.fillMaxSize()) {
       // 书架的画面（连同页面底色）交给背板；下面的面板是它的兄弟节点，从这里采样做玻璃
       Box(Modifier.fillMaxSize().backdropSource(backdrop, c.canvas)) {
+        AmbientLight(listState, Modifier.fillMaxSize())
         LazyColumn(
             state = listState,
             modifier = Modifier.fillMaxSize(),
@@ -221,8 +237,8 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                         Modifier
                             .fillMaxWidth()
                             .padding(bottom = 14.dp)
-                            .background(c.card, RoundedCornerShape(Radius.lgPlus))
                             .echoPress(pressedScale = PressScale.Tile) { showSettings = true }
+                            .glassSurface(RoundedCornerShape(Radius.lgPlus), c.surfaceGlass())
                             .padding(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -249,7 +265,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                 item("empty") {
                     Column(Modifier.fillMaxWidth().padding(top = 48.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Box(
-                            Modifier.size(96.dp).background(c.card, RoundedCornerShape(Radius.xl)),
+                            Modifier.size(96.dp).glassSurface(RoundedCornerShape(Radius.xl), c.surfaceGlass()),
                             contentAlignment = Alignment.Center
                         ) { Icon(EchoIcons.Book, null, tint = c.accent, modifier = Modifier.size(40.dp)) }
                         Spacer(Modifier.height(20.dp))
@@ -272,13 +288,13 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                 }
                 item("search") {
                     Column(Modifier.padding(bottom = 14.dp)) {
-                        SearchField(query, { query = it }, S.shelf.searchTitleOrAuthor, background = c.card)
+                        SearchField(query, { query = it }, S.shelf.searchTitleOrAuthor, background = c.fill)
                         Spacer(Modifier.height(10.dp))
                         // 排序在语义上是单选，不是筛选标签：分段控件把「三选一」直接画出来，读屏也会读成单选组
                         EchoSegmented(
                             items = SortMode.entries.map { SegmentItem(it.label) },
                             selectedIndex = SortMode.entries.indexOf(sort),
-                            containerColor = c.card,
+                            containerColor = c.fill,
                             height = 40.dp
                         ) { sort = SortMode.entries[it] }
                     }
@@ -310,7 +326,7 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
                                     placementSpec = EchoMotion.Standard.spec(IntOffset.VisibilityThreshold),
                                     fadeOutSpec = null
                                 )
-                                .background(c.card, shape)
+                                .background(c.fill, shape)
                                 .padding(start = 14.dp, end = 14.dp, top = if (first) 14.dp else 0.dp, bottom = if (last) 14.dp else 16.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
@@ -322,73 +338,113 @@ fun ShelfScreen(graph: AppGraph, onOpenBook: (String) -> Unit) {
             }
         }
 
-        // 紧凑标题栏：始终承载动作按钮；收起态才显示底色与小标题
-        val compactTitleBrush = rememberAurora()
-        val canvasColor = c.canvas
-        val borderColor = c.border
-        Column(Modifier.fillMaxWidth().zIndex(10f)) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    // 底色在 draw 阶段读收起进度：不再每帧重组紧凑栏、也不再每帧新分配一个 Color 与 background 修饰符
-                    .drawBehind { drawRect(canvasColor, alpha = collapse.value * 0.96f) }
-                    .windowInsetsPadding(WindowInsets.statusBars)
-            ) {
-                Row(Modifier.fillMaxWidth().height(52.dp).padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        "Lector",
-                        style = TextStyle(brush = compactTitleBrush, fontSize = 17.sp, fontWeight = FontWeight.Black),
-                        modifier = Modifier.weight(1f).padding(start = 6.dp).graphicsLayer {
-                            val sm = ((collapse.value - 0.6f) / 0.4f).coerceIn(0f, 1f)
-                            alpha = sm
-                            translationY = (1f - sm) * 10f
-                            compositingStrategy = CompositingStrategy.ModulateAlpha
-                        }
-                    )
-                    IconButtonEcho(EchoIcons.Help, S.common.howToUse, tint = c.text, background = c.card) { showHelp = true }
-                    Spacer(Modifier.width(4.dp))
-                    IconButtonEcho(EchoIcons.Settings, S.common.voiceSettings, tint = c.text, background = c.card) { showSettings = true }
-                }
-            }
-            Box(Modifier.fillMaxWidth().height(1.dp).drawBehind { drawRect(borderColor, alpha = collapse.value) })
-        }
+      }
 
-        // 底部主动作：拇指可达的「导入」
-        // 底部主动作：拇指可达的「导入」。
-        // 用 M3 的 FAB 出入场动画（缩放 + 淡出，锚点在按钮自身），由已有的 collapse 驱动 ——
-        // 往下翻书时它让出屏幕，回到顶部再弹回来。这条动画本身走主题里的 Expressive 弹簧。
-        Box(Modifier.align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.navigationBars).padding(bottom = 22.dp).zIndex(10f)) {
-            GradientButton(
-                S.common.importBooks,
-                icon = EchoIcons.Plus,
-                height = 52.dp,
-                modifier = Modifier
-                    .testTag("shelf.import")
-                    .animateFloatingActionButton(
-                        visible = collapse.value < 0.85f,
-                        alignment = Alignment.BottomCenter
-                    )
-                    .shadow(16.dp, CircleShape, spotColor = c.accent.copy(alpha = 0.5f), ambientColor = c.accent.copy(alpha = 0.2f))
-            ) { showImport = true }
-        }
+      // 悬浮的玻璃件都是书架画面的**兄弟**节点（不在背板里）：封面从它们底下滚过时，在玻璃的边缘被掰弯
+      val hidden by remember { derivedStateOf(covered) }
+      val glassBackdrop = backdrop.takeIf { c.glassOn && !hidden }
+      val canvasColor = c.canvas
+      // 内容滚进状态栏底下之后，顶上垫一段由实到透的底色：状态栏的图标始终读得清
+      Box(
+          Modifier
+              .fillMaxWidth()
+              .zIndex(9f)
+              .drawBehind {
+                  drawRect(
+                      Brush.verticalGradient(0f to canvasColor.copy(alpha = 0.9f), 0.7f to canvasColor.copy(alpha = 0.55f), 1f to canvasColor.copy(alpha = 0f)),
+                      alpha = collapse.value
+                  )
+              }
+              .windowInsetsPadding(WindowInsets.statusBars)
+              .height(6.dp)
+      )
+      val compactTitleBrush = rememberAurora()
+      Row(
+          Modifier
+              .fillMaxWidth()
+              .zIndex(10f)
+              .windowInsetsPadding(WindowInsets.statusBars)
+              .height(56.dp)
+              .padding(horizontal = 12.dp),
+          verticalAlignment = Alignment.CenterVertically
+      ) {
+          // 小标题：大标题滚出去之后才浮现的一枚玻璃药丸。没浮现时不组合它 —— 看不见的玻璃照样要采样背板
+          val showPill by remember { derivedStateOf { collapse.value > 0.6f } }
+          if (showPill) Box(
+              Modifier
+                  .graphicsLayer {
+                      val sm = ((collapse.value - 0.6f) / 0.4f).coerceIn(0f, 1f)
+                      alpha = sm
+                      translationY = (1f - sm) * 10f
+                      scaleX = 0.9f + 0.1f * sm
+                      scaleY = 0.9f + 0.1f * sm
+                  }
+                  .glassShadow(CircleShape, Color.Black.copy(alpha = if (c.isDark) 0.20f else 0.10f))
+                  .glass(CircleShape, c.pillGlass, glassBackdrop)
+                  .padding(horizontal = 16.dp, vertical = 10.dp)
+          ) {
+              Text("Lector", style = TextStyle(brush = compactTitleBrush, fontSize = 17.sp, fontWeight = FontWeight.Black))
+          }
+          Spacer(Modifier.weight(1f))
+          GlassIconGroup(glassBackdrop) {
+              GlassIcon(EchoIcons.Help, S.common.howToUse) { showHelp = true }
+              GlassIcon(EchoIcons.Settings, S.common.voiceSettings) { showSettings = true }
+          }
+      }
 
-        // 导入中遮罩
-        AnimatedVisibility(
-            importing,
-            enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Dur.Long, easing = Ease.Linear)),
-            exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(Dur.Medium, easing = Ease.Linear)),
-            modifier = Modifier.matchParentSize().zIndex(60f)
-        ) {
-            Column(
-                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).echoTap {},
-                horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
-            ) {
-                ContainedLoadingIndicator(modifier = Modifier.size(56.dp))
-                Spacer(Modifier.height(14.dp))
-                Text(S.shelf.importingBook, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
-            }
-        }
+      // 底部主动作：拇指可达的「导入」。一枚染了强调色的玻璃胶囊，常驻；
+      // 往下翻书时它收成只剩加号的一颗圆（尺寸走弹簧，像一滴水缩回去），回到顶部再展开
+      val fabLight = rememberGlassLight()
+      val fabCompact by remember { derivedStateOf { collapse.value >= 0.85f } }
+      val fabStyle = remember(c) {
+          GlassStyle(
+              // 一颗染了强调色的玻璃：与其它悬浮件同一个配方（提饱和、4dp、边缘透镜），只是着色换成强调色、浓一些
+              tint = c.accent.copy(alpha = if (c.glassOn) 0.62f else 1f), fallback = c.accent,
+              blur = if (c.glassOn) 4.dp else 0.dp, saturation = if (c.glassOn) 1.5f else 1f,
+              rimHi = Color.White.copy(alpha = 0.75f), rimLo = Color.White.copy(alpha = 0.06f),
+              inputScale = 1, lensDepth = 18.dp, lensAmount = 42.dp, dispersion = 0.3f
+          )
+      }
+      Row(
+          Modifier
+              .align(Alignment.BottomCenter)
+              .windowInsetsPadding(WindowInsets.navigationBars)
+              .padding(bottom = 22.dp)
+              .zIndex(10f)
+              .testTag("shelf.import")
+              .liquidPress(light = fabLight, onClickLabel = S.common.importBooks) { showImport = true }
+              .glassShadow(CircleShape, Color.Black.copy(alpha = if (c.isDark) 0.30f else 0.14f), blur = 14.dp, dy = 5.dp)
+              .glass(CircleShape, fabStyle, glassBackdrop, light = fabLight)
+              .animateContentSize(EchoMotion.Playful.spec(IntSize.VisibilityThreshold))
+              .height(54.dp)
+              .padding(horizontal = if (fabCompact) 17.dp else 22.dp),
+          verticalAlignment = Alignment.CenterVertically
+      ) {
+          Icon(EchoIcons.Plus, null, tint = c.onAccent, modifier = Modifier.size(20.dp))
+          if (!fabCompact) {
+              Spacer(Modifier.width(8.dp))
+              Text(
+                  S.common.importBooks, color = c.onAccent, fontSize = 15.sp, style = MaterialTheme.typography.labelLargeEmphasized,
+                  maxLines = 1, softWrap = false
+              )
+          }
+      }
 
+      // 导入中遮罩
+      AnimatedVisibility(
+          importing,
+          enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Dur.Long, easing = Ease.Linear)),
+          exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(Dur.Medium, easing = Ease.Linear)),
+          modifier = Modifier.matchParentSize().zIndex(60f)
+      ) {
+          Column(
+              Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).echoTap {},
+              horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+          ) {
+              ContainedLoadingIndicator(modifier = Modifier.size(56.dp))
+              Spacer(Modifier.height(14.dp))
+              Text(S.shelf.importingBook, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
+          }
       }
 
       CompositionLocalProvider(LocalBackdrop provides backdrop) {
@@ -421,7 +477,7 @@ private fun UpdateCard(graph: AppGraph) {
             Modifier
                 .fillMaxWidth()
                 .padding(bottom = 14.dp)
-                .background(c.card, RoundedCornerShape(Radius.lgPlus))
+                .glassSurface(RoundedCornerShape(Radius.lgPlus), c.surfaceGlass())
                 .border(1.dp, c.accent.copy(alpha = 0.3f), RoundedCornerShape(Radius.lgPlus))
                 .padding(14.dp)
         ) {
@@ -518,8 +574,8 @@ private fun ContinueCard(b: BookMeta, modifier: Modifier = Modifier, onClick: ()
     Row(
         modifier
             .fillMaxWidth()
-            .background(c.cardAlt, RoundedCornerShape(Radius.xl))
             .echoPress(pressedScale = PressScale.Tile, onClick = onClick)
+            .glassSurface(RoundedCornerShape(Radius.xl), c.surfaceGlass())
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -594,3 +650,63 @@ private fun relativeTime(ts: Long): String {
         else -> java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT, I18n.locale).format(java.util.Date(ts))
     }
 }
+
+
+/**
+ * 书架的环境光：三团很淡的配色光晕，铺在页面底色上、所有内容的后面。
+ *
+ * 玻璃要有东西可透才是玻璃 —— 一张纯色的底上，再好的折射也只是一块白。有了这层带颜色的光，
+ * 半透明的卡片透出深浅不一的色调，悬浮件的边缘能把它掰弯。
+ * 光晕随书架滚动缓缓上移（视差），不做常驻动画：不滚动就没有一帧额外的绘制。
+ * 纯黑模式下不画（那里要的就是关着的像素），关掉玻璃时也不画。
+ *
+ * 三团光先画进一张十分之一大小的小图，之后每帧只是把这张图放大贴一次。
+ * 直接每帧画三个整屏的径向渐变，在 Adreno 610 上是三层整屏的混合 —— 实测书架滚动每帧多出好几毫秒；
+ * 光晕本来就没有细节，放大十倍看不出任何差别。
+ */
+@Composable
+private fun AmbientLight(listState: androidx.compose.foundation.lazy.LazyListState, modifier: Modifier) {
+    val c = echo
+    if (!c.glassOn || c.isBlack) return
+    val scheme = MaterialTheme.colorScheme
+    val one = if (c.isDark) scheme.primary.copy(alpha = 0.20f) else scheme.primaryContainer.copy(alpha = 0.95f)
+    val two = if (c.isDark) scheme.tertiary.copy(alpha = 0.16f) else scheme.tertiaryContainer.copy(alpha = 0.85f)
+    val three = if (c.isDark) scheme.secondary.copy(alpha = 0.13f) else scheme.secondaryContainer.copy(alpha = 0.80f)
+    val cache = remember(one, two, three) { arrayOfNulls<androidx.compose.ui.graphics.ImageBitmap>(1) }
+    Spacer(
+        modifier.drawBehind {
+            // 图比屏幕高两成：上移时底下不露边
+            val tall = size.height * 1.2f
+            val image = cache[0]?.takeIf { it.width == (size.width / AMBIENT_SCALE).toInt().coerceAtLeast(1) } ?: run {
+                val w = (size.width / AMBIENT_SCALE).toInt().coerceAtLeast(1)
+                val h = (tall / AMBIENT_SCALE).toInt().coerceAtLeast(1)
+                val bitmap = androidx.compose.ui.graphics.ImageBitmap(w, h)
+                androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(
+                    this, layoutDirection, androidx.compose.ui.graphics.Canvas(bitmap), androidx.compose.ui.geometry.Size(w.toFloat(), h.toFloat())
+                ) {
+                    fun glow(color: Color, x: Float, y: Float, r: Float) {
+                        val at = Offset(x, y)
+                        drawCircle(Brush.radialGradient(0f to color, 1f to color.copy(alpha = 0f), center = at, radius = r), radius = r, center = at)
+                    }
+                    val sw = w.toFloat()
+                    val sh = h / 1.2f
+                    glow(one, sw * 0.10f, sh * 0.08f, sw * 0.90f)
+                    glow(two, sw * 1.02f, sh * 0.36f, sw * 0.78f)
+                    glow(three, sw * 0.22f, sh * 0.94f, sw * 0.95f)
+                }
+                cache[0] = bitmap
+                bitmap
+            }
+            val scrolled = if (listState.firstVisibleItemIndex == 0) listState.firstVisibleItemScrollOffset.toFloat() else size.height
+            val drift = -scrolled.coerceAtMost(size.height) * 0.16f
+            drawImage(
+                image,
+                dstOffset = androidx.compose.ui.unit.IntOffset(0, drift.toInt()),
+                dstSize = IntSize(size.width.toInt(), tall.toInt()),
+                filterQuality = androidx.compose.ui.graphics.FilterQuality.Low
+            )
+        }
+    )
+}
+
+private const val AMBIENT_SCALE = 10f

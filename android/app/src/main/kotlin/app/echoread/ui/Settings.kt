@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -127,10 +125,7 @@ class SettingsScope internal constructor() {
             SettingsRow(
                 title, value, icon, enabled, null, null, null,
                 trailing = {
-                    Switch(
-                        checked = checked, onCheckedChange = onChange, enabled = enabled,
-                        colors = SwitchDefaults.colors(uncheckedTrackColor = echo.fillStrong, uncheckedBorderColor = Color.Transparent)
-                    )
+                    LiquidSwitch(checked = checked, onCheckedChange = onChange, enabled = enabled)
                 },
                 onClick = { if (enabled) onChange(!checked) }
             )

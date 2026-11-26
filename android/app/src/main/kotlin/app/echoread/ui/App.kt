@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -115,7 +116,9 @@ private data class PaletteChoice(
     val seed: Int,
     val style: app.echoread.core.ColorStyle,
     val contrast: Float,
-    val glass: Boolean
+    val glass: Boolean,
+    val mode: app.echoread.core.ThemeMode,
+    val black: Boolean
 )
 
 private const val SHELF_KEY = "__shelf__"
@@ -161,14 +164,33 @@ fun EchoApp(graph: AppGraph) {
     // 后者每拖动一格字号/行距/热区滑块都会发一个新实例，会把整个组合根连同书架一起作废重组。
     val palette by remember(graph) {
         graph.settings.reader.map {
-            PaletteChoice(it.dynamicColor, it.seedColor, it.colorStyle, it.contrast, it.glass)
+            PaletteChoice(it.dynamicColor, it.seedColor, it.colorStyle, it.contrast, it.glass, it.themeMode, it.pureBlack)
         }.distinctUntilChanged()
     }.collectAsState(graph.settings.reader.value.let {
-        PaletteChoice(it.dynamicColor, it.seedColor, it.colorStyle, it.contrast, it.glass)
+        PaletteChoice(it.dynamicColor, it.seedColor, it.colorStyle, it.contrast, it.glass, it.themeMode, it.pureBlack)
     })
+    val dark = when (palette.mode) {
+        app.echoread.core.ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
+        app.echoread.core.ThemeMode.LIGHT -> false
+        app.echoread.core.ThemeMode.DARK -> true
+    }
+    // 书架在前台时，状态栏 / 导航栏图标的深浅跟应用自己的明暗走（应用内可以不跟随系统）；
+    // 阅读器打开后由它按阅读主题接管
+    val hostView = androidx.compose.ui.platform.LocalView.current
+    SideEffect {
+        if (shownBook == null) {
+            (hostView.context as? android.app.Activity)?.window?.let { w ->
+                val bars = androidx.core.view.WindowCompat.getInsetsController(w, hostView)
+                bars.isAppearanceLightStatusBars = !dark
+                bars.isAppearanceLightNavigationBars = !dark
+            }
+        }
+    }
     EchoTheme(
+        dark = dark,
         dynamic = palette.dynamic,
         glass = palette.glass,
+        black = palette.black,
         seed = Color(palette.seed),
         style = palette.style,
         contrast = palette.contrast
@@ -183,9 +205,12 @@ fun EchoApp(graph: AppGraph) {
             Box(
                 Modifier.fillMaxSize().graphicsLayer {
                     translationX = -0.30f * size.width * nav.value
+                    // 阅读器完全盖住书架之后，书架这一层整个不画（透明度为 0 的图层会被直接跳过）：
+                    // 听书动辄几小时，朗读高亮每动一下都不该顺带重画一遍看不见的书架
+                    alpha = if (nav.value >= 0.999f) 0f else 1f
                 }
             ) {
-                ShelfScreen(graph) { navigate(it) }
+                ShelfScreen(graph, covered = { nav.value >= 0.999f }) { navigate(it) }
             }
             shownBook?.let { id ->
                 // 压暗 + 遮挡层：只在阅读器存在时组合（否则会把书架整个盖住，任何点击都吞掉）。

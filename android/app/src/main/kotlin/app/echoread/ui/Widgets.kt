@@ -89,8 +89,12 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import app.echoread.ui.glass.LocalBackdrop
 import app.echoread.ui.glass.glass
+import app.echoread.ui.glass.glassLight
+import app.echoread.ui.glass.glassShadow
+import app.echoread.ui.glass.glassSurface
+import app.echoread.ui.motion.liquidPress
+import app.echoread.ui.motion.rememberGlassLight
 import app.echoread.ui.motion.Dur
 import app.echoread.ui.motion.Ease
 import app.echoread.ui.motion.EchoMotion
@@ -127,7 +131,7 @@ fun EchoCard(
     Column(
         modifier
             .fillMaxWidth()
-            .background(color ?: c.fill, RoundedCornerShape(radius))
+            .glassSurface(RoundedCornerShape(radius), c.surfaceGlass(color ?: c.fill))
             .padding(padding),
         content = content
     )
@@ -195,6 +199,49 @@ fun IconButtonEcho(
     }
 }
 
+/**
+ * 悬浮的玻璃按钮组：一枚胶囊里并排几个图标（只有一个时就是一个圆）。
+ * 真玻璃 —— 采样 [backdrop]，底下的内容滚过时在它边缘被掰弯；每个图标各自有按压反馈，整枚胶囊共用一团触点光。
+ */
+@Composable
+fun GlassIconGroup(
+    backdrop: app.echoread.ui.glass.Backdrop?,
+    modifier: Modifier = Modifier,
+    style: app.echoread.ui.glass.GlassStyle = echo.clearGlass,
+    shadow: Color = Color.Black.copy(alpha = if (echo.isDark) 0.20f else 0.10f),
+    height: Dp = 44.dp,
+    content: @Composable RowScope.() -> Unit
+) {
+    val light = rememberGlassLight()
+    Row(
+        modifier
+            .height(height)
+            .glassShadow(CircleShape, shadow)
+            .glass(CircleShape, style, backdrop, light = light)
+            .glassLight(light)
+            .padding(horizontal = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
+    )
+}
+
+/** [GlassIconGroup] 里的一个图标：绘制 40dp，触控区由胶囊的高度撑到 44dp */
+@Composable
+fun GlassIcon(icon: ImageVector, contentDescription: String?, tint: Color = echo.text, modifier: Modifier = Modifier, enabled: Boolean = true, onClick: () -> Unit) {
+    Box(
+        modifier
+            .size(44.dp)
+            .graphicsLayer {
+                alpha = if (enabled) 1f else 0.3f
+                compositingStrategy = CompositingStrategy.ModulateAlpha
+            }
+            .liquidPress(enabled = enabled, lift = 6.dp, onClickLabel = contentDescription, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription, tint = tint, modifier = Modifier.size(20.dp))
+    }
+}
+
 /** 主按钮：品牌渐变胶囊，上缘一道高光（与玻璃件同一套光照） */
 @Composable
 fun GradientButton(
@@ -210,7 +257,7 @@ fun GradientButton(
     // 渐变两端就是 primary/tertiary，其上的内容色必须取 onPrimary。
     // 写死 Color.White 在深色模式下是 1.7:1（primary 是 T80 的浅紫），按钮文字几乎读不出来。
     val onBrush = echo.onAccent
-    val sheen = remember { Brush.verticalGradient(listOf(Color.White.copy(alpha = 0.38f), Color.White.copy(alpha = 0.04f))) }
+    val light = rememberGlassLight()
     Row(
         modifier
             .height(height)
@@ -218,11 +265,10 @@ fun GradientButton(
                 alpha = if (enabled) 1f else 0.5f
                 compositingStrategy = CompositingStrategy.ModulateAlpha
             }
-            // 按下时胶囊向 16dp 圆角形变 —— M3 Expressive 的 pressedShape 就是这个手法，
-            // 且与缩放共用同一条弹簧，两者严格同相。
-            .echoPress(enabled = enabled, pressedScale = PressScale.Button, pressedCorner = Radius.md, onClick = onClick)
+            // 玻璃件的按压：鼓起来、被手指带偏一点、松手弹回，手指下有一团光（规则见 Liquid）
+            .liquidPress(enabled = enabled, light = light, onClick = onClick)
             .background(brush, CircleShape)
-            .border(1.dp, sheen, CircleShape)
+            .glassSurface(CircleShape, echo.glossGlass, light)
             .padding(horizontal = 22.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
@@ -250,6 +296,7 @@ fun SoftButton(
     onClick: () -> Unit
 ) {
     val c = echo
+    val light = rememberGlassLight()
     Row(
         modifier
             .height(height)
@@ -257,8 +304,8 @@ fun SoftButton(
                 alpha = if (enabled) 1f else 0.4f
                 compositingStrategy = CompositingStrategy.ModulateAlpha
             }
-            .echoPress(enabled = enabled, pressedScale = PressScale.Button, onClick = onClick)
-            .background(c.fillStrong, CircleShape)
+            .liquidPress(enabled = enabled, light = light, onClick = onClick)
+            .glassSurface(CircleShape, c.surfaceGlass(c.fillStrong), light)
             .padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
@@ -443,31 +490,6 @@ fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: Str
     }
 }
 
-@Composable
-fun EchoSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    range: ClosedFloatingPointRange<Float>,
-    steps: Int = 0,
-    modifier: Modifier = Modifier
-) {
-    val c = echo
-    Slider(
-        value = value,
-        onValueChange = onValueChange,
-        valueRange = range,
-        steps = steps,
-        modifier = modifier,
-        colors = SliderDefaults.colors(
-            thumbColor = c.accent,
-            activeTrackColor = c.accent,
-            inactiveTrackColor = c.fillStrong,
-            activeTickColor = Color.Transparent,
-            inactiveTickColor = Color.Transparent
-        )
-    )
-}
-
 /** 细进度条（渐变）：进度值只在 draw lambda 里读，不再用 `fillMaxWidth(fraction)` 承载动画（那是每帧重测量） */
 @Composable
 fun GradientBar(progress: Float, modifier: Modifier = Modifier, height: Dp = 3.dp, track: Color = echo.fillStrong) {
@@ -503,7 +525,7 @@ private val SheetMargin = 8.dp
  * - 内容滚到顶再下拉，经 nestedScroll 交给面板。
  *
  * 0.5.0 的两处变化：
- * - **材质**：面板是一块悬浮的玻璃（四周留 8dp、四角同圆），模糊并着色它盖住的内容，见 [glass]；
+ * - **外形**：面板四周留 8dp 悬浮、四角同圆。它是实心的（玻璃留给悬浮件，理由见 [sheetSurface]），棱上一线反光；
  * - **面板内导航**：传入 [onBack] 时标题左侧出现返回箭头，系统返回键先退一页再关面板。
  *   以前「模型」「音色」各开一张新面板叠在设置面板上面，两层遮罩、两个抓手；现在是同一张面板里的几页。
  *
@@ -535,7 +557,7 @@ fun BoxScope.EchoSheet(
     LaunchedEffect(open) {
         if (open) {
             mounted = true
-            driver.animateTo(1f, spec = EchoMotion.Emphasized.float())
+            driver.animateTo(1f, spec = app.echoread.ui.motion.Liquid.Sheet)
         } else if (mounted) {
             driver.animateTo(0f, spec = EchoMotion.Emphasized.float())
             mounted = false
@@ -642,7 +664,6 @@ fun BoxScope.EchoSheet(
     if (!mounted) return
     BackHandler(enabled = open) { if (onBack != null) onBack() else onDismiss() }
 
-    val backdrop = LocalBackdrop.current.takeIf { c.glassOn }
     val scrim = c.scrim
     val marginPx = with(LocalDensity.current) { SheetMargin.toPx() }
     val maxHeight = LocalConfiguration.current.screenHeightDp.dp * maxHeightFraction
@@ -675,10 +696,7 @@ fun BoxScope.EchoSheet(
             }
             .nestedScroll(nested)
             .driveVertically(driver, enabled = { true }, bounds = { 0f..1f }, onSettle = settle)
-            // 面板随 translationY 滑动，这段位移布局并不知道：告诉玻璃，背板才能与底下的真实画面对齐
-            .glass(SheetShape, c.sheetGlass, backdrop) {
-                Offset(0f, (1f - driver.value.coerceIn(-0.05f, 1.3f)) * driver.unitPx)
-            }
+            .glassSurface(SheetShape, c.sheetSurface)
     ) {
         Column(Modifier.fillMaxWidth()) {
             // 抓手不只是装饰：给它可点区与「关闭」语义，

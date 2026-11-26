@@ -3,7 +3,6 @@ package app.echoread.ui
 import app.echoread.core.i18n.S
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -69,7 +68,7 @@ fun PaletteSwatch(
     size: androidx.compose.ui.unit.Dp = 56.dp,
     onClick: () -> Unit
 ) {
-    val dark = isSystemInDarkTheme()
+    val dark = echo.isDark
     val scheme = rememberGeneratedScheme(seed, style, dark, 0f)
     val ringWidth by animateFloatAsState(
         if (selected) 3f else 0f,

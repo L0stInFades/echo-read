@@ -168,6 +168,29 @@ private fun AppearanceSection(graph: AppGraph) {
     val reader by graph.settings.reader.collectAsState()
     val dynAvailable = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S
     SettingsSection(S.providers.appearance) {
+        custom {
+            Text(S.providers.themeMode, color = c.text, style = MaterialTheme.typography.bodyLarge)
+            Spacer(Modifier.height(10.dp))
+            val modes = listOf(app.echoread.core.ThemeMode.SYSTEM, app.echoread.core.ThemeMode.LIGHT, app.echoread.core.ThemeMode.DARK)
+            EchoSegmented(
+                items = listOf(SegmentItem(S.providers.themeSystem), SegmentItem(S.providers.themeLight), SegmentItem(S.providers.themeDark)),
+                selectedIndex = modes.indexOf(reader.themeMode).coerceAtLeast(0)
+            ) { i -> graph.settings.updateReader { r -> r.copy(themeMode = modes[i]) } }
+        }
+        // 纯黑同时把「暗夜」书页换成「纯黑」书页（关掉时换回来）：打开它的人要的是整块屏幕都是黑的，
+        // 只把外壳变黑、书页还是深蓝灰，算不上「纯黑模式」。之后仍可以在上面的阅读主题里另选
+        switch(S.providers.pureBlack, value = S.providers.pureBlackHint, checked = reader.pureBlack) { on ->
+            graph.settings.updateReader { r ->
+                r.copy(
+                    pureBlack = on,
+                    theme = when {
+                        on && r.theme == "dark" -> "ink"
+                        !on && r.theme == "ink" -> "dark"
+                        else -> r.theme
+                    }
+                )
+            }
+        }
         switch(S.providers.glass, value = S.providers.glassHint, checked = reader.glass) { on ->
             graph.settings.updateReader { r -> r.copy(glass = on) }
         }
@@ -245,6 +268,9 @@ fun BoxScope.HelpSheet(open: Boolean, graph: AppGraph? = null, onClose: () -> Un
         }
         if (graph != null) {
             Spacer(Modifier.height(12.dp))
+            // 外观也放一份在这里：主题、纯黑、玻璃是整个应用的事，不该只藏在「阅读样式」里
+            AppearanceSection(graph)
+            Spacer(Modifier.height(22.dp))
             // 书架上就能找到的地方：中文系统的用户想用英文界面，不必先打开一本书
             SettingsSection(S.providers.general) {
                 custom { LanguagePicker(graph) }

@@ -198,6 +198,14 @@ enum class ColorStyle {
         }
 }
 
+/** 应用外壳的明暗（书页的明暗由阅读主题单独决定） */
+@Serializable
+enum class ThemeMode {
+    @SerialName("system") SYSTEM,
+    @SerialName("light") LIGHT,
+    @SerialName("dark") DARK
+}
+
 @Serializable
 data class ReaderSettings(
     /** dark / light / paper / eye / ink */
@@ -222,7 +230,11 @@ data class ReaderSettings(
     /** 界面语言（0.4.0 新增；旧存档缺该键时跟随系统） */
     val language: AppLanguage = AppLanguage.SYSTEM,
     /** 液态玻璃材质（0.5.0）：面板与悬浮件半透明并模糊其后的内容。旧存档缺该键时开启 */
-    val glass: Boolean = true
+    val glass: Boolean = true,
+    /** 应用外壳的明暗（0.6.0）：跟随系统 / 浅色 / 深色。旧存档缺该键时跟随系统 */
+    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    /** 纯黑（0.6.0）：深色模式下页面底色用 #000000，OLED 屏上这些像素是关着的。旧存档缺该键时关闭 */
+    val pureBlack: Boolean = false
 ) {
     companion object {
         /** 品牌种子色。0.1.x 起沿用，HCT 色相 273.21 */

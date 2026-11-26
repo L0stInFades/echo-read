@@ -656,6 +656,12 @@ interface Strings {
         val defaultVoice: String
         val glass: String
         val glassHint: String
+        val themeMode: String
+        val themeSystem: String
+        val themeLight: String
+        val themeDark: String
+        val pureBlack: String
+        val pureBlackHint: String
         val appearance: String
         val about: String
         val general: String

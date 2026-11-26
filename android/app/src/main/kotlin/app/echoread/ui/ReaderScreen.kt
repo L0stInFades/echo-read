@@ -51,7 +51,10 @@ import app.echoread.ui.glass.GlassStyle
 import app.echoread.ui.glass.LocalBackdrop
 import app.echoread.ui.glass.backdropSource
 import app.echoread.ui.glass.glass
+import app.echoread.ui.glass.glassLight
 import app.echoread.ui.glass.glassShadow
+import app.echoread.ui.glass.glassSurface
+import app.echoread.ui.motion.rememberGlassLight
 import app.echoread.ui.glass.rememberBackdrop
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
@@ -759,17 +762,32 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
     // 阅读页上的悬浮件用阅读主题自己的颜色做玻璃着色：阅读主题独立于系统深浅色，取 app 配色会错配
     val floatGlass = remember(theme.id) {
         GlassStyle(
-            tint = dockBg.copy(alpha = if (theme.isDark) 0.62f else 0.60f),
+            tint = dockBg.copy(alpha = 0.50f),
             fallback = dockBg,
-            blur = 14.dp,
-            saturation = 1.6f,
-            rimHi = Color.White.copy(alpha = if (theme.isDark) 0.24f else 0.9f),
-            rimLo = Color.White.copy(alpha = if (theme.isDark) 0.06f else 0.25f),
+            blur = 4.dp,
+            saturation = 1.5f,
+            rimHi = Color.White.copy(alpha = if (theme.isDark) 0.60f else 0.80f),
+            rimLo = Color.White.copy(alpha = if (theme.isDark) 0.04f else 0.12f),
             inputScale = 1,
-            lensDepth = 12.dp,
-            lensAmount = 14.dp
+            lensDepth = 16.dp,
+            lensAmount = 38.dp,
+            dispersion = 0.3f,
+            edge = Color.Black.copy(alpha = if (theme.isDark) 0.30f else 0.06f)
         )
     }
+    // 顶栏按钮组与播放坞：浮在书页底色上的玻璃面。它们背后只有纯色的纸，不采样背板，
+    // 玻璃感来自半透明的提亮、顶部反光、高光描边与投影
+    val chromeGlass = remember(theme.id, c.glassOn) {
+        GlassStyle(
+            tint = if (!c.glassOn) Color.Transparent else if (theme.isDark) Color.White.copy(alpha = 0.065f) else Color.White.copy(alpha = 0.46f),
+            fallback = Color.Transparent,
+            rimHi = if (!c.glassOn) Color.Transparent else Color.White.copy(alpha = if (theme.isDark) 0.40f else 0.90f),
+            rimLo = if (!c.glassOn) Color.Transparent else Color.White.copy(alpha = if (theme.isDark) 0.03f else 0.12f),
+            rimWidth = 1.dp,
+            edge = if (!c.glassOn) Color.Transparent else Color.Black.copy(alpha = if (theme.isDark) 0.30f else 0.05f)
+        )
+    }
+    val chromeShadow = if (!c.glassOn) Color.Transparent else Color.Black.copy(alpha = if (theme.isDark) 0.34f else 0.09f)
     val backdrop = rememberBackdrop()
     val pageBackdrop = rememberBackdrop()
     val skeletonLine = with(density) { (reader.fontSize * reader.lineHeight).sp.toPx() }
@@ -791,20 +809,24 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                     .fillMaxWidth()
                     .background(theme.bg)
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 6.dp, vertical = 4.dp),
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButtonEcho(EchoIcons.Back, S.reader.back, modifier = Modifier.testTag("reader.back"), tint = theme.text) { leave() }
-                Column(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+                ChromeGroup(chromeGlass, chromeShadow) {
+                    GlassIcon(EchoIcons.Back, S.reader.back, tint = theme.text, modifier = Modifier.testTag("reader.back")) { leave() }
+                }
+                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(
                         window.pagesOf(shown.chapter)?.chapter?.title ?: "…",
                         color = theme.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis
                     )
                     Text(meta?.title ?: "", color = theme.dim, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
-                IconButtonEcho(EchoIcons.Toc, S.common.contents, tint = theme.text) { showChapters = true }
-                IconButtonEcho(EchoIcons.TextStyle, S.common.readingStyle, tint = theme.text) { showStyle = true }
-                IconButtonEcho(EchoIcons.Waves, S.common.voiceSettings, tint = theme.text) { showTts = true }
+                ChromeGroup(chromeGlass, chromeShadow) {
+                    GlassIcon(EchoIcons.Toc, S.common.contents, tint = theme.text) { showChapters = true }
+                    GlassIcon(EchoIcons.TextStyle, S.common.readingStyle, tint = theme.text) { showStyle = true }
+                    GlassIcon(EchoIcons.Waves, S.common.voiceSettings, tint = theme.text) { showTts = true }
+                }
             }
             // 排版中的细进度线（固定占位，不改变正文高度）
             Box(Modifier.fillMaxWidth().height(2.dp)) {
@@ -982,8 +1004,8 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                                 selectedIndex = row.indexOfFirst { it.second == sleepMode },
                                 containerColor = theme.text.copy(alpha = 0.08f),
                                 contentColor = theme.text.copy(alpha = 0.8f),
-                                checkedContainerColor = theme.accent,
-                                checkedContentColor = theme.bg,
+                                checkedContainerColor = if (theme.isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.92f),
+                                checkedContentColor = theme.text,
                                 height = 42.dp
                             ) { i ->
                                 player.setSleepTimer(row[i].second)
@@ -1004,24 +1026,22 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                 contentAlignment = Alignment.Center
             ) {
                 /*
-                 * 播放坞**不画容器**：没有填充底、没有描边、没有投影。
+                 * 播放坞是一枚**悬浮的玻璃胶囊**（0.6.0）：两侧留边、四角全圆，浮在书页底色上。
                  *
-                 * 原来它是一块横贯整屏的实心圆角卡，加上页脚与系统导航条，屏幕底部有三层「壳」，
-                 * 观感就是一堵墙。实测原坞高 79dp（占 800dp 屏幕的 10%），而内部三条带之间的
-                 * 间隙只有 3.0 / 1.7 / 0.3dp —— 元素直接贴在一起，这才是「拥挤」的来源。
+                 * 历史：最早它是一块横贯整屏的实心圆角卡，加上页脚与系统导航条，屏幕底部有三层「壳」，
+                 * 观感就是一堵墙，于是 0.3 起干脆不画容器。现在的胶囊不贴边、半透明，只有一圈高光与很淡的投影，
+                 * 不再是墙；它与顶栏的按钮组、书架上的悬浮件是同一种材质。
                  *
-                 * 现在：控件直接浮在书页底色上，与阅读器顶栏一致（顶栏本来就没有容器）。
-                 * 坞下方就是空白页面，控件的对比度不依赖容器；五套阅读主题（含纸墨、护眼两种
-                 * 浅底）都逐一截图核对过。
-                 *
-                 * 配合另外两处：状态行改为**悬浮层**（挂在正文画布底部，见上方 run{} 块 ——
-                 * 它绝不参与布局，否则每次闪现都会改变 pageSize 触发整章重排版），
-                 * 播放键 52→48dp 与其余槽位等高。常态坞高 79 → 64dp，带间距 6dp。
+                 * 尺寸与原来逐 dp 相同（内边距没有变）：坞高恒定，正文画布的 pageSize 不受影响。
+                 * 状态行仍是**悬浮层**（挂在正文画布底部，见上方 run{} 块 ——
+                 * 它绝不参与布局，否则每次闪现都会改变 pageSize 触发整章重排版）。
                  */
                 Column(
                     Modifier
                         .widthIn(max = 520.dp)
                         .fillMaxWidth()
+                        .glassShadow(RoundedCornerShape(30.dp), chromeShadow, blur = 18.dp, dy = 6.dp)
+                        .glassSurface(RoundedCornerShape(30.dp), chromeGlass)
                         .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
                     // 显式行距。实测原来三条内容带之间只有 3.0 / 1.7 / 0.3dp，
                     // 也就是元素直接贴在一起 —— M3 的最小内容间距是 8dp。
@@ -1234,6 +1254,21 @@ private fun ThinProgressLine(color: Color, modifier: Modifier) {
             val w = size.width * 0.32f
             drawRect(color, topLeft = Offset((size.width + w) * p.value - w, 0f), size = Size(w, size.height), alpha = 0.9f)
         }
+    )
+}
+
+/** 阅读器顶栏上的一组玻璃按钮：胶囊形，用阅读主题自己的玻璃面（见 chromeGlass） */
+@Composable
+private fun ChromeGroup(style: GlassStyle, shadow: Color, content: @Composable RowScope.() -> Unit) {
+    val light = rememberGlassLight()
+    Row(
+        Modifier
+            .height(44.dp)
+            .glassShadow(CircleShape, shadow, blur = 14.dp, dy = 4.dp)
+            .glassSurface(CircleShape, style, light)
+            .glassLight(light),
+        verticalAlignment = Alignment.CenterVertically,
+        content = content
     )
 }
 
