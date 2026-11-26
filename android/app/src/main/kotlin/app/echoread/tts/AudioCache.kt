@@ -1,5 +1,6 @@
 package app.echoread.tts
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -8,7 +9,11 @@ import java.io.File
  * 音频缓存：按键存文件（LRU：命中即触碰 mtime；超过 300MB / 800 条时淘汰最旧到 80%）。
  * 文件不带真实扩展名，交由 ExoPlayer 按内容嗅探 mp3/ogg/wav。
  */
-class AudioCache(private val dir: File) {
+class AudioCache(
+    private val dir: File,
+    /** 文件读写所在的调度器；参数化只为单测换成跑虚拟时间的那一个 */
+    private val io: CoroutineDispatcher = Dispatchers.IO
+) {
     private var putCount = 0
 
     @Volatile
@@ -20,7 +25,7 @@ class AudioCache(private val dir: File) {
 
     private fun fileOf(key: String) = File(dir, "$key.audio")
 
-    suspend fun get(key: String): File? = withContext(Dispatchers.IO) {
+    suspend fun get(key: String): File? = withContext(io) {
         val f = fileOf(key)
         if (f.isFile && f.length() > 0) {
             runCatching { f.setLastModified(System.currentTimeMillis()) }
@@ -29,7 +34,7 @@ class AudioCache(private val dir: File) {
     }
 
     /** 写入缓存并返回文件；磁盘写入失败时退回临时文件（尽力而为，不拦合成） */
-    suspend fun put(key: String, bytes: ByteArray): File = withContext(Dispatchers.IO) {
+    suspend fun put(key: String, bytes: ByteArray): File = withContext(io) {
         val target = fileOf(key)
         try {
             val tmp = File(dir, "$key.tmp")
@@ -49,12 +54,12 @@ class AudioCache(private val dir: File) {
 
     data class Stats(val count: Int, val bytes: Long)
 
-    suspend fun stats(): Stats = withContext(Dispatchers.IO) {
+    suspend fun stats(): Stats = withContext(io) {
         val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".audio") } ?: emptyArray()
         Stats(files.size, files.sumOf { it.length() })
     }
 
-    suspend fun clear() = withContext(Dispatchers.IO) {
+    suspend fun clear() = withContext(io) {
         dir.listFiles()?.forEach { it.delete() }
         Unit
     }

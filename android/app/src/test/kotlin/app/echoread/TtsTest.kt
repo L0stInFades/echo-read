@@ -306,6 +306,26 @@ class TtsTest {
         assertFalse(SpeechApi.looksLikeAudio(ByteArray(4), "audio/mpeg"))  // 太短
     }
 
+    /**
+     * 回归（12）：网关页常以 BOM 或空行开头，旧实现只看第 0 个字节，带着 `audio/mpeg` 的这种页面照样过关、进了缓存；
+     * 认不出容器、又没声明是音频的字节，旧的兜底分支也一律放行。
+     */
+    @Test
+    fun rejectsMarkupBehindBomOrWhitespace() {
+        val bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
+        assertFalse(SpeechApi.looksLikeAudio("\r\n  <!DOCTYPE html><html><title>Portal</title></html>".toByteArray(), "audio/mpeg"))
+        assertFalse(SpeechApi.looksLikeAudio(bom + "<html><body>blocked</body></html>".toByteArray(), "audio/mpeg"))
+        assertFalse(SpeechApi.looksLikeAudio("\n\t{\"error\":{\"message\":\"quota\"}}".toByteArray(), "audio/mpeg"))
+        assertFalse(SpeechApi.looksLikeAudio(bom + " [\"not\", \"audio\"]".toByteArray(), "application/octet-stream"))
+        // 认不出容器、也没声明是音频：不收
+        assertFalse(SpeechApi.looksLikeAudio("Service Unavailable".toByteArray(), ""))
+        assertFalse(SpeechApi.looksLikeAudio(ByteArray(64) { 7 }, "application/x-unknown"))
+        // 声明了 audio/* 或二进制流的未知容器照旧放行（PCM 裸流）；带容器头的真音频不看 Content-Type
+        assertTrue(SpeechApi.looksLikeAudio(ByteArray(64) { 7 }, "application/octet-stream"))
+        assertTrue(SpeechApi.looksLikeAudio("ID3".toByteArray() + ByteArray(32), ""))
+        assertTrue(SpeechApi.looksLikeAudio("RIFF0000WAVE".toByteArray() + ByteArray(32), ""))
+    }
+
     @Test
     fun cyrb53MatchesWeb() {
         // cyrb53('hello') 的参考输出，与原始 JS 实现逐位一致

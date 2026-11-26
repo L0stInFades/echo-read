@@ -1,6 +1,7 @@
 package app.echoread
 
 import app.echoread.tts.Mp3Fix
+import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
@@ -41,6 +42,28 @@ class Mp3FixTest {
         val src = fixture()
         val clean = Mp3Fix.stripXing(src)
         assertSame(clean, Mp3Fix.stripXing(clean))
+    }
+
+    /** MPEG-1 Layer III、128 kbps、44.1 kHz、立体声的一帧（417 字节）；[tagAt] 处写入 VBR 标签 */
+    private fun frame(crc: Boolean, tagAt: Int = -1, tag: String = "Info"): ByteArray {
+        val f = ByteArray(417)
+        f[0] = 0xFF.toByte()
+        f[1] = (if (crc) 0xFA else 0xFB).toByte() // 最低位是 protection_bit：0 = 帧头后跟 2 字节 CRC
+        f[2] = 0x90.toByte()
+        if (tagAt >= 0) tag.toByteArray().copyInto(f, tagAt)
+        return f
+    }
+
+    /** 回归（21）：带 CRC 的帧，标签在帧头 4 + CRC 2 + 边信息 32 = 38 处；旧实现只看 36，这种 Info 帧剥不掉 */
+    @Test
+    fun `带 CRC 的 Info 帧也被剥掉`() {
+        val audio = frame(crc = true)
+        assertArrayEquals(audio + audio, Mp3Fix.stripXing(frame(crc = true, tagAt = 38) + audio + audio))
+        // 不管 CRC、仍把标签写在 36 的帧：ExoPlayer 正是在 36 找标签，照剥不误
+        assertArrayEquals(audio + audio, Mp3Fix.stripXing(frame(crc = true, tagAt = 36, tag = "Xing") + audio + audio))
+        // 不带 CRC 的帧只认 36：38 处碰巧有这几个字节不算，原样零拷贝返回
+        val plain = frame(crc = false, tagAt = 38) + frame(crc = false)
+        assertSame(plain, Mp3Fix.stripXing(plain))
     }
 
     @Test

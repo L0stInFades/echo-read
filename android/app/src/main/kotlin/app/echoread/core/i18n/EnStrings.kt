@@ -482,6 +482,7 @@ object EnStrings : Strings {
         override val systemTtsUnavailable = "System voice unavailable"
         override val systemTtsRequestFailed = "System voice request failed"
         override val systemTtsProducedNo = "System voice produced no audio"
+        override val systemTtsTimedOut = "System voice timed out"
     }
 
     override val errors = object : Strings.Errors {

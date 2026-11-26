@@ -35,7 +35,9 @@ class PlayerController(
     val engine: TtsEngine,
     private val library: LibraryRepo,
     private val settings: SettingsStore,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    /** 时钟（毫秒）；参数化只为单测换成虚拟时间，生产用默认值 */
+    private val now: () -> Long = System::currentTimeMillis
 ) {
     private val _book = MutableStateFlow<BookMeta?>(null)
     /** 引擎当前装载的书（锁屏元数据用） */
@@ -86,7 +88,7 @@ class PlayerController(
     fun saveProgressNow() {
         val s = engine.current
         if (s.bookId.isNotEmpty() && s.chapterIndex >= 0) {
-            lastSave = System.currentTimeMillis()
+            lastSave = now()
             scope.launch { runCatching { library.saveProgress(s.bookId, s.chapterIndex, s.segmentStart) } }
         }
     }
@@ -99,9 +101,9 @@ class PlayerController(
             val chapterChanged = prev.chapterIndex >= 0 && prev.chapterIndex != s.chapterIndex && prev.bookId == s.bookId
             val leftPlaying = prev.state == PlayerState.PLAYING && s.state != PlayerState.PLAYING
             val moved = s.segmentIndex != prev.segmentIndex || s.chapterIndex != prev.chapterIndex
-            val now = System.currentTimeMillis()
-            if (chapterChanged || leftPlaying || (moved && now - lastSave >= 4000)) {
-                lastSave = now
+            val t = now()
+            if (chapterChanged || leftPlaying || (moved && t - lastSave >= 4000)) {
+                lastSave = t
                 scope.launch { runCatching { library.saveProgress(s.bookId, s.chapterIndex, s.segmentStart) } }
             }
         }
@@ -145,12 +147,12 @@ class PlayerController(
                 }
             }
             is SleepMode.Minutes -> {
-                sleepDeadline = System.currentTimeMillis() + mode.minutes * 60_000L
+                sleepDeadline = now() + mode.minutes * 60_000L
                 sleepRemaining.value = mode.minutes * 60
                 sleepJob = scope.launch {
                     while (isActive) {
                         delay(1000)
-                        val left = ((sleepDeadline - System.currentTimeMillis()) / 1000.0).toInt()
+                        val left = ((sleepDeadline - now()) / 1000.0).toInt()
                         if (left <= 0) fireSleep() else sleepRemaining.value = left
                     }
                 }

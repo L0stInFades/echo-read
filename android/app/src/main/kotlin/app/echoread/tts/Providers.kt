@@ -238,11 +238,13 @@ object Providers {
         GeminiTtsConfig(apiKey = p.apiKey.trim(), model = modelOf(spec, p), voice = p.voice, style = p.style)
 
     /**
-     * 缓存命名空间。OpenRouter 与自定义端点沿用 0.3.x 的 "OPENAI"、Gemini 沿用 "GEMINI"：
-     * 升级后已经花钱合成过的语音照常命中。其余服务商各用自己的 ID，同名模型在两家之间不串音。
+     * 缓存命名空间。OpenRouter 沿用 0.3.x 的 "OPENAI"、Gemini 沿用 "GEMINI"：升级后已经花钱合成过的语音照常命中。
+     * 自定义端点可以加很多个，背后各是各的服务，同名的模型 / 音色未必是同一个声音：命名空间带上规整过的地址
+     * （[base] 取自 [baseOf]，与连接指纹认的是同一个地址），互不串音。其余服务商各用自己的 ID，同名模型在两家之间不串音。
      */
-    fun cacheNs(spec: ProviderSpec): String = when {
-        spec.id == OPENROUTER || spec.id == CUSTOM -> "OPENAI"
+    fun cacheNs(spec: ProviderSpec, base: String): String = when {
+        spec.id == OPENROUTER -> "OPENAI"
+        spec.id == CUSTOM -> "OPENAI@$base"
         spec.kind == ProviderSpec.KIND_GEMINI -> "GEMINI"
         else -> spec.id
     }
@@ -252,7 +254,10 @@ object Providers {
         return when (spec.kind) {
             ProviderSpec.KIND_GEMINI -> SynthTarget.Gemini(geminiConfig(spec, p), baseOf(spec, p).ifEmpty { GeminiTts.BASE_URL })
             ProviderSpec.KIND_HTTP -> SynthTarget.Http(spec, p)
-            else -> SynthTarget.OpenAI(openAiConfig(spec, p), openAiOptions(spec), cacheNs(spec))
+            else -> {
+                val cfg = openAiConfig(spec, p)
+                SynthTarget.OpenAI(cfg, openAiOptions(spec), cacheNs(spec, cfg.baseUrl))
+            }
         }
     }
 

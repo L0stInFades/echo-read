@@ -479,6 +479,7 @@ object ZhStrings : Strings {
         override val systemTtsUnavailable = "系统语音不可用"
         override val systemTtsRequestFailed = "系统语音合成请求失败"
         override val systemTtsProducedNo = "系统语音未生成音频"
+        override val systemTtsTimedOut = "系统语音合成超时"
     }
 
     override val errors = object : Strings.Errors {

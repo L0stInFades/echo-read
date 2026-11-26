@@ -308,12 +308,15 @@ object HttpSpeech {
         var token: String? = null
         var pages = 0
         do {
-            var url = Template.expand(r.url, v, Template.Context.URL)
-            if (token != null && r.nextParam.isNotBlank()) {
-                url = url.toHttpUrlOrNull()?.newBuilder()?.setQueryParameter(r.nextParam, token)?.build()?.toString() ?: url
-            }
             val t0 = System.currentTimeMillis()
-            val req = buildRequest(r.method, url, r.headers, r.json, null, "", v)
+            // 模板只在 buildRequest 里展开一次，翻页令牌加在展开好的地址上。再展开一遍的话，
+            // 不编码的取值（{base}、{x|raw}）里碰巧像占位符的文字会被当成变量再替换一次
+            val page = buildRequest(r.method, r.url, r.headers, r.json, null, "", v)
+            val req = if (token != null && r.nextParam.isNotBlank()) {
+                page.newBuilder().url(page.url.newBuilder().setQueryParameter(r.nextParam, token).build()).build()
+            } else {
+                page
+            }
             SpeechApi.call(req, CallKind.MODEL_LIST).use { res ->
                 SpeechApi.ensureOk(res, CallKind.MODEL_LIST, startedAt = t0)
                 val raw = res.body?.string() ?: ""

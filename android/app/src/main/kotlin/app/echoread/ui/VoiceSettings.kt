@@ -64,6 +64,7 @@ import app.echoread.tts.VoiceInfo
 import app.echoread.tts.Voices
 import app.echoread.ui.motion.EchoTransitions
 import app.echoread.ui.motion.echoPress
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -327,7 +328,16 @@ private fun MainPage(
                     File(appContext.cacheDir, "preview-${System.currentTimeMillis()}.audio").also { it.writeBytes(r.audio) }
                 }
                 graph.playback.setActive(true)
-                graph.playback.play(f, 1f, deleteAfter = true).awaitEnded()
+                val h = graph.playback.play(f, 1f, deleteAfter = true)
+                // 面板关掉 / 切到别的子页时协程被取消：试听当场停下，不能交还焦点之后还在后台接着说
+                try {
+                    h.awaitEnded()
+                } finally {
+                    h.stop()
+                }
+            } catch (e: CancellationException) {
+                // 被取消不是播放失败，不弹错误提示
+                throw e
             } catch (e: Exception) {
                 Toaster.error(e.message ?: S.common.playbackFailed)
             } finally {

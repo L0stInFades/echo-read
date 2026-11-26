@@ -515,6 +515,7 @@ interface Strings {
         val systemTtsUnavailable: String
         val systemTtsRequestFailed: String
         val systemTtsProducedNo: String
+        val systemTtsTimedOut: String
     }
 
     /** 网络错误：标题、建议、详情 */

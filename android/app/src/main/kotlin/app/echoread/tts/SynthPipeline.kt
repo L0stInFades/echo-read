@@ -3,6 +3,7 @@ package app.echoread.tts
 import app.echoread.core.net.NetError
 import app.echoread.core.net.NetErrors
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
@@ -28,7 +29,11 @@ import kotlin.math.pow
  */
 class SynthPipeline(
     private val scope: CoroutineScope,
-    private val audioCache: AudioCache
+    private val audioCache: AudioCache,
+    /** 以下三项只为单测换成虚拟时间与替身：合成所在的调度器、时钟（毫秒）、真正发请求的那一步。生产一律取默认值 */
+    private val io: CoroutineDispatcher = Dispatchers.IO,
+    private val clock: () -> Long = System::currentTimeMillis,
+    private val synthesize: suspend (SynthTarget, String) -> ByteArray = { t, text -> t.synthesize(text) }
 ) {
     private val inflight = HashMap<String, Deferred<File>>()
     private val ready = object : LinkedHashMap<String, File>(64, 0.75f, true) {
@@ -77,7 +82,7 @@ class SynthPipeline(
     fun isReady(key: String): Boolean = readyFile(key) != null
 
     /** 该 key 是否处于失败冷却期（只影响投机性预取） */
-    fun isCoolingDown(key: String, now: Long = System.currentTimeMillis()): Boolean =
+    fun isCoolingDown(key: String, now: Long = clock()): Boolean =
         (cooldownUntil[key] ?: 0L) > now
 
     /** 成功播放/命中后清掉冷却记录，避免一次抖动长期压制某一段 */
@@ -105,10 +110,10 @@ class SynthPipeline(
     }
 
     private fun start(key: String, target: SynthTarget, text: String): Deferred<File> {
-        val t0 = System.currentTimeMillis()
-        val d = scope.async(Dispatchers.IO) {
+        val t0 = clock()
+        val d = scope.async(io) {
             audioCache.get(key)?.let { return@async it }
-            val bytes = target.synthesize(text)
+            val bytes = synthesize(target, text)
             audioCache.put(key, bytes)
         }
         inflight[key] = d
@@ -119,13 +124,13 @@ class SynthPipeline(
                 if (cause == null) {
                     runCatching { ready[key] = d.getCompleted() }
                     clearCooldown(key)
-                    val cost = (System.currentTimeMillis() - t0).toDouble()
+                    val cost = (clock() - t0).toDouble()
                     if (cost > 200) synthMs = ema(synthMs, cost, 0.3)
                 } else if (cause !is CancellationException) {
                     val n = (consecutiveFailures[key] ?: 0) + 1
                     consecutiveFailures[key] = n
                     // 1s → 2s → 4s … 60s 封顶。没有这条曲线，失败就是无退避的死循环
-                    cooldownUntil[key] = System.currentTimeMillis() + min(1000.0 * 2.0.pow(n - 1), 60_000.0).toLong()
+                    cooldownUntil[key] = clock() + min(1000.0 * 2.0.pow(n - 1), 60_000.0).toLong()
                     onFailure?.invoke(
                         key,
                         NetErrors.fromThrowable(cause, endpoint = target.endpoint, model = target.model, attempt = n)

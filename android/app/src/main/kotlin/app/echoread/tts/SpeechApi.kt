@@ -230,11 +230,21 @@ object SpeechApi {
             (bytes[0].toInt() and 0xFF) == 0xFF && (bytes[1].toInt() and 0xF6) == 0xF0 -> true // ADTS AAC
             // HTML / JSON 的开头。这一条必须排在 Content-Type 兜底之前 ——
             // 拦截我们的网关往往照抄上游的 `Content-Type: audio/mpeg`，只有字节不会撒谎。
-            ascii(0, "<") || ascii(0, "{") || ascii(0, "[") -> false
+            startsLikeMarkup(bytes) -> false
             // 未知容器但服务端明确声明 audio/*：放行（PCM 裸流走的就是这条）
             ct.startsWith("audio/") || ct.startsWith("application/octet-stream") -> true
-            else -> true
+            // 认不出容器、也没声明是音频：不收。收下就会被永久缓存，这一段再也不会重新请求
+            else -> false
         }
+    }
+
+    /** 跳过 UTF-8 BOM 与 ASCII 空白之后，第一个字节是 `<`、`{` 或 `[`（网关页常以 BOM 或 "\n<!DOCTYPE" 开头） */
+    private fun startsLikeMarkup(b: ByteArray): Boolean {
+        var i = if (b.size >= 3 && b[0] == 0xEF.toByte() && b[1] == 0xBB.toByte() && b[2] == 0xBF.toByte()) 3 else 0
+        while (i < b.size && b[i].toInt().toChar() in " \t\n\r\u000C") i++
+        if (i >= b.size) return false
+        val c = b[i].toInt().toChar()
+        return c == '<' || c == '{' || c == '['
     }
 
     private suspend fun Call.await(): Response = suspendCancellableCoroutine { cont ->

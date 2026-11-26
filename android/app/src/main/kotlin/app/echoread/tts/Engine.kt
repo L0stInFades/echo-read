@@ -113,9 +113,11 @@ class TtsEngine(
     private val chapters: ChapterCache,
     private val audioCache: AudioCache,
     private val systemTts: SystemTts,
-    private val playback: Playback,
+    private val playback: AudioOutput,
     private val tempDir: File,
-    private val network: NetworkStatus = object : NetworkStatus {}
+    private val network: NetworkStatus = object : NetworkStatus {},
+    /** 合成流水线。做成参数只为单测能换上跑虚拟时间的那一份；生产用默认值 */
+    private val pipeline: SynthPipeline = SynthPipeline(scope, audioCache)
 ) {
     @Volatile
     var settings: TtsSettings = TtsSettings()
@@ -144,8 +146,19 @@ class TtsEngine(
     /** 本章已跳过的段数与首个被跳过的下标；换章 / 跳转时清零 */
     private var skippedCount = 0
     private var skippedFirst = -1
-    private val pipeline = SynthPipeline(scope, audioCache)
     private var lastEndedAt = 0L
+
+    /**
+     * 被短暂的焦点丢失（来电、导航播报）暂停，等焦点回来续播。只在 PAUSED 下成立：这期间焦点登记与
+     * 拔耳机监听都留着（见 [emit]），再有任何暂停请求（用户、睡眠定时、拔耳机、永久失焦）就作罢。
+     */
+    private var resumeOnGain = false
+
+    /**
+     * 预取撞上配置类错误（无效 Key / 余额耗尽）时正在出声的那一段：已经到手的音频照常播完，
+     * 播完或被暂停时再停下报错，状态与音频焦点始终跟真实的声音一致（见 [settlePendingFailure]）。
+     */
+    private var pendingFailure: EngineFailure? = null
 
     init {
         tempDir.mkdirs()
@@ -155,16 +168,22 @@ class TtsEngine(
         // 429/5xx/超时属于投机性工作的正常噪声，绝不因此打断用户。
         pipeline.onFailure = { _, err ->
             if (err.disposition(network.online()) == Disposition.STOP_SESSION &&
-                state != PlayerState.IDLE && failure == null
+                state != PlayerState.IDLE && failure == null && pendingFailure == null
             ) {
-                state = PlayerState.ERROR
-                failure = EngineFailure.Session(err, 0)
-                retry = null
-                emit()
+                val f = EngineFailure.Session(err, 0)
+                if (state == PlayerState.PLAYING && handle != null) {
+                    // 正在出声的这段不再需要 Key：先播完。否则界面写着「出错」、焦点已交还，声音却还在继续，暂停键也失灵
+                    pendingFailure = f
+                } else {
+                    state = PlayerState.ERROR
+                    failure = f
+                    retry = null
+                    emit()
+                }
             }
         }
-        playback.onInterrupt = { pause() }
-        playback.onResumeAfterInterrupt = { if (state == PlayerState.PAUSED) play() }
+        playback.onInterrupt = { transient -> pause(forFocusLoss = transient) }
+        playback.onResumeAfterInterrupt = { if (resumeOnGain) play() }
     }
 
     val current: EngineSnapshot get() = _snapshot.value
@@ -173,6 +192,8 @@ class TtsEngine(
     fun playbackFraction(): Float = if (handle != null) playback.progressFraction() else 0f
 
     private fun emit() {
+        // 离开 PAUSED（续播、装载、出错、停止）就不再等焦点回来
+        if (state != PlayerState.PAUSED) resumeOnGain = false
         _snapshot.value = EngineSnapshot(
             state = state,
             bookId = bookId,
@@ -187,7 +208,8 @@ class TtsEngine(
             failure = failure,
             buffered = bufferedAhead()
         )
-        playback.setActive(state == PlayerState.PLAYING)
+        // 等着焦点回来续播也算会话还在：焦点登记不撤，才收得到 AUDIOFOCUS_GAIN
+        playback.setActive(state == PlayerState.PLAYING || resumeOnGain)
     }
 
     /** 当前片段之后连续已就绪的片段数（最多数 8 段） */
@@ -277,8 +299,18 @@ class TtsEngine(
         loopJob = scope.launch { loop(gen) }
     }
 
-    fun pause() {
-        if (state != PlayerState.PLAYING) return
+    fun pause() = pause(forFocusLoss = false)
+
+    /** [forFocusLoss]：短暂失去焦点引起的暂停，焦点回来时自动续播 */
+    private fun pause(forFocusLoss: Boolean) {
+        if (state != PlayerState.PLAYING) {
+            // 正等着焦点回来时又被要求暂停（用户、睡眠定时、拔耳机、永久失焦）：不再续播，焦点随之交还
+            if (resumeOnGain && !forFocusLoss) {
+                resumeOnGain = false
+                emit()
+            }
+            return
+        }
         val h = handle
         if (h != null) {
             // 正常播放中：句柄级暂停，可被 resume 续上，loop 仍在等 ended
@@ -289,7 +321,19 @@ class TtsEngine(
             stopHandle(keep = null)
         }
         state = PlayerState.PAUSED
+        resumeOnGain = forFocusLoss
+        settlePendingFailure()
         emit()
+    }
+
+    /** 把延后的会话失败落地（那段音频播完了或被暂停了）：停下并报错。没有待落地的失败时返回 false */
+    private fun settlePendingFailure(): Boolean {
+        val f = pendingFailure ?: return false
+        pendingFailure = null
+        state = PlayerState.ERROR
+        failure = f
+        retry = null
+        return true
     }
 
     /** 任意字跳转：将朗读位置定位到章节文本的指定字符偏移 */
@@ -340,6 +384,8 @@ class TtsEngine(
     private fun stopHandle(keep: Job?) {
         synthesizing = false
         retry = null
+        // 延后的失败跟着那段音频一起作废：跳转 / 换章之后由新的请求重新发现
+        pendingFailure = null
         val job = loopJob
         if (job != null && job !== keep) {
             job.cancel()
@@ -441,6 +487,8 @@ class TtsEngine(
                 if (gen != generation) return
                 if (state == PlayerState.PLAYING) {
                     state = PlayerState.ERROR
+                    // 报的是眼前这个播放错误；延后的那个会话失败等下一次请求再发现
+                    pendingFailure = null
                     // Playback 已经把 Media3 的 errorCodeName 编进 message，别再压成「播放中断」
                     failure = EngineFailure.Playback(e.message?.takeIf { it.isNotBlank() } ?: S.playback.playbackInterrupted)
                     emit()
@@ -453,7 +501,10 @@ class TtsEngine(
             // 以实际播放时长校准每字时长（换算回 1× 倍速），驱动前瞻窗口自适应
             pipeline.recordPlayback(seg.end - seg.start, ((System.currentTimeMillis() - playStart) * settings.rate).toLong())
             segmentIndex++
+            // 这段播放期间预取发现配置坏了：播完就停下报错
+            val stop = settlePendingFailure()
             emit()
+            if (stop) return
         }
     }
 

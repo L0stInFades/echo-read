@@ -176,7 +176,7 @@ class UpdaterTest {
 }
 
 /** 内存版 SharedPreferences：同一个实例当作「重启前后的同一份存档」 */
-private class MemoryPrefs : SharedPreferences {
+internal class MemoryPrefs : SharedPreferences {
     private val map = HashMap<String, Any?>()
 
     override fun getAll(): Map<String, *> = HashMap(map)

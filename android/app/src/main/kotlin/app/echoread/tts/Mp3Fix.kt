@@ -29,9 +29,9 @@ object Mp3Fix {
 
     /** 返回去掉 Xing/Info 帧后的字节；没有可剥的帧时返回原数组（零拷贝） */
     fun stripXing(b: ByteArray): ByteArray {
-        val out = java.io.ByteArrayOutputStream(b.size)
+        // 输出缓冲等遇见第一个 Xing 帧才分配：绝大多数片段一个都没有，整趟走下来不分配任何东西
+        var out: java.io.ByteArrayOutputStream? = null
         var i = 0
-        var stripped = 0
         // 尚未写出的区间起点：只有遇到 Xing 帧时才把它之前的部分冲出去，其余字节顺延保留
         var pending = 0
         while (i < b.size) {
@@ -43,8 +43,8 @@ object Mp3Fix {
             val len = frameLength(b, i)
             if (len > 0 && i + len <= b.size) {
                 if (isXing(b, i)) {
-                    out.write(b, pending, i - pending)
-                    stripped++
+                    val o = out ?: java.io.ByteArrayOutputStream(b.size).also { out = it }
+                    o.write(b, pending, i - pending)
                     i += len
                     pending = i
                 } else {
@@ -55,9 +55,9 @@ object Mp3Fix {
             // 同步丢失：向前找下一个帧同步或 ID3 标签，跳过的字节原样保留
             i = resyncFrom(b, i + 1)
         }
-        if (stripped == 0) return b
-        out.write(b, pending, b.size - pending)
-        return out.toByteArray()
+        val o = out ?: return b
+        o.write(b, pending, b.size - pending)
+        return o.toByteArray()
     }
 
     /** 从 [from] 起找下一个可解析的帧同步或 ID3 标签；找不到返回数组长度 */
@@ -104,6 +104,13 @@ object Mp3Fix {
         val mono = ((b[i + 3].toInt() and 0xff) ushr 6) == 3
         val side = if (ver == 3) (if (mono) 17 else 32) else (if (mono) 9 else 17)
         val p = i + 4 + side
+        // protection_bit == 0：帧头后跟 2 字节 CRC，按规范（LAME 就这么写）标签随之后移 2 字节。
+        // ExoPlayer 找标签时却不管 CRC，只看 p —— 两处都认，凡是解码器会当成 VBR 头的帧都剥掉
+        return tagAt(b, p) || ((h1 and 1) == 0 && tagAt(b, p + 2))
+    }
+
+    /** [p] 处是 "Xing" 或 "Info" */
+    private fun tagAt(b: ByteArray, p: Int): Boolean {
         if (p + 4 > b.size) return false
         val t0 = b[p].toInt(); val t1 = b[p + 1].toInt(); val t2 = b[p + 2].toInt(); val t3 = b[p + 3].toInt()
         val xing = t0 == 'X'.code && t1 == 'i'.code && t2 == 'n'.code && t3 == 'g'.code

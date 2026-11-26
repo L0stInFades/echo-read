@@ -1,6 +1,7 @@
 package app.echoread
 
 import app.echoread.core.Discovery
+import app.echoread.core.Hash
 import app.echoread.core.OpenAISpeechConfig
 import app.echoread.core.ProviderSpec
 import app.echoread.core.Template
@@ -564,6 +565,29 @@ class ProviderTest {
         assertEquals(before, server.requestCount)
     }
 
+    /**
+     * 回归（11）：翻页拉列表时，旧实现先把地址模板展开一遍、再交给 buildRequest 又展开一遍。
+     * 不编码的取值（这里是 {voice|raw}）里碰巧像占位符的文字于是被当成变量再替换 —— Key 就这样进了地址。
+     */
+    @Test
+    fun listExpandsTheTemplateOnce() = withServer { server, base ->
+        val s = spec("elevenlabs")
+        val p = profile("elevenlabs", key = "SECRET") { it.copy(baseUrl = base, voice = "{key}") }
+        val r = app.echoread.core.ListRecipe(
+            url = "{base}/v1/voices?q={voice|raw}", headers = mapOf("xi-api-key" to "{key}"),
+            items = "voices", id = "voice_id", next = "next_page_token", nextParam = "page_token"
+        )
+        server.enqueue(MockResponse().setBody("""{"voices":[{"voice_id":"a"}],"next_page_token":"p2"}"""))
+        server.enqueue(MockResponse().setBody("""{"voices":[{"voice_id":"b"}]}"""))
+        assertEquals(listOf("a", "b"), runBlocking { HttpSpeech.list(r, s, p) }.map { it.id })
+        val first = server.takeRequest().path!!
+        val second = server.takeRequest().path!!
+        assertFalse("Key 不得被展开进地址：$first", first.contains("SECRET"))
+        assertTrue(first, first.startsWith("/v1/voices?q="))
+        assertFalse(second.contains("SECRET"))
+        assertTrue("翻页令牌照常带上：$second", second.endsWith("&page_token=p2"))
+    }
+
     @Test
     fun voiceCatalogMergesAndHidesStaleOwnVoices() {
         val s = spec("minimax")
@@ -614,7 +638,7 @@ class ProviderTest {
         val c = custom.profiles[0]
         assertEquals(listOf("custom-legacy", Providers.CUSTOM, "192.168.1.5", "http://192.168.1.5:8880/v1", "opus"), listOf(c.id, c.spec, c.name, c.baseUrl, c.format))
         assertEquals("custom-legacy", custom.active)
-        assertEquals("缓存命名空间与 0.3.x 相同", "OPENAI", SynthTarget.of(custom)!!.cacheNs)
+        assertEquals("自定义端点按地址分开缓存，同名的模型 / 音色不串音", "OPENAI@http://192.168.1.5:8880/v1", SynthTarget.of(custom)!!.cacheNs)
         // 认得出的主机直接对上目录里的那一家
         val sf = SettingsStore.sanitizeTts(TtsSettings(openai = OpenAISpeechConfig(baseUrl = "https://api.siliconflow.cn/v1/", apiKey = "sk", model = "FunAudioLLM/CosyVoice2-0.5B", voice = "FunAudioLLM/CosyVoice2-0.5B:alex")))
         assertEquals("siliconflow", sf.profiles[0].id)
@@ -679,11 +703,11 @@ class ProviderTest {
         assertEquals("超过服务上限的压下来", 200, Providers.chunkChars(TtsSettings(maxChunkChars = 400, customSpecs = listOf(small), profiles = listOf(tiny), active = tiny.id)))
         assertEquals("模型自己的上限更小时取模型的", 600, Providers.maxChars(spec("dashscope"), "qwen3-tts-flash"))
         assertEquals(120, Providers.chunkChars(TtsSettings(active = TtsSettings.SYSTEM)))
-        // 缓存命名空间：OpenRouter / 自定义端点沿用旧值，其余各用各的，同名模型在两家之间不串音
-        assertEquals("OPENAI", Providers.cacheNs(spec("openrouter")))
-        assertEquals("OPENAI", Providers.cacheNs(spec("custom")))
-        assertEquals("GEMINI", Providers.cacheNs(spec("gemini")))
-        assertEquals("siliconflow", Providers.cacheNs(spec("siliconflow")))
+        // 缓存命名空间：OpenRouter 沿用旧值，自定义端点按地址分开，其余各用各的，同名模型在两家之间不串音
+        assertEquals("OPENAI", Providers.cacheNs(spec("openrouter"), "https://openrouter.ai/api/v1"))
+        assertEquals("OPENAI@http://192.168.1.5:8880/v1", Providers.cacheNs(spec("custom"), "http://192.168.1.5:8880/v1"))
+        assertEquals("GEMINI", Providers.cacheNs(spec("gemini"), "https://generativelanguage.googleapis.com/v1beta"))
+        assertEquals("siliconflow", Providers.cacheNs(spec("siliconflow"), "https://api.siliconflow.cn/v1"))
         val a = Providers.target(profile("together"))
         val b = Providers.target(profile("kokoro-local") { it.copy(baseUrl = "http://x/v1", model = a.model, voice = "zf_xiaoxiao") })
         assertNotEquals(TtsEngine.cacheKeyOf("你好", a), TtsEngine.cacheKeyOf("你好", b))
@@ -693,6 +717,24 @@ class ProviderTest {
         assertEquals(TtsEngine.cacheKeyOf("hi", e1), TtsEngine.cacheKeyOf("hi", Providers.target(profile("elevenlabs", key = "KEY2"))))
         assertTrue(Providers.retired(spec("openai"), "2027-01-07"))
         assertFalse(Providers.retired(spec("openai"), "2026-11-26"))
+    }
+
+    /**
+     * 回归（7）：自定义端点可以加很多个，旧实现全挤在 "OPENAI" 命名空间里、键里也不带地址 ——
+     * 两个端点（或自定义端点与 OpenRouter）用了同名的模型 / 音色，就会互相拿到对方合成的音频。
+     */
+    @Test
+    fun customEndpointsDoNotShareCache() {
+        fun endpoint(base: String, id: String = "custom-a") =
+            Providers.newProfile(spec("custom"), emptyList()).copy(id = id, baseUrl = base, model = "tts-1", voice = "alloy")
+        fun key(p: VoiceProfile) = TtsEngine.cacheKeyOf("你好", Providers.target(p))
+        val local = endpoint("http://192.168.1.5:8880/v1")
+        assertNotEquals("两个端点同名的模型 / 音色不串音", key(local), key(endpoint("https://tts.example.com/v1")))
+        assertEquals("同一个地址的不同写法落在同一个键上", key(local), key(endpoint("HTTP：／／192.168.1.5：8880/v1/")))
+        assertEquals("两个服务指向同一个端点：共用缓存", key(local), key(endpoint("http://192.168.1.5:8880/v1", id = "custom-b")))
+        val or = profile("openrouter") { it.copy(model = "tts-1", voice = "alloy") }
+        assertNotEquals("与 OpenRouter 同名也不串音", key(or), key(local))
+        assertEquals("OpenRouter 的键与 0.3.x 逐字一致", Hash.cyrb53("v2|OPENAI|tts-1|alloy|mp3||你好"), key(or))
     }
 
     /** 落盘保护：盘上只有密文，旧字段里不留 Key；换了设备解不开时 Key 清空、其余设置都在 */
