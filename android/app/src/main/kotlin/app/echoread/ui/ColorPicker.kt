@@ -22,6 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import app.echoread.core.ColorStyle
 import app.echoread.ui.motion.EchoMotion
@@ -80,6 +83,11 @@ fun PaletteSwatch(
     Box(
         modifier
             .size(size)
+            // 色卡本身是一张图：读屏要念出它是哪种风格、是不是当前选中的那个
+            .semantics {
+                contentDescription = style.label
+                this.selected = selected
+            }
             .echoPress(pressedScale = PressScale.Chip, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -112,18 +120,32 @@ fun PaletteSwatch(
     }
 }
 
-/** 单色圆点，用于种子色一排（种子色本身就是要选的东西，不需要四分） */
+/**
+ * 单色圆点，用于种子色一排（种子色本身就是要选的东西，不需要四分）
+ *
+ * @param label 这个颜色的名字：圆点只是一块颜色，读屏靠它念出是哪一个
+ */
 @Composable
 fun SeedDot(
     color: Color,
     selected: Boolean,
+    label: String,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val ringWidth by animateFloatAsState(if (selected) 3f else 0f, EchoMotion.Instant.spec(), label = "seedRing")
     val ring = echo.accent
     val border = echo.border
-    Box(modifier.size(48.dp).echoPress(pressedScale = PressScale.Chip, onClick = onClick), contentAlignment = Alignment.Center) {
+    Box(
+        modifier
+            .size(48.dp)
+            .semantics {
+                contentDescription = label
+                this.selected = selected
+            }
+            .echoPress(pressedScale = PressScale.Chip, onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
         Canvas(Modifier.size(48.dp)) {
             val cx = size.width / 2f; val cy = size.height / 2f
             val r = size.minDimension / 2f - 5.dp.toPx()

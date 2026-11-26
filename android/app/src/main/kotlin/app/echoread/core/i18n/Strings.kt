@@ -207,6 +207,8 @@ interface Strings {
         val backToPlaybackButton: String
         val backToPlaybackPosition: String
         val sleepTimer: String
+        /** 读屏念的睡眠定时键：[state] 是键上显示的倒计时（或「本章」） */
+        fun sleepTimerState(state: String): String
         val sleepChapterShort: String
         val previousChapter: String
         val nextChapter: String

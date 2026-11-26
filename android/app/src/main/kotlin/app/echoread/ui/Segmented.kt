@@ -60,6 +60,7 @@ import app.echoread.ui.motion.Dur
 import app.echoread.ui.motion.Ease
 import app.echoread.ui.motion.Haptics
 import app.echoread.ui.motion.Liquid
+import app.echoread.ui.motion.Retarget
 import app.echoread.ui.motion.dragToPos
 import app.echoread.ui.motion.settleIndex
 import kotlinx.coroutines.coroutineScope
@@ -173,6 +174,9 @@ fun EchoSegmented(
             .height(height)
             .pointerInput(n) {
                 coroutineScope {
+                    // 拖动中滑块追着手指走：每个样本重新瞄准一次，由常驻的协程接手（见 Retarget），不再每个样本起协程
+                    val chase = Retarget { pos.animateTo(it, Liquid.Lift) }
+                    launch { chase.run() }
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         val item = size.width.toFloat() / n
@@ -206,7 +210,7 @@ fun EchoSegmented(
                                 change.consume()
                                 tracker.addPosition(change.uptimeMillis, change.position)
                                 val p = dragToPos(change.position.x, size.width.toFloat(), n)
-                                launch { pos.animateTo(p, Liquid.Lift) }
+                                chase.offer(p)
                                 val over = p.roundToInt().coerceIn(0, n - 1)
                                 if (over != hover) {
                                     if (hover >= 0) Haptics.tick(view)

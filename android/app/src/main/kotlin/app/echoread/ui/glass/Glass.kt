@@ -51,6 +51,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
@@ -62,6 +63,8 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
@@ -387,6 +390,9 @@ fun Modifier.glassLight(light: GlassLight?): Modifier = if (light == null) this 
 /**
  * 画一块玻璃作为背景。
  *
+ * 它仍是 composed（不像 [glassSurface] 那样是绘制节点）：它持有随组合释放的离屏图层、要给背板登记取用者、
+ * 显影动画由组合期的状态驱动。搬成节点会改动这几样的创建、释放与开始的时机，而玻璃的观感是在真机上逐帧调出来的。
+ *
  * @param offset 这块玻璃被 `graphicsLayer` 之类**绘制期变换**挪了多少（面板的滑入位移）。
  *   布局位置由本修饰符自己量；绘制期的位移布局不知道，必须由调用方告知，背板才能与底下的真实画面对齐。
  */
@@ -427,7 +433,7 @@ fun Modifier.glass(
         .then(if (backdrop != null) Modifier.onGloballyPositioned { position = it.positionInRoot() } else Modifier)
         .drawWithContent {
             val outline = shape.createOutline(size, layoutDirection, this)
-            val path = outlinePath(outline)
+            val path = geo.outline.of(outline)
             val rr = roundRectOf(outline)
             val src = backdrop?.layer
             val t = reveal.value
@@ -446,7 +452,7 @@ fun Modifier.glass(
                     when (glassTier) {
                         GlassTier.SHADER -> if (blurLayer != null && Build.VERSION.SDK_INT >= 33) {
                             blurLayer.alpha = t
-                            drawLens(blurLayer, src!!, at, style, outline, lensCache, pw)
+                            drawLens(blurLayer, src!!, at, style, outline, lensCache, pw, backdrop.opaque)
                         }
                         GlassTier.REPLAY -> {
                             // 清晰的画面从哪里来：
@@ -496,12 +502,29 @@ fun Modifier.glass(
 /**
  * 不采样背板的玻璃：只有着色、反光与描边。用在**已经位于玻璃或平整底色之上**的控件
  * （面板里的卡片、按钮、书架上的卡片）—— 那里背后没有可折射的内容，再采样一次只是白花 GPU。
+ *
+ * 它只画、不持有图层也不起协程，所以是一个绘制节点（几何缓存跟着节点走），不经过组合：
+ * 宿主重组时参数没变就不重画。
  */
-fun Modifier.glassSurface(shape: Shape, style: GlassStyle, light: GlassLight? = null): Modifier = composed {
-    val geo = remember { GlassGeometry() }
-    drawWithContent {
+fun Modifier.glassSurface(shape: Shape, style: GlassStyle, light: GlassLight? = null): Modifier =
+    this then GlassSurfaceElement(shape, style, light)
+
+private data class GlassSurfaceElement(val shape: Shape, val style: GlassStyle, val light: GlassLight?) :
+    ModifierNodeElement<GlassSurfaceNode>() {
+    override fun create() = GlassSurfaceNode(shape, style, light)
+    override fun update(node: GlassSurfaceNode) {
+        node.shape = shape
+        node.style = style
+        node.light = light
+    }
+}
+
+private class GlassSurfaceNode(var shape: Shape, var style: GlassStyle, var light: GlassLight?) : Modifier.Node(), DrawModifierNode {
+    private val geo = GlassGeometry()
+
+    override fun ContentDrawScope.draw() {
         val outline = shape.createOutline(size, layoutDirection, this)
-        val path = outlinePath(outline)
+        val path = geo.outline.of(outline)
         if (style.tint.alpha > 0f) drawPath(path, style.tint)
         drawGloss(path, style, geo, light, 1f)
         drawContent()
@@ -777,8 +800,9 @@ private fun DrawScope.drawRim(path: Path, style: GlassStyle, geo: GlassGeometry,
     }
 }
 
-/** 每块玻璃自己的几何缓存：内缩路径与渐变只在尺寸变化时重建，面板滑动的每一帧都不分配 */
+/** 每块玻璃自己的几何缓存：外形与内缩路径、渐变只在尺寸变化时重建，面板滑动的每一帧都不分配 */
 private class GlassGeometry {
+    val outline = OutlinePath()
     private val paths = arrayOfNulls<Path>(INTERIOR_SLOT + 1)
     private val keys = arrayOfNulls<FloatArray>(INTERIOR_SLOT + 1)
     val slices = LensSlices()
@@ -879,7 +903,7 @@ private fun DrawScope.roundRectOf(outline: Outline): RoundRect? = when (outline)
 
 /** Android 13+：把背板在自己的位置上录进一个带折射效果的小图层，再画出来 */
 @RequiresApi(33)
-private fun DrawScope.drawLens(layer: GraphicsLayer, src: GraphicsLayer, at: Offset, style: GlassStyle, outline: Outline, cache: LensCache, power: Float) {
+private fun DrawScope.drawLens(layer: GraphicsLayer, src: GraphicsLayer, at: Offset, style: GlassStyle, outline: Outline, cache: LensCache, power: Float, opaque: Boolean) {
     val radius = style.blur.toPx()
     val k = (if (radius < 1f) 1 else style.inputScale.coerceIn(1, 4)).toFloat()
     // 有模糊时四周各多录一圈：模糊核在边缘要取到玻璃外面的真实画面（折射向内取样，不需要这一圈）
@@ -895,7 +919,7 @@ private fun DrawScope.drawLens(layer: GraphicsLayer, src: GraphicsLayer, at: Off
         originX = pad / k, originY = pad / k, width = size.width / k, height = size.height / k,
         corner = minOf(corner, size.minDimension / 2f) / k,
         depth = style.lensDepth.toPx() / k, amount = style.lensAmount.toPx() * power / k,
-        dispersion = style.dispersion
+        dispersion = style.dispersion, opaque = opaque
     )
     layer.record(this, layoutDirection, IntSize(w, h)) {
         scale(1f / k, 1f / k, pivot = Offset.Zero) {
@@ -912,6 +936,11 @@ private fun DrawScope.drawLens(layer: GraphicsLayer, src: GraphicsLayer, at: Off
  * 形状用圆角矩形的有向距离函数表示（距离给出像素在斜面上的位置 x，梯度给出法线）；
  * 位移按斯涅尔定律现算，逆着法线（朝玻璃内侧）去取样。
  * 色散：红、蓝两个通道各用略大、略小的位移再取一次，边缘就有了一线彩边（真玻璃的折射率随波长变）。
+ *
+ * 取样拿到的是预乘过的颜色，任何一个分量都不能超过 alpha。背板是透明底时（滑块透镜下面只有一条轨道），
+ * 红蓝两路可能取到比中心更不透明的像素：拼出来的颜色分量大于 alpha，叠到底下时会多出一圈发亮的彩边。
+ * 这时把红蓝夹到中心的 alpha 以内（premulClamp = 1）。不透明的背板上每个像素 alpha 都是 1，
+ * 不会越界，premulClamp = 0，走的仍是原来那几步运算，画面与以前逐像素相同。
  */
 private const val LENS_AGSL = """
 uniform shader content;
@@ -921,6 +950,7 @@ uniform float corner;
 uniform float depth;
 uniform float thickness;
 uniform float dispersion;
+uniform float premulClamp;
 
 float sdf(float2 p) {
     float2 q = abs(p) - extent * 0.5 + corner;
@@ -946,6 +976,10 @@ half4 main(float2 xy) {
     if (dispersion <= 0.0) { return c; }
     half r = content.eval(xy + off * (1.0 + dispersion * 0.25)).r;
     half b = content.eval(xy + off * (1.0 - dispersion * 0.25)).b;
+    if (premulClamp > 0.5) {
+        r = min(r, c.a);
+        b = min(b, c.a);
+    }
     return half4(r, c.g, b, c.a);
 }
 """
@@ -963,9 +997,10 @@ private class LensCache {
     fun effect(
         blur: Float, saturation: Float,
         originX: Float, originY: Float, width: Float, height: Float,
-        corner: Float, depth: Float, amount: Float, dispersion: Float
+        corner: Float, depth: Float, amount: Float, dispersion: Float, opaque: Boolean
     ): androidx.compose.ui.graphics.RenderEffect {
-        val k = floatArrayOf(blur, saturation, originX, originY, width, height, corner, depth, amount, dispersion)
+        val premulClamp = if (opaque) 0f else 1f
+        val k = floatArrayOf(blur, saturation, originX, originY, width, height, corner, depth, amount, dispersion, premulClamp)
         cached?.let { if (key?.contentEquals(k) == true) return it }
         // 效果链按需拼：透镜默认既不模糊也不改饱和度，那就只有折射这一环
         var out: android.graphics.RenderEffect? = null
@@ -978,7 +1013,7 @@ private class LensCache {
         if (depth > 0.5f && amount > 0.5f) {
             // 斜面不超过圆角半径，与低档的画法一致
             val bezel = minOf(depth, minOf(width, height) / 2f, if (corner > 0.5f) corner else Float.MAX_VALUE)
-            out = withLens(out, originX, originY, width, height, corner, bezel, amount, dispersion)
+            out = withLens(out, originX, originY, width, height, corner, bezel, amount, dispersion, premulClamp)
         }
         // 什么都不需要时也得给图层一个效果：恒等的颜色矩阵
         val effect = out ?: android.graphics.RenderEffect.createColorFilterEffect(android.graphics.ColorMatrixColorFilter(android.graphics.ColorMatrix()))
@@ -991,7 +1026,8 @@ private class LensCache {
     @RequiresApi(33)
     private fun withLens(
         inner: android.graphics.RenderEffect?,
-        originX: Float, originY: Float, width: Float, height: Float, corner: Float, depth: Float, amount: Float, dispersion: Float
+        originX: Float, originY: Float, width: Float, height: Float, corner: Float, depth: Float, amount: Float, dispersion: Float,
+        premulClamp: Float
     ): android.graphics.RenderEffect? = try {
         val sh = shader ?: android.graphics.RuntimeShader(LENS_AGSL).also { shader = it }
         sh.setFloatUniform("origin", originX, originY)
@@ -1000,6 +1036,7 @@ private class LensCache {
         sh.setFloatUniform("depth", depth)
         sh.setFloatUniform("thickness", amount)
         sh.setFloatUniform("dispersion", dispersion)
+        sh.setFloatUniform("premulClamp", premulClamp)
         val lens = android.graphics.RenderEffect.createRuntimeShaderEffect(sh, "content")
         if (inner == null) lens else android.graphics.RenderEffect.createChainEffect(lens, inner)
     } catch (_: Throwable) {
@@ -1008,33 +1045,76 @@ private class LensCache {
     }
 }
 
-private fun DrawScope.outlinePath(outline: Outline): Path = when (outline) {
-    is Outline.Generic -> outline.path
-    is Outline.Rounded -> Path().apply { addRoundRect(outline.roundRect) }
-    is Outline.Rectangle -> Path().apply { addRect(outline.rect) }
+/**
+ * 外形路径的缓存。外形本身每次绘制照常向形状现要（它可能读快照状态，读了才会被观察到），
+ * 只有外形真的变了（尺寸、圆角）才重建路径；以前每画一帧就新建一条 Path，背后是一条原生 SkPath。
+ * 画布记录的是路径的副本，之后改写这一条不影响已经录下的帧。
+ */
+private class OutlinePath {
+    private val path = Path()
+    private var key: Any? = null
+
+    fun of(outline: Outline): Path = when (outline) {
+        is Outline.Generic -> outline.path
+        is Outline.Rounded -> {
+            if (key != outline.roundRect) {
+                path.rewind()
+                path.addRoundRect(outline.roundRect)
+                key = outline.roundRect
+            }
+            path
+        }
+        is Outline.Rectangle -> {
+            if (key != outline.rect) {
+                path.rewind()
+                path.addRect(outline.rect)
+                key = outline.rect
+            }
+            path
+        }
+    }
 }
 
 /**
  * 玻璃浮层外圈的投影：只画在形状外面，不会从半透明的玻璃底下透出一团脏影。
  * 两层 —— 一层又大又淡的环境影把它托离画面，一层贴身的接触影交代它的边（数值的量级取自参考实现）。
  */
-fun Modifier.glassShadow(shape: Shape, color: Color, blur: Dp = 12.dp, dy: Dp = 4.dp): Modifier = drawWithContent {
-    // 硬件画布上给图形画 shadowLayer 需要 API 28；更低的系统上就不画投影
-    if (color.alpha > 0f && Build.VERSION.SDK_INT >= 28) {
-        val outline = shape.createOutline(size, layoutDirection, this)
-        val path = outlinePath(outline).asAndroidPath()
-        val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            // 填充色必须不透明（透明的画笔会被整个跳过）；填充本身被下面的 clipOut 挖掉，只剩投影
-            this.color = android.graphics.Color.BLACK
-        }
-        val canvas = drawContext.canvas.nativeCanvas
-        val save = canvas.save()
-        canvas.clipOutPath(path)
-        paint.setShadowLayer(blur.toPx(), 0f, dy.toPx(), color.toArgb())
-        canvas.drawPath(path, paint)
-        paint.setShadowLayer(3.dp.toPx(), 0f, 1.dp.toPx(), color.copy(alpha = color.alpha * 0.5f).toArgb())
-        canvas.drawPath(path, paint)
-        canvas.restoreToCount(save)
+fun Modifier.glassShadow(shape: Shape, color: Color, blur: Dp = 12.dp, dy: Dp = 4.dp): Modifier =
+    this then GlassShadowElement(shape, color, blur, dy)
+
+private data class GlassShadowElement(val shape: Shape, val color: Color, val blur: Dp, val dy: Dp) :
+    ModifierNodeElement<GlassShadowNode>() {
+    override fun create() = GlassShadowNode(shape, color, blur, dy)
+    override fun update(node: GlassShadowNode) {
+        node.shape = shape
+        node.color = color
+        node.blur = blur
+        node.dy = dy
     }
-    drawContent()
+}
+
+/** 投影的绘制节点：外形路径与画笔跟着节点走，每帧只改画笔上的投影参数，不再每帧新建 */
+private class GlassShadowNode(var shape: Shape, var color: Color, var blur: Dp, var dy: Dp) : Modifier.Node(), DrawModifierNode {
+    private val outline = OutlinePath()
+    private var paint: android.graphics.Paint? = null
+
+    override fun ContentDrawScope.draw() {
+        // 硬件画布上给图形画 shadowLayer 需要 API 28；更低的系统上就不画投影
+        if (color.alpha > 0f && Build.VERSION.SDK_INT >= 28) {
+            val path = outline.of(shape.createOutline(size, layoutDirection, this)).asAndroidPath()
+            val p = paint ?: android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                // 填充色必须不透明（透明的画笔会被整个跳过）；填充本身被下面的 clipOut 挖掉，只剩投影
+                this.color = android.graphics.Color.BLACK
+            }.also { paint = it }
+            val canvas = drawContext.canvas.nativeCanvas
+            val save = canvas.save()
+            canvas.clipOutPath(path)
+            p.setShadowLayer(blur.toPx(), 0f, dy.toPx(), color.toArgb())
+            canvas.drawPath(path, p)
+            p.setShadowLayer(3.dp.toPx(), 0f, 1.dp.toPx(), color.copy(alpha = color.alpha * 0.5f).toArgb())
+            canvas.drawPath(path, p)
+            canvas.restoreToCount(save)
+        }
+        drawContent()
+    }
 }

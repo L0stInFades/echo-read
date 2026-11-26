@@ -52,7 +52,9 @@ fun BookCover(book: BookMeta, modifier: Modifier = Modifier, radius: Dp = 14.dp,
     val shape = androidx.compose.foundation.shape.RoundedCornerShape(radius)
     val cover = book.cover
     val cacheKey = "${book.id}:${cover?.size ?: 0}"
-    val bitmap by produceState<ImageBitmap?>(initialValue = if (cover == null) null else coverCache.get(cacheKey), cacheKey) {
+    // 组合时缓存里就有的那张图：直接显示，不淡入（列表滚回来时重建的格子不该每次都闪一下）
+    val cached = remember(cacheKey) { if (cover == null) null else coverCache.get(cacheKey) }
+    val bitmap by produceState(initialValue = cached, cacheKey) {
         if (cover != null && value == null) {
             value = withContext(Dispatchers.IO) {
                 runCatching { BitmapFactory.decodeByteArray(cover, 0, cover.size)?.asImageBitmap() }.getOrNull()
@@ -63,8 +65,9 @@ fun BookCover(book: BookMeta, modifier: Modifier = Modifier, radius: Dp = 14.dp,
     Box(modifier.clip(shape), contentAlignment = Alignment.Center) {
         val bmp = bitmap
         if (bmp != null) {
-            // 真实淡入：旧代码 animateFloatAsState(1f) 起点终点都是 1f，这个「淡入」从来没播过
-            val fade = remember(bmp) { Animatable(0f, Thr.ALPHA) }
+            // 真实淡入：旧代码 animateFloatAsState(1f) 起点终点都是 1f，这个「淡入」从来没播过。
+            // 只有刚解码出来的图才淡入；缓存命中的那张从 1 开始
+            val fade = remember(bmp) { Animatable(if (bmp === cached) 1f else 0f, Thr.ALPHA) }
             LaunchedEffect(bmp) { fade.animateTo(1f, tween(Dur.Medium, easing = Ease.Linear)) }
             Image(
                 bmp, book.title, contentScale = ContentScale.Crop,

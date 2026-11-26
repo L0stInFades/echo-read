@@ -179,6 +179,7 @@ object ZhStrings : Strings {
         override val backToPlaybackButton = "回到朗读位置 ↩"
         override val backToPlaybackPosition = "回到朗读位置"
         override val sleepTimer = "睡眠定时"
+        override fun sleepTimerState(state: String) = "睡眠定时：$state"
         override val sleepChapterShort = "本章"
         override val previousChapter = "上一章"
         override val nextChapter = "下一章"

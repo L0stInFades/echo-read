@@ -60,6 +60,7 @@ import app.echoread.ui.glass.lensAvailable
 import app.echoread.ui.glass.rememberBackdrop
 import app.echoread.ui.motion.Haptics
 import app.echoread.ui.motion.Liquid
+import app.echoread.ui.motion.Retarget
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
@@ -110,6 +111,11 @@ internal class ThumbMotion(initial: Float, private val scope: CoroutineScope) {
     /** 手指拖动的速度（行程 / 秒，带方向），用弹簧抹平：手指的采样很抖，直接拿来做形变会跳 */
     private val speed = Animatable(0f)
 
+    // 拖动中的手指样本：位置立刻落到手指下，速度交给弹簧抹平。各由常驻的协程接手（见 Retarget），不再每个样本起协程
+    private val snap = Retarget { position.snapTo(it) }
+    private val chase = Retarget { speed.animateTo(it, Smooth) }
+    private var following: Job? = null
+
     var held = false
         private set
     private var landing: Job? = null
@@ -131,12 +137,23 @@ internal class ThumbMotion(initial: Float, private val scope: CoroutineScope) {
     fun down() {
         held = true
         bloom()
+        startFollowing()
     }
 
     /** 手指拖到了这里 */
     fun follow(fraction: Float, fingerVelocity: Float) {
-        scope.launch { position.snapTo(fraction) }
-        scope.launch { speed.animateTo(fingerVelocity, Smooth) }
+        startFollowing()
+        snap.offer(fraction)
+        chase.offer(fingerVelocity)
+    }
+
+    /** 第一次被按下时才起跟手的协程，之后一直留着（随宿主的作用域取消） */
+    private fun startFollowing() {
+        if (following != null) return
+        following = scope.launch {
+            launch { snap.run() }
+            chase.run()
+        }
     }
 
     /** 手指松开，滑块该落到 [target] */
@@ -222,9 +239,11 @@ private fun BoxScope.LiquidThumb(motion: ThumbMotion, backdrop: Backdrop?, start
 }
 
 /** 把轨道在滑块底下的那一段挖掉（滑块还是实心时不必：它自己盖着） */
+@Composable
 private fun Modifier.cutOutUnder(motion: ThumbMotion, enabled: Boolean, start: Dp, travel: Density.(width: Float) -> Float): Modifier {
+    // 挖洞的路径记住复用：宿主每次重组都会走到这里，以前每次都新建一条（背后是一条原生 SkPath）
+    val hole = remember { Path() }
     if (!enabled) return this
-    val hole = Path()
     return drawWithContent {
         if (motion.press.value < 0.004f) {
             drawContent()
@@ -358,7 +377,9 @@ fun EchoSlider(
             .semantics {
                 if (!enabled) disabled()
                 progressBarRangeInfo = ProgressBarRangeInfo(value, range, steps)
+                // 停用时读屏也不能改值：disabled() 只是标记，拦不住无障碍服务直接调 setProgress
                 setProgress { target ->
+                    if (!enabled) return@setProgress false
                     val f = snap(((target - range.start) / span).coerceIn(0f, 1f))
                     onValueChange(range.start + f * span)
                     true
@@ -481,7 +502,7 @@ fun LiquidSwitch(
                 role = Role.Switch
                 toggleableState = if (checked) ToggleableState.On else ToggleableState.Off
                 if (!enabled) disabled()
-                onClick { onCheckedChange(!checked); true }
+                onClick { if (enabled) onCheckedChange(!checked); enabled }
             }
     ) {
         val travel: Density.(Float) -> Float = remember { { travelDp.toPx() } }

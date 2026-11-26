@@ -95,6 +95,8 @@ import app.echoread.ui.motion.EchoTransitions
 import app.echoread.ui.motion.PressScale
 import app.echoread.ui.motion.echoPress
 import app.echoread.ui.motion.echoTap
+import app.echoread.ui.voice.serviceName
+import app.echoread.ui.voice.TtsSettingsSheet
 
 private enum class SortMode {
     RECENT, ADDED, TITLE;
@@ -122,8 +124,6 @@ fun ShelfScreen(
     val scope = rememberCoroutineScope()
     val library = graph.library
     val books by library.books.collectAsState()
-    val importing by library.importing.collectAsState()
-    val tts by graph.settings.tts.collectAsState()
 
     var query by remember { mutableStateOf("") }
     var sort by remember { mutableStateOf(SortMode.RECENT) }
@@ -223,37 +223,7 @@ fun ShelfScreen(
             item("update") { UpdateCard(graph) }
 
             // 当前服务还缺 Key（或自建服务还没填地址）：书架顶上提醒一次，点了直接进设置
-            val activeProfile = tts.activeProfile
-            val activeSpec = activeProfile?.let { Providers.specOf(it, tts) }
-            if (activeProfile != null && activeSpec != null && !Providers.ready(activeSpec, activeProfile)) {
-                item("keyBanner") {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 14.dp)
-                            .echoPress(pressedScale = PressScale.Tile) { showSettings = true }
-                            .glassSurface(RoundedCornerShape(Radius.lgPlus), c.surfaceGlass())
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(Modifier.size(38.dp).background(rememberAurora(), CircleShape), contentAlignment = Alignment.Center) {
-                            Icon(EchoIcons.Key, null, tint = c.onAccent, modifier = Modifier.size(17.dp))
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                S.shelf.keyBannerTitle(serviceName(activeSpec, activeProfile)),
-                                color = c.text, style = MaterialTheme.typography.titleSmallEmphasized, maxLines = 2, overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                S.shelf.keyBannerSubtitle,
-                                color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        Icon(EchoIcons.ChevronRight, null, tint = c.text3, modifier = Modifier.size(16.dp))
-                    }
-                }
-            }
+            item("keyBanner") { KeyBanner(graph) { showSettings = true } }
 
             if (books.isEmpty()) {
                 item("empty") {
@@ -425,21 +395,7 @@ fun ShelfScreen(
       }
 
       // 导入中遮罩
-      AnimatedVisibility(
-          importing,
-          enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Dur.Long, easing = Ease.Linear)),
-          exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(Dur.Medium, easing = Ease.Linear)),
-          modifier = Modifier.matchParentSize().zIndex(60f)
-      ) {
-          Column(
-              Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).echoTap {},
-              horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
-          ) {
-              ContainedLoadingIndicator(modifier = Modifier.size(56.dp))
-              Spacer(Modifier.height(14.dp))
-              Text(S.shelf.importingBook, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
-          }
-      }
+      ImportingOverlay(library)
 
       CompositionLocalProvider(LocalBackdrop provides backdrop) {
         ImportSheet(open = showImport, graph = graph) { showImport = false }
@@ -454,6 +410,66 @@ fun ShelfScreen(
             actionBook = null
         }
       }
+    }
+}
+
+/**
+ * 缺 Key 提醒：当前服务还缺 Key（或自建服务还没填地址）时出现，不缺时什么都不画 ——
+ * 与更新卡片一样常驻在列表里、隐藏时零高。朗读设置由它自己订阅：Key、音色、语速每存一次，
+ * 只重组这一条横幅，书架的列表不必跟着把每一项（连同书格分行）重新声明一遍。
+ */
+@Composable
+private fun KeyBanner(graph: AppGraph, onClick: () -> Unit) {
+    val c = echo
+    val tts by graph.settings.tts.collectAsState()
+    val activeProfile = tts.activeProfile
+    val activeSpec = activeProfile?.let { Providers.specOf(it, tts) }
+    if (activeProfile == null || activeSpec == null || Providers.ready(activeSpec, activeProfile)) return
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(bottom = 14.dp)
+            .echoPress(pressedScale = PressScale.Tile, onClick = onClick)
+            .glassSurface(RoundedCornerShape(Radius.lgPlus), c.surfaceGlass())
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(38.dp).background(rememberAurora(), CircleShape), contentAlignment = Alignment.Center) {
+            Icon(EchoIcons.Key, null, tint = c.onAccent, modifier = Modifier.size(17.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(
+                S.shelf.keyBannerTitle(serviceName(activeSpec, activeProfile)),
+                color = c.text, style = MaterialTheme.typography.titleSmallEmphasized, maxLines = 2, overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                S.shelf.keyBannerSubtitle,
+                color = c.text2, style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis
+            )
+        }
+        Icon(EchoIcons.ChevronRight, null, tint = c.text3, modifier = Modifier.size(16.dp))
+    }
+}
+
+/** 导入中的遮罩。「正在导入」由它自己订阅：每导入一本书它都要开关一次，不该带着整个书架重组 */
+@Composable
+private fun BoxScope.ImportingOverlay(library: app.echoread.data.LibraryRepo) {
+    val importing by library.importing.collectAsState()
+    AnimatedVisibility(
+        importing,
+        enter = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(Dur.Long, easing = Ease.Linear)),
+        exit = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(Dur.Medium, easing = Ease.Linear)),
+        modifier = Modifier.matchParentSize().zIndex(60f)
+    ) {
+        Column(
+            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.55f)).echoTap {},
+            horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
+        ) {
+            ContainedLoadingIndicator(modifier = Modifier.size(56.dp))
+            Spacer(Modifier.height(14.dp))
+            Text(S.shelf.importingBook, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.bodyMedium)
+        }
     }
 }
 
@@ -672,9 +688,10 @@ private fun AmbientLight(listState: androidx.compose.foundation.lazy.LazyListSta
         modifier.drawBehind {
             // 图比屏幕高两成：上移时底下不露边
             val tall = size.height * 1.2f
-            val image = cache[0]?.takeIf { it.width == (size.width / AMBIENT_SCALE).toInt().coerceAtLeast(1) } ?: run {
-                val w = (size.width / AMBIENT_SCALE).toInt().coerceAtLeast(1)
-                val h = (tall / AMBIENT_SCALE).toInt().coerceAtLeast(1)
+            // 宽高一起比：只比宽的话，高度变了（分屏、改窗口大小）还拿旧的那张图拉伸着贴，光晕的位置就跑了
+            val w = (size.width / AMBIENT_SCALE).toInt().coerceAtLeast(1)
+            val h = (tall / AMBIENT_SCALE).toInt().coerceAtLeast(1)
+            val image = cache[0]?.takeIf { it.width == w && it.height == h } ?: run {
                 val bitmap = androidx.compose.ui.graphics.ImageBitmap(w, h)
                 androidx.compose.ui.graphics.drawscope.CanvasDrawScope().draw(
                     this, layoutDirection, androidx.compose.ui.graphics.Canvas(bitmap), androidx.compose.ui.geometry.Size(w.toFloat(), h.toFloat())

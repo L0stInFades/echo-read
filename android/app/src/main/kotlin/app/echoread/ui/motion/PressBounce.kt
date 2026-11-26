@@ -99,8 +99,9 @@ fun Modifier.echoPress(
     val semanticsBlock: SemanticsPropertyReceiver.() -> Unit = remember(enabled, hasLong, onClickLabel) {
         {
             role = Role.Button
-            onClick(label = onClickLabel) { clickRef.value(); true }
-            if (hasLong) onLongClick { longRef.value?.invoke(); true }
+            // 停用时读屏发来的点击也不执行：disabled() 只是标记，无障碍服务照样能直接触发这两个动作
+            onClick(label = onClickLabel) { if (enabled) clickRef.value(); enabled }
+            if (hasLong) onLongClick { if (enabled) longRef.value?.invoke(); enabled }
             if (!enabled) disabled()
         }
     }

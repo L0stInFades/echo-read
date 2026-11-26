@@ -29,8 +29,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -83,13 +83,19 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
     val books by graph.library.books.collectAsState()
 
     var tier by remember { mutableStateOf(scanner.tier()) }
+    // 已授权文件夹列表的版本号：再授权一个、或撤掉其中一个时 tier 仍是 SAF_TREES 不变，
+    // 列表只按 tier 记忆的话会一直停在旧的那份。授权、撤销、回到前台时各加一
+    var treesRev by remember { mutableIntStateOf(0) }
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf(TypeFilter.ALL) }
-    val selected = remember { mutableStateListOf<String>() }
+    // 选中项用不可变的 Set 整体替换：每一行的勾选、「全选」与「导入选中」都要查它，
+    // 列表的 contains 是线性扫描，几千本候选时点一次全选就要比较几百万次
+    var selected by remember { mutableStateOf(emptySet<String>()) }
 
     // 从系统设置页/目录选择器回来时重新判档：用户可能刚刚把权限打开
     LifecycleResumeEffect(Unit) {
         tier = scanner.tier()
+        treesRev++
         onPauseOrDispose { }
     }
 
@@ -101,6 +107,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
             }
             scanner.rememberTree(uri)
             tier = scanner.tier()
+            treesRev++
             graph.rescan()
         }
     }
@@ -126,10 +133,11 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
         // 底下却仍是那 3 本，用户会以为整机就这么点书。
         if (candidates.isEmpty() || graph.scannedTier.value != tier) graph.rescan()
     }
-    LaunchedEffect(open) { if (!open) selected.clear() }
+    LaunchedEffect(open) { if (!open) selected = emptySet() }
 
     // 书架里已有的书名（去扩展名比对）。没有为此改数据库表结构，
     // 靠书名匹配覆盖绝大多数情况：TXT 的书名本来就取自文件名。
+    // EPUB 入库用的是元数据里的书名，常与文件名不同 —— 候选带着元数据书名时两个都比（见列表行）。
     val importedNames = remember(books) { books.map { it.title.trim().lowercase() }.toHashSet() }
 
     val shown = remember(candidates, query, filter) {
@@ -144,13 +152,14 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
     // 不能用 scrollable = false —— 访问引导卡片 + 已授权文件夹一多，底部的「导入选中」按钮
     // 就会被挤出弹层且没有任何办法滚到（弹层内容区在 scrollable=false 时不可滚动）。
     EchoSheet(open = open, onDismiss = onClose, title = S.common.importBooks, maxHeightFraction = 0.92f) {
-        AccessCard(tier = tier, scanner = scanner, context = context,
+        AccessCard(tier = tier, treesRev = treesRev, scanner = scanner, context = context,
             onGrantAllFiles = { scanner.allFilesAccessIntent()?.let { runCatching { context.startActivity(it) } } },
             onPickFolder = { runCatching { treePicker.launch(scanner.initialTreeUri()) } },
             onRequestLegacy = { legacyPermission.launch(android.Manifest.permission.READ_EXTERNAL_STORAGE) },
             onForgetTree = { t ->
                 scanner.forgetTree(t)
                 tier = scanner.tier()
+                treesRev++
                 graph.rescan()
             }
         )
@@ -203,8 +212,8 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
             if (shown.isNotEmpty()) {
                 val allSelected = shown.all { it.uri.toString() in selected }
                 TextAction(if (allSelected) S.importer.deselectAll else S.importer.selectAll) {
-                    if (allSelected) shown.forEach { selected.remove(it.uri.toString()) }
-                    else shown.forEach { if (it.uri.toString() !in selected) selected.add(it.uri.toString()) }
+                    val keys = shown.mapTo(HashSet()) { it.uri.toString() }
+                    selected = if (allSelected) selected - keys else selected + keys
                 }
             }
         }
@@ -222,10 +231,11 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
                 CandidateRow(
                     cand = cand,
                     checked = cand.uri.toString() in selected,
-                    imported = cand.baseName.trim().lowercase() in importedNames,
+                    imported = cand.baseName.trim().lowercase() in importedNames ||
+                        cand.title?.let { it.trim().lowercase() in importedNames } == true,
                     onToggle = {
                         val k = cand.uri.toString()
-                        if (k in selected) selected.remove(k) else selected.add(k)
+                        selected = if (k in selected) selected - k else selected + k
                     }
                 )
             }
@@ -248,7 +258,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
         // 按钮仍写「导入选中的 10 本」却只会导入当前可见的那 2 本，另外 8 本被静默丢弃；
         // 若筛选后一本都不可见，按钮甚至看着可点却毫无反应。
         // 这里统一从全量 candidates 解析，顺带把重扫后已消失的陈旧勾选自然排除掉。
-        val picked = remember(candidates, selected.size, selected.toList()) {
+        val picked = remember(candidates, selected) {
             candidates.filter { it.uri.toString() in selected }
         }
         GradientButton(
@@ -261,7 +271,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
             val uris = picked.map { it.uri }
             if (uris.isNotEmpty()) {
                 graph.pendingImports.offer(uris)
-                selected.clear()
+                selected = emptySet()
                 onClose()
             }
         }
@@ -277,6 +287,8 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
 @Composable
 private fun AccessCard(
     tier: AccessTier,
+    /** 已授权文件夹列表的版本号：授权 / 撤销 / 回到前台时变，列表跟着重读 */
+    treesRev: Int,
     scanner: app.echoread.data.BookScanner,
     context: android.content.Context,
     onGrantAllFiles: () -> Unit,
@@ -287,7 +299,7 @@ private fun AccessCard(
     val c = echo
     // 这里是一次 binder IPC（persistedUriPermissions）且可能落一次 SharedPreferences 写。
     // AccessCard 在扫描期间会随进度每帧重组，绝不能放在组合期直接调用。
-    val trees = remember(tier) { scanner.grantedTrees() }
+    val trees = remember(tier, treesRev) { scanner.grantedTrees() }
     when (tier) {
         AccessTier.ALL_FILES, AccessTier.LEGACY -> {
             Row(

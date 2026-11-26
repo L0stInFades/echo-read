@@ -182,6 +182,7 @@ object EnStrings : Strings {
         override val backToPlaybackButton = "Back to where it's reading"
         override val backToPlaybackPosition = "Back to where it's reading"
         override val sleepTimer = "Sleep timer"
+        override fun sleepTimerState(state: String) = "Sleep timer: $state"
         override val sleepChapterShort = "Ch. end"
         override val previousChapter = "Previous chapter"
         override val nextChapter = "Next chapter"

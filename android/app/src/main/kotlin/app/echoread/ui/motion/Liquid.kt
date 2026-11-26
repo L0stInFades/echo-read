@@ -175,7 +175,8 @@ fun Modifier.liquidPress(
         }
         .semantics(mergeDescendants = true) {
             role = Role.Button
-            onClick(label = onClickLabel) { clickRef.value(); true }
+            // 停用时读屏发来的点击也不执行：disabled() 只是标记，拦不住无障碍服务直接触发动作
+            onClick(label = onClickLabel) { if (enabled) clickRef.value(); enabled }
             if (!enabled) disabled()
         }
         .graphicsLayer {

@@ -373,6 +373,21 @@ fun Badge(text: String, color: Color = echo.text2, modifier: Modifier = Modifier
     )
 }
 
+/** 选中标记：一枚实心的强调色对勾（选中态不靠整行换底色表达） */
+@Composable
+internal fun CheckBadge(size: Dp = 22.dp) {
+    val c = echo
+    Box(Modifier.size(size).background(c.accent, CircleShape), contentAlignment = Alignment.Center) {
+        Icon(EchoIcons.Check, S.common.selected, tint = c.onAccent, modifier = Modifier.size(size * 0.6f))
+    }
+}
+
+fun formatBytes(n: Long): String = when {
+    n > 1024 * 1024 -> String.format(java.util.Locale.ROOT, "%.1f MB", n / 1024.0 / 1024.0)
+    n > 1024 -> "${n / 1024} KB"
+    else -> "$n B"
+}
+
 /* ---------- 输入 ---------- */
 
 /** 输入框文字样式：显式行高、去字体内边距、行内居中 —— 光标高度与基线在任何系统字体下都对齐 */

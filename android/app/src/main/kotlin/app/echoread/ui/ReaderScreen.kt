@@ -1,10 +1,6 @@
 package app.echoread.ui
 
 import app.echoread.core.i18n.S
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.FilledIconToggleButton
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
@@ -12,34 +8,18 @@ import android.os.Build
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.LoadingIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,19 +27,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import app.echoread.ui.glass.GlassStyle
 import app.echoread.ui.glass.LocalBackdrop
 import app.echoread.ui.glass.backdropSource
-import app.echoread.ui.glass.glass
-import app.echoread.ui.glass.glassLight
-import app.echoread.ui.glass.glassShadow
-import app.echoread.ui.glass.glassSurface
-import app.echoread.ui.motion.rememberGlassLight
 import app.echoread.ui.glass.rememberBackdrop
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,33 +42,16 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.drawscope.clipRect
-import androidx.compose.ui.graphics.drawscope.translate
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.layer.GraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.text.drawText
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
-import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
 import kotlinx.coroutines.flow.drop
-import androidx.compose.ui.unit.toIntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -105,28 +61,31 @@ import app.echoread.AppGraph
 import app.echoread.core.BookMeta
 import app.echoread.core.Bookmark
 import app.echoread.core.Bookmarks
-import app.echoread.core.bookFraction
 import app.echoread.core.started
-import app.echoread.core.GestureSettings
 import app.echoread.core.PageAxis
 import app.echoread.core.PlayerState
-import app.echoread.core.Range
-import app.echoread.tts.SleepMode
 import app.echoread.ui.motion.EchoMotion
-import app.echoread.ui.motion.EchoTransitions
 import app.echoread.ui.motion.MotionDriver
-import app.echoread.ui.motion.PressScale
 import app.echoread.ui.motion.Haptics
 import app.echoread.ui.motion.drivePaging
-import app.echoread.ui.motion.echoPress
 import app.echoread.ui.motion.preemptable
 import app.echoread.ui.reader.BookmarkRibbon
 import app.echoread.ui.reader.ChapterPages
 import app.echoread.ui.reader.ChapterWindow
 import app.echoread.ui.reader.LayoutSpec
 import app.echoread.ui.reader.PageRef
+import app.echoread.ui.reader.ReaderDock
 import app.echoread.ui.reader.ReaderPager
+import app.echoread.ui.reader.ReaderPages
+import app.echoread.ui.reader.ReaderStatusPill
+import app.echoread.ui.reader.ReaderTopBar
+import app.echoread.ui.reader.SleepTimerOverlay
+import app.echoread.ui.reader.SpeechEffects
+import app.echoread.ui.reader.ThinProgressLine
+import app.echoread.ui.reader.isOn
 import app.echoread.ui.reader.layoutChapter
+import app.echoread.ui.reader.segmentOn
+import app.echoread.ui.voice.TtsSettingsSheet
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -137,25 +96,11 @@ import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.abs
-
-private val RATE_STEPS = listOf(0.75f, 1f, 1.25f, 1.5f, 1.75f, 2f)
-// getter 而非普通 val：文案要随界面语言重新求值（切换语言只重建 Activity，不重启进程）。
-// SleepMode 是 data class / data object，每次新建的实例与已选中的模式照样按值相等。
-private val SLEEP_OPTIONS: List<Pair<String, SleepMode>> get() = listOf(
-    S.reader.sleep15 to SleepMode.Minutes(15), S.reader.sleep30 to SleepMode.Minutes(30), S.reader.sleep60 to SleepMode.Minutes(60),
-    S.reader.sleep90 to SleepMode.Minutes(90), S.reader.sleepEndOfChapter to SleepMode.Chapter, S.reader.off to SleepMode.Off
-)
 
 /** 切章请求：offset < 0 表示定位到该章末页 */
 private data class ChapterRequest(val chapter: Int, val offset: Int, val seq: Int)
-
-private data class FollowKey(
-    val follow: Boolean, val book: String, val state: PlayerState, val chapter: Int, val start: Int
-)
 
 /**
  * 分页阅读器：整章一次排版，三槽位画布跟手横滑翻页（可打断、可反向、书首书尾橡皮筋），
@@ -173,11 +118,11 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
     val engine = graph.engine
     val settings = graph.settings
 
-    val snap by engine.snapshot.collectAsState()
+    // 引擎快照每段都要变好几次，睡眠倒计时每秒一跳：阅读页本身一样都不读（组合期读了就是整页重组）。
+    // 快照只作为 State 往下传，由书页高亮、状态药丸、播放坞与 SpeechEffects 各自读；
+    // 睡眠倒计时与倍速由播放坞里那一格自己订阅。
+    val snapState = engine.snapshot.collectAsState()
     val reader by settings.reader.collectAsState()
-    val tts by settings.tts.collectAsState()
-    val sleepMode by player.sleepMode.collectAsState()
-    val sleepRemaining by player.sleepRemaining.collectAsState()
     val theme = readerThemeOf(reader.theme)
 
     // 翻页手势配置。手势泵的 pointerInput key 恒定（业务状态绝不重启手势协程），
@@ -217,14 +162,18 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
      *
      * 现在：这个开关只回答「要不要自动跟」；「现在偏没偏」是另一个**派生事实**（divergent，
      * 由视图页与朗读页逐帧比较得出），标签与返回入口由后者驱动；用户手动翻回朗读页时
-     * 开关自动合上（见下方复挂效应）。
+     * 开关自动合上（见 SpeechEffects 里的复挂效应）。
      */
-    var followSpeech by remember { mutableStateOf(true) }
+    val followState = remember { mutableStateOf(true) }
+    var followSpeech by followState
+    /** 视图页是否偏离了正在念的那一页：只由 SpeechEffects 维护（为什么是效应维护的状态，见那里） */
+    val divergentState = remember { mutableStateOf(false) }
     /**
      * 视图主动发起播放/切章时锁定的目标章。引擎快照还停在旧章的那几十毫秒里，跟随不得把视图拽回去 ——
      * 否则「在第 3 章点读」会看到画面先闪回第 2 章再跳回来。
      */
-    var awaitEngineChapter by remember { mutableIntStateOf(-1) }
+    val awaitState = remember { mutableIntStateOf(-1) }
+    var awaitEngineChapter by awaitState
     val reqSeq = remember { intArrayOf(0) }
 
     var showChapters by remember { mutableStateOf(false) }
@@ -271,7 +220,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
             null
         } ?: return null
         return withContext(layoutDispatcher) {
-            layoutChapter(measurer, d, sp.reader, readerThemeOf(sp.reader.theme), sp.width, sp.height.toFloat())
+            layoutChapter(measurer, d, sp, readerThemeOf(sp.theme))
         }
     }
 
@@ -309,14 +258,10 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
 
     // 排版规格去抖：字号/行距滑块每像素回调不再触发整章重排；首屏不等待
     LaunchedEffect(bookId) {
-        // haptics / 手势 / 动态取色都不影响正文排版：一律归一化掉。
-        // LayoutSpec 持有整个 ReaderSettings 并按结构相等比较，不归一化的话，
-        // 拖一下热区滑块、或切一下动态取色，就会把当前章连同前后邻章一起重排 + 交叉淡入
-        //（长章数百毫秒的卡顿）。正文颜色只跟阅读主题 reader.theme 走，与应用配色无关。
+        // 规格只收影响分页的那几项设置（白名单，见 LayoutSpec）：拖一下热区滑块、换配色、切玻璃都不会重排。
+        // 正文颜色只跟阅读主题 reader.theme 走，与应用配色无关。
         snapshotFlow {
-            if (pageSize.width > 0 && pageSize.height > 0) {
-                LayoutSpec(reader.copy(haptics = true, gestures = GestureSettings(), dynamicColor = false), pageSize.width, pageSize.height)
-            } else null
+            if (pageSize.width > 0 && pageSize.height > 0) LayoutSpec.of(reader, pageSize.width, pageSize.height) else null
         }
             .filterNotNull()
             .distinctUntilChanged()
@@ -379,138 +324,22 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
         else requestChapter(m.progress.chapterIndex, m.progress.offset)
     }
 
-    /* ---------- 引擎跟随 ---------- */
+    /* ---------- 引擎跟随：分歧、跟随定位、自动翻页、失败提示、静默阅读的进度保存 ---------- */
 
-    val engineOnThis = snap.bookId == bookId && snap.chapterIndex >= 0 && snap.state != PlayerState.IDLE
-    val engineChapter = if (engineOnThis) snap.chapterIndex else -1
-    val activeSeg: Range? = if (engineOnThis) Range(snap.segmentStart, snap.segmentEnd) else null
-    val synthesizing = snap.bookId == bookId && snap.state != PlayerState.IDLE && snap.synthesizing
-    val playing = snap.state == PlayerState.PLAYING && snap.bookId == bookId
+    SpeechEffects(
+        bookId = bookId,
+        graph = graph,
+        snapshot = snapState,
+        pager = pager,
+        window = window,
+        driver = driver,
+        followState = followState,
+        divergentState = divergentState,
+        awaitState = awaitState,
+        pendingChapter = { request?.chapter },
+        requestChapter = { index, offset -> requestChapter(index, offset) }
+    )
     val curPages = window.pagesOf(pager.anchor.chapter)
-
-    fun segFor(ref: PageRef): Range? = if (ref.chapter == engineChapter) activeSeg else null
-
-    /* ---------- 位置分歧：派生事实，不是闩 ---------- */
-
-    /** 引擎在本书上有一个有意义的朗读位置（播放中或暂停挂起） */
-    val speechLoaded = engineOnThis && (snap.state == PlayerState.PLAYING || snap.state == PlayerState.PAUSED)
-
-    /**
-     * 视图页是否偏离了**正在念的那一页**（可听页 = segmentStart + 片段长 × 播放进度所在的页）。
-     *
-     * 为什么是效应维护的状态而不是组合期直接算：可听页要读 playbackFraction()——
-     * 它不是快照状态，组合期读了既不纯也不会触发重组。效应在锚点/片段/播放态变化时重估一次。
-     *
-     * 为什么容差是**单页**而不是「片段覆盖的页范围」（第一版实现，实测被否）：
-     * 测试书里一段能横跨三页，「范围内都算在位」意味着用户从朗读页翻走两页都不出标签。
-     * 跟随中锚点本就是自动翻页按可听进度放置的，恒等于可听页；分歧对齐同一把尺，
-     * 「跨页片段暂停时倒判一页」的老问题也不存在 —— 暂停时 playbackFraction 保持原值。
-     *
-     * 已知且接受的迟滞：用户停在可听页、语音跨段移走时，没有状态发射把这里叫醒，
-     * 分歧要等下一个段边界（≤ 一段）才亮标签。为这几秒开常驻轮询不值得。
-     */
-    var divergent by remember { mutableStateOf(false) }
-    LaunchedEffect(pager.anchor, activeSeg, snap.state, speechLoaded, followSpeech, curPages, driver.isDragging, driver.isSettling) {
-        if (!speechLoaded) {
-            divergent = false
-            return@LaunchedEffect
-        }
-        val div = if (pager.anchor.chapter != snap.chapterIndex) true
-        else {
-            val pg = curPages
-            val seg = activeSeg
-            if (pg == null || seg == null || seg.end <= seg.start) false
-            else {
-                // 暂停不特判：playbackFraction 在暂停时保持原值（句柄还在），
-                // 取段首反而会把跨页片段的暂停判成偏离一页；无句柄时它为 0，自然退化到段首
-                val audible = (seg.start + ((seg.end - seg.start) * engine.playbackFraction()).toInt())
-                    .coerceIn(seg.start, seg.end - 1)
-                pager.anchor.page != pg.pageOf(audible)
-            }
-        }
-        divergent = div
-        /*
-         * 自动复挂：用户**自己翻回**可听页时，跟随开关自动合上。
-         * 没有这一条，手动翻回去之后自动翻页依然是死的（旧版正是如此 ——
-         * 闩只有点标签或点读才解，看起来就是「自动翻页随机失灵」）。
-         * 翻到语音尚未念到的页（跨页片段的尾页）：divergent=true → 不复挂 → 跟随不会把
-         * 刚翻到的页拽回去（实测复现过被拽回），标签如实提示「语音还没到这页」。
-         * 手指还按着时不复挂，松手落定后生效。
-         */
-        /*
-         * 复挂必须等**结算落地**（!isSettling），不只是手指抬起（!isDragging）。
-         * 松手到动画到达之间有约 300ms 的窗口：anchor 还停在旧页（commit 在到达时才发生），
-         * 「人在可听页」在这个窗口里恒成立 —— 在此复挂，落地后 divergent 变真，
-         * 跟随效应会立刻把用户刚翻到的页**拉回去**，翻页看起来就像失灵。
-         * （EchoAnchor 日志钉死过这条时序：settle→re-attach→commit→divergent→拉回。）
-         */
-        if (!followSpeech && !div && !driver.isDragging && !driver.isSettling) followSpeech = true
-    }
-
-    /**
-     * 跟随效应 —— 视图定位的**唯一写者**。
-     *
-     * 「回到朗读位置」的点击处理器原来还有一套自己的手工跳转（读一次 engine.current、
-     * 查一次 window、自己 launch pager.follow），与这里双写同一目标。它有两个死分支：
-     * 引擎恰在换章（chapterIndex = -1）或章面尚未排版时**静默什么都不做**，而 follow 闩
-     * 已被清掉 —— 标签消失、画面不动，最长要等下一个片段边界（约 20 秒）才被这里救回。
-     * 现在点击只翻 followSpeech 开关；开关一变这里必然收到发射，收不到条件就等下一次
-     * 状态变化再收 —— 流驱动天然自愈，死分支不存在了。
-     *
-     * 与旧版的三处语义差异：
-     * ① 允许 PAUSED：暂停时点「回到朗读位置」也要能定位（旧版只在 PLAYING 生效）；
-     * ② 跨页片段（一段话横跨两页）期间，视图停在片段覆盖的任何一页都算「在位」，
-     *    不再把视图拽回片段首页 —— 否则暂停瞬间会倒翻一页（自动翻页已按可听进度翻过去了）；
-     * ③ 定位目标取**正在念的字**（segmentStart + 片段长 × 播放进度），不是片段首字 ——
-     *    「回到朗读位置」应该落在声音所在的页。
-     */
-    LaunchedEffect(bookId) {
-        snapshotFlow { FollowKey(followSpeech, snap.bookId, snap.state, snap.chapterIndex, snap.segmentStart) }
-            .distinctUntilChanged()
-            .collectLatest { k ->
-                if (awaitEngineChapter >= 0) {
-                    val reached = k.book == bookId && k.chapter == awaitEngineChapter
-                    // 引擎回到空闲/报错说明这次装载没成功，锁必须解开，否则跟随永久失效
-                    val aborted = k.state == PlayerState.IDLE || k.state == PlayerState.ERROR
-                    if (reached || aborted) awaitEngineChapter = -1 else return@collectLatest
-                }
-                if (!k.follow || k.book != bookId) return@collectLatest
-                if ((k.state != PlayerState.PLAYING && k.state != PlayerState.PAUSED) || k.chapter < 0) return@collectLatest
-                val pg = window.pagesOf(k.chapter)
-                if (k.chapter != pager.anchor.chapter || pg == null) {
-                    if (request?.chapter != k.chapter) requestChapter(k.chapter, k.start)
-                    return@collectLatest
-                }
-                val segEnd = snap.segmentEnd
-                // 同 divergence：暂停时 playbackFraction 保持原值，不特判（取段首会倒定位一页）
-                val audible = if (segEnd > k.start) {
-                    (k.start + ((segEnd - k.start) * engine.playbackFraction()).toInt()).coerceIn(k.start, segEnd - 1)
-                } else k.start
-                val target = PageRef(k.chapter, pg.pageOf(audible).coerceIn(0, pg.pageCount - 1))
-                if (target != pager.anchor) preemptable { pager.follow(target) }
-            }
-    }
-
-    // 片段跨页：按播放进度估算念到的字位，越过下页首字即自动翻页（不等下一句）
-    LaunchedEffect(activeSeg, pager.anchor, playing, followSpeech, curPages) {
-        val seg = activeSeg ?: return@LaunchedEffect
-        val pg = curPages ?: return@LaunchedEffect
-        if (!playing || !followSpeech || engineChapter != pager.anchor.chapter) return@LaunchedEffect
-        val cur = pager.anchor.page.coerceIn(0, pg.pageCount - 1)
-        if (cur >= pg.pageCount - 1) return@LaunchedEffect
-        val nextStart = pg.pageStartOffset(cur + 1)
-        if (seg.end <= nextStart || seg.start >= nextStart) return@LaunchedEffect
-        val len = (seg.end - seg.start).coerceAtLeast(1)
-        while (isActive) {
-            delay(250)
-            if (driver.isDragging) continue
-            val est = seg.start + (len * engine.playbackFraction()).toInt()
-            if (est + 2 >= nextStart) {
-                preemptable { pager.follow(PageRef(pager.anchor.chapter, cur + 1)) }
-                break
-            }
-        }
-    }
 
     // 「轻点正文任意字开始朗读」是一次性教学，放进底栏会永久占掉一整条带。
     // 改成开一本没读过的书时提示一次：说完就走，不占版面。
@@ -520,35 +349,6 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
             delay(700)
             Toaster.show(S.reader.tapAnyWordTo, ToastKind.INFO, 3800)
         }
-    }
-
-    var lastError by remember { mutableStateOf("") }
-    LaunchedEffect(snap.failure) {
-        val f = snap.failure
-        if (f == null) {
-            lastError = ""
-            return@LaunchedEffect
-        }
-        if (snap.bookId != bookId) return@LaunchedEffect
-        val head = f.headline()
-        if (head == lastError) return@LaunchedEffect
-        lastError = head
-        // 网络类失败带「详情」入口；章节/播放类没有可展开的结构化信息
-        val net = f.net
-        if (net != null) ErrorDetails.toast(net) else Toaster.error(head, 5000)
-    }
-
-    /* ---------- 进度：手动翻页（非播放中）也记录当前页首字 ---------- */
-
-    var lastManualSave by remember { androidx.compose.runtime.mutableLongStateOf(0L) }
-    LaunchedEffect(pager.anchor, curPages, playing) {
-        val pg = curPages ?: return@LaunchedEffect
-        if (playing) return@LaunchedEffect
-        delay(600)
-        val now = System.currentTimeMillis()
-        if (now - lastManualSave < 1500) return@LaunchedEffect
-        lastManualSave = now
-        graph.library.saveProgress(bookId, pager.anchor.chapter, pg.pageStartOffset(pager.anchor.page.coerceIn(0, pg.pageCount - 1)))
     }
 
     /* ---------- 交互 ---------- */
@@ -671,7 +471,10 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
         Haptics.tick(view)
         scope.launch {
             bookmarks = if (pageMarks.isNotEmpty()) graph.bookmarks.remove(bookId, pageMarks) else {
-                val at = activeSeg?.start?.takeIf { shown.chapter == engineChapter && it in range } ?: range.start
+                // 正在念的那一段在这一刻从快照读：阅读页不在组合期订阅快照
+                val s = snapState.value
+                val engineChapter = if (s.isOn(bookId)) s.chapterIndex else -1
+                val at = s.segmentOn(bookId)?.start?.takeIf { shown.chapter == engineChapter && it in range } ?: range.start
                 graph.bookmarks.add(bookId, shown.chapter, at, Bookmarks.excerpt(text, at))
             }
         }
@@ -727,13 +530,6 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
     }
     val tapRef = rememberUpdatedState<(Offset, IntSize) -> Unit>({ p, s -> handleTap(p, s) })
 
-    fun cycleRate() {
-        val cur = tts.rate
-        val next = RATE_STEPS.firstOrNull { it > cur + 0.01f } ?: RATE_STEPS[0]
-        settings.updateTts { it.copy(rate = next) }
-        Toaster.show(S.reader.speedLabel(formatRate(next)), durationMs = 1200)
-    }
-
     fun leave() {
         player.saveProgressNow()
         engine.pause()
@@ -768,49 +564,6 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
         }
     }
 
-    /**
-     * 书级阅读进度（0..1），与书架用的是 core 里同一个函数。
-     *
-     * 旧实现是 `snap.segmentIndex / snap.segmentCount` —— 那测的是「这一章打了几次合成请求」，
-     * 不是读到哪。它有三个实测缺陷：从没按过播放时恒为 0（纯阅读的用户永远看不到进度）、
-     * 换章时会 100%→0% 倒退、拖动「单片段字数」滑块能让静止不动的进度条走 10 个百分点。
-     *
-     * 取偏移的优先级：正在本书朗读 → 朗读位置；本书暂停 → 冻结在段首；其余 → 当前页首字。
-     * 最后一条保证它**永远不为 0**，因为翻到哪一页应用一直是知道的。
-     */
-    val rawProgress = run {
-        val m = meta
-        val onThisBook = snap.bookId == bookId && snap.chapterIndex >= 0
-        val speaking = onThisBook && (snap.state == PlayerState.PLAYING || snap.state == PlayerState.PAUSED)
-        if (m == null) 0f
-        else if (speaking) {
-            val segLen = (snap.segmentEnd - snap.segmentStart).coerceAtLeast(0)
-            // 段内插值只在播放时做；暂停时冻结在段首，避免 playbackFraction() 归零造成回跳
-            val within = if (playing && segLen > 0) (segLen * engine.playbackFraction()).toInt() else 0
-            val chapLen = window.pagesOf(snap.chapterIndex)?.chapter?.text?.length
-                ?: (if (m.chapterCount > 0) m.totalChars / m.chapterCount else m.totalChars)
-            bookFraction(snap.chapterIndex, snap.segmentStart + within, chapLen, m.chapterCount)
-        } else {
-            val pg = curPages
-            val off = pg?.pageStartOffset(pager.anchor.page.coerceIn(0, (pg.pageCount - 1).coerceAtLeast(0))) ?: 0
-            val chapLen = pg?.chapter?.text?.length ?: (if (m.chapterCount > 0) m.totalChars / m.chapterCount else m.totalChars)
-            bookFraction(pager.anchor.chapter, off, chapLen, m.chapterCount)
-        }
-    }
-    // 单调钳制：playbackFraction() 在段间空档（含退避重试期）会归零，不钳的话进度条每分钟
-    // 都要往回弹几次。只有用户自己跳转（seek / 翻页 / 换章 / 换书）才允许回退。
-    var shownProgress by remember { mutableFloatStateOf(0f) }
-    val progressResetKey = Triple(bookId, pager.anchor.chapter, snap.segmentStart)
-    var lastResetKey by remember { mutableStateOf(progressResetKey) }
-    val chapterProgress = run {
-        if (progressResetKey != lastResetKey) {
-            lastResetKey = progressResetKey
-            shownProgress = rawProgress
-        } else if (rawProgress > shownProgress) {
-            shownProgress = rawProgress
-        }
-        shownProgress
-    }
     val dockBg = if (theme.isDark) Color(0xFF15171E) else Color.White
     // 阅读页上的悬浮件用阅读主题自己的颜色做玻璃着色：阅读主题独立于系统深浅色，取 app 配色会错配
     val floatGlass = remember(theme.id) {
@@ -857,39 +610,19 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
 
         Column(Modifier.fillMaxSize().backdropSource(backdrop, theme.bg)) {
             // 顶栏
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .background(theme.bg)
-                    .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ChromeGroup(chromeGlass, chromeShadow) {
-                    GlassIcon(EchoIcons.Back, S.reader.back, tint = theme.text, modifier = Modifier.testTag("reader.back")) { leave() }
-                }
-                Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-                    Text(
-                        window.pagesOf(shown.chapter)?.chapter?.title ?: "…",
-                        color = theme.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis
-                    )
-                    Text(meta?.title ?: "", color = theme.dim, style = MaterialTheme.typography.labelSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                }
-                // 四枚图标：每枚收到 40dp 宽（触控高度仍是 44dp），给中间的章节名多留一点地方
-                ChromeGroup(chromeGlass, chromeShadow, inset = 2.dp) {
-                    val slot = Modifier.width(40.dp)
-                    val marked = pageMarks.isNotEmpty()
-                    GlassIcon(
-                        if (marked) EchoIcons.BookmarkFilled else EchoIcons.Bookmark,
-                        if (marked) S.reader.removeBookmark else S.reader.addBookmark,
-                        tint = if (marked) theme.accent else theme.text,
-                        modifier = slot
-                    ) { toggleBookmark() }
-                    GlassIcon(EchoIcons.Toc, S.common.contents, tint = theme.text, modifier = slot) { showChapters = true }
-                    GlassIcon(EchoIcons.TextStyle, S.common.readingStyle, tint = theme.text, modifier = slot) { showStyle = true }
-                    GlassIcon(EchoIcons.Waves, S.common.voiceSettings, tint = theme.text, modifier = slot) { showTts = true }
-                }
-            }
+            ReaderTopBar(
+                theme = theme,
+                glass = chromeGlass,
+                shadow = chromeShadow,
+                chapterTitle = window.pagesOf(shown.chapter)?.chapter?.title ?: "…",
+                bookTitle = meta?.title ?: "",
+                marked = pageMarks.isNotEmpty(),
+                onBack = { leave() },
+                onBookmark = { toggleBookmark() },
+                onContents = { showChapters = true },
+                onStyle = { showStyle = true },
+                onVoice = { showTts = true }
+            )
             // 排版中的细进度线（固定占位，不改变正文高度）
             Box(Modifier.fillMaxWidth().height(2.dp)) {
                 if (laying) ThinProgressLine(theme.accent, Modifier.fillMaxWidth())
@@ -925,50 +658,7 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                                 onSettle = { v -> pager.settle(v) },
                             )
                     ) {
-                        val anchorPages = window.pagesOf(pager.anchor.chapter)
-                        if (anchorPages == null) {
-                            PageSkeleton(theme.text, skeletonLine, Modifier.fillMaxSize())
-                        } else {
-                            // 三槽位：上一页 / 当前页 / 下一页，各自一个 RenderNode，位移只写 graphicsLayer。
-                            // 静止时左右两页 alpha=0，HWUI 直接跳过，正文只画一份。
-                            for (slot in -1..1) {
-                                val ref = (if (slot == 0) pager.anchor else window.resolve(pager.anchor, slot)) ?: continue
-                                val pg = window.pagesOf(ref.chapter) ?: continue
-                                if (ref.page >= pg.pageCount) continue
-                                key(ref.chapter, ref.page) {
-                                    Box(
-                                        Modifier
-                                            .fillMaxSize()
-                                            .graphicsLayer {
-                                                val v = driver.value
-                                                // 两个轴都显式赋值：换方向时另一轴必须归零，不能依赖图层属性的复位时机
-                                                val off = slot - v
-                                                translationX = if (verticalPaging) 0f else off * size.width
-                                                translationY = if (verticalPaging) off * size.height else 0f
-                                                alpha = when {
-                                                    slot == 0 -> if (pager.outgoing != null) pager.fade.value else 1f
-                                                    abs(v) > 0.0005f -> 1f
-                                                    else -> 0f
-                                                }
-                                                compositingStrategy = CompositingStrategy.ModulateAlpha
-                                            }
-                                    ) {
-                                        PageCanvas(pg, ref.page, segFor(ref), synthesizing, theme, Modifier.fillMaxSize())
-                                    }
-                                }
-                            }
-                        }
-                        // 跨章 / 重排版时淡出的旧页：新页排好之前屏幕上一直有内容
-                        pager.outgoing?.let { old ->
-                            Box(
-                                Modifier.fillMaxSize().graphicsLayer {
-                                    alpha = 1f - pager.fade.value
-                                    compositingStrategy = CompositingStrategy.ModulateAlpha
-                                }
-                            ) {
-                                PageCanvas(old.first, old.second.coerceIn(0, old.first.pageCount - 1), null, false, theme, Modifier.fillMaxSize())
-                            }
-                        }
+                        ReaderPages(bookId, snapState, pager, window, driver, verticalPaging, theme, skeletonLine)
                     }
                     // 页脚：页码/章号读「呈现页」，翻页期间与画面严格一致
                     Row(Modifier.fillMaxWidth().height(22.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -985,202 +675,45 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
                 // 状态悬浮层：错误 / 重试 / 合成中 / 回到朗读位置。
                 // 与睡眠面板同款 —— 悬浮在页面区底部、不参与布局，绝不改变正文 pageSize
                 //（否则状态一闪一闪就是一章一章地重排版，见坞注释里的反馈环记录）。
-                run {
-                    val failure = snap.failure?.takeIf { snap.bookId == bookId }
-                    val retryNote = snap.retryNote.takeIf { it.isNotEmpty() && snap.bookId == bookId }
-                    val busySynth = (snap.synthesizing || snap.state == PlayerState.LOADING) && snap.bookId == bookId
-                    val returnable = divergent && !followSpeech
-                    val showStatus = failure != null || retryNote != null || busySynth || returnable
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = showStatus,
-                        enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut,
-                        modifier = Modifier.align(Alignment.BottomCenter).zIndex(5f)
-                    ) {
-                        Row(
-                            Modifier
-                                .padding(horizontal = 10.dp, vertical = 12.dp)
-                                .glassShadow(CircleShape, Color.Black.copy(alpha = if (theme.isDark) 0.4f else 0.16f), blur = 14.dp, dy = 4.dp)
-                                .glass(CircleShape, floatGlass, pageBackdrop.takeIf { c.glassOn })
-                                .padding(horizontal = 16.dp, vertical = 9.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val statusText = when {
-                                // 失败最优先：它是用户此刻唯一需要知道的事，且必定带状态码
-                                failure != null -> failure.headline()
-                                retryNote != null -> retryNote
-                                // 「回到朗读位置」压过「正在合成…」：后者是环境噪声，前者是用户的待办动作。
-                                // 反过来排的话（实测踩过）：系统 TTS 每段要合成 1~2 秒，播放中约一半时间
-                                // 状态行被合成提示占着且不可点 —— 返回入口一闪一闪、时点时不点。
-                                returnable -> S.reader.backToPlaybackButton
-                                busySynth -> S.common.generating
-                                else -> ""
-                            }
-                            Text(
-                                statusText,
-                                color = when {
-                                    failure != null -> if (failure is app.echoread.tts.EngineFailure.SkippedSegments) warningColor(theme.isDark) else dangerColor(theme.isDark)
-                                    retryNote != null -> warningColor(theme.isDark)
-                                    returnable -> theme.accent
-                                    else -> theme.text
-                                },
-                                style = MaterialTheme.typography.labelMedium,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier
-                                    .widthIn(max = 300.dp)
-                                    .then(
-                                        if (returnable && failure == null && retryNote == null)
-                                            Modifier.echoPress(pressedScale = PressScale.Chip, onClickLabel = S.reader.backToPlaybackPosition) { followSpeech = true }
-                                        else Modifier
-                                    )
-                            )
-                            val detail = failure?.net ?: snap.retry?.error?.takeIf { snap.bookId == bookId }
-                            if (detail != null) {
-                                Text(
-                                    S.common.details,
-                                    color = theme.accent,
-                                    style = MaterialTheme.typography.labelMediumEmphasized,
-                                    modifier = Modifier
-                                        .padding(start = 10.dp)
-                                        .echoPress(pressedScale = PressScale.Chip) { ErrorDetails.show(detail) }
-                                )
-                            }
-                        }
-                    }
-                }
+                ReaderStatusPill(
+                    bookId = bookId,
+                    snapshot = snapState,
+                    isReturnable = { divergentState.value && !followState.value },
+                    theme = theme,
+                    glass = floatGlass,
+                    backdrop = pageBackdrop.takeIf { c.glassOn },
+                    onReturn = { followSpeech = true },
+                    modifier = Modifier.align(Alignment.BottomCenter).zIndex(5f)
+                )
 
                 // 睡眠定时选项：悬浮在页面区底部（临时弹出，不改变页面尺寸）
-                androidx.compose.animation.AnimatedVisibility(visible = showSleep, enter = EchoTransitions.expandIn, exit = EchoTransitions.collapseOut, modifier = Modifier.align(Alignment.BottomCenter).zIndex(5f)) {
-                    Column(
-                        Modifier
-                            .padding(start = 10.dp, end = 10.dp, top = 14.dp, bottom = 22.dp)
-                            .widthIn(max = 380.dp)
-                            .glassShadow(RoundedCornerShape(26.dp), Color.Black.copy(alpha = if (theme.isDark) 0.45f else 0.18f), blur = 20.dp, dy = 6.dp)
-                            .glass(RoundedCornerShape(26.dp), floatGlass, pageBackdrop.takeIf { c.glassOn })
-                            .padding(horizontal = 10.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        // 六个选项是单选而非筛选，用分段控件。拆成两排各三个：一排六个在窄屏上放不下。
-                        // 配色显式传阅读主题色 —— 默认取的是 app 配色，
-                        // 浅色系统 + 暗夜阅读主题时会在深色面板上画出浅色容器。
-                        val sleepRows = listOf(SLEEP_OPTIONS.take(3), SLEEP_OPTIONS.drop(3))
-                        for (row in sleepRows) {
-                            EchoSegmented(
-                                items = row.map { SegmentItem(it.first) },
-                                selectedIndex = row.indexOfFirst { it.second == sleepMode },
-                                containerColor = theme.text.copy(alpha = 0.08f),
-                                contentColor = theme.text.copy(alpha = 0.8f),
-                                checkedContainerColor = if (theme.isDark) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.92f),
-                                checkedContentColor = theme.text,
-                                height = 42.dp
-                            ) { i ->
-                                player.setSleepTimer(row[i].second)
-                                showSleep = false
-                            }
-                        }
-                    }
-                }
+                SleepTimerOverlay(
+                    visible = showSleep,
+                    player = player,
+                    theme = theme,
+                    glass = floatGlass,
+                    backdrop = pageBackdrop.takeIf { c.glassOn },
+                    onPicked = { showSleep = false },
+                    modifier = Modifier.align(Alignment.BottomCenter).zIndex(5f)
+                )
             }
 
             // 底部播放坞：固定占位，不遮挡正文
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .background(theme.bg)
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 10.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                /*
-                 * 播放坞是一枚**悬浮的玻璃胶囊**（0.6.0）：两侧留边、四角全圆，浮在书页底色上。
-                 *
-                 * 历史：最早它是一块横贯整屏的实心圆角卡，加上页脚与系统导航条，屏幕底部有三层「壳」，
-                 * 观感就是一堵墙，于是 0.3 起干脆不画容器。现在的胶囊不贴边、半透明，只有一圈高光与很淡的投影，
-                 * 不再是墙；它与顶栏的按钮组、书架上的悬浮件是同一种材质。
-                 *
-                 * 尺寸与原来逐 dp 相同（内边距没有变）：坞高恒定，正文画布的 pageSize 不受影响。
-                 * 状态行仍是**悬浮层**（挂在正文画布底部，见上方 run{} 块 ——
-                 * 它绝不参与布局，否则每次闪现都会改变 pageSize 触发整章重排版）。
-                 */
-                Column(
-                    Modifier
-                        .widthIn(max = 520.dp)
-                        .fillMaxWidth()
-                        .glassShadow(RoundedCornerShape(30.dp), chromeShadow, blur = 18.dp, dy = 6.dp)
-                        .glassSurface(RoundedCornerShape(30.dp), chromeGlass)
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 10.dp),
-                    // 显式行距。实测原来三条内容带之间只有 3.0 / 1.7 / 0.3dp，
-                    // 也就是元素直接贴在一起 —— M3 的最小内容间距是 8dp。
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    /*
-                     * 状态行不在这里 —— 它是**悬浮层**，挂在正文画布的底部（与睡眠面板同款）。
-                     *
-                     * 曾经它是坞 Column 的第一行，实测出一条深层反馈环（EchoFollow 日志钉死）：
-                     * 「正在合成…」每段闪现/消失 → 坞高变化 → 正文画布 pageSize 变化 →
-                     * LayoutSpec 变化 → **整章重排版**（每段一次！）；「回到朗读位置」点击后
-                     * 标签消失 → 重排版 → 分页移位 → 锚点掉页 → 又偏离 → 标签复现 → 再排版
-                     * （11 秒内三次 landOn）。状态行改为悬浮后坞高恒定，pageSize 与状态彻底解耦。
-                     */
-                    // 五个等权重槽位：播放键在第三格，因此**数学上**落在坞的正中。
-                    // 旧写法是 spacedBy(CenterHorizontally) 把五个控件当一组居中，
-                    // 而睡眠与倍速挂在右侧，实测把播放键推得偏左 99px（33dp）—— 最重要的控件不在中心。
-                    // 顺序也改成「次要 | 主要 | 主 | 主要 | 次要」的对称形，两侧视觉重量相当。
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        DockSlot {
-                            if (sleepMode === SleepMode.Off) {
-                                IconButtonEcho(EchoIcons.Moon, S.reader.sleepTimer, tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp) { showSleep = !showSleep }
-                            } else {
-                                Text(
-                                    if (sleepMode === SleepMode.Chapter) S.reader.sleepChapterShort else "%d:%02d".format(java.util.Locale.ROOT, sleepRemaining / 60, sleepRemaining % 60),
-                                    color = theme.accent,
-                                    style = MaterialTheme.typography.labelSmallEmphasized,
-                                    modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { showSleep = !showSleep }.padding(horizontal = 6.dp, vertical = 8.dp)
-                                )
-                            }
-                        }
-                        DockSlot {
-                            IconButtonEcho(EchoIcons.SkipPrev, S.reader.previousChapter, tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = pager.anchor.chapter > 0) { gotoChapter(pager.anchor.chapter - 1) }
-                        }
-                        DockSlot {
-                            PlayButton(
-                                playing = playing,
-                                accent = theme.accent,
-                                onAccent = theme.bg
-                            ) { togglePlay() }
-                        }
-                        DockSlot {
-                            IconButtonEcho(EchoIcons.SkipNext, S.reader.nextChapter, tint = theme.text.copy(alpha = 0.75f), size = 36.dp, iconSize = 18.dp, enabled = meta?.let { pager.anchor.chapter < it.chapterCount - 1 } ?: false) { gotoChapter(pager.anchor.chapter + 1) }
-                        }
-                        DockSlot {
-                            Text(
-                                "${formatRate(tts.rate)}×",
-                                color = theme.text.copy(alpha = 0.75f),
-                                style = MaterialTheme.typography.labelSmallEmphasized,
-                                modifier = Modifier.echoPress(pressedScale = PressScale.Chip) { cycleRate() }.padding(horizontal = 8.dp, vertical = 8.dp)
-                            )
-                        }
-                    }
-                    // 进度条独占一行、横贯整个坞：它表达的是「位置」，长度就是它的可读性 ——
-                    // 挤在三分之一宽的栏里读不出来。顺带长错误文案也不再被两侧控件压扁。
-                    //
-                    // **这里用直条，不用 M3 的波形进度条。** 试过并实测否掉了：
-                    // 波形要成立，活动段必须长到能画出好几个周期。Android 通知栏里那条 squiggly
-                    // 进度条表示的是「单曲内的位置」，活动段通常占大半；而这条表示的是**全书位置**，
-                    // 读到第 2/20 章时活动段只有约 5%（约 100px），24dp 波长也只够一个多周期，
-                    // 画出来是一条肥虫子而不是波。振幅（±3dp）还比 4dp 的条本身更粗。
-                    // 「正在播放」已经由播放键的圆↔方圆角形变表达（M3 自己的形状形变），
-                    // 进度条不必再喊一遍，直条在任何进度下都干净，也不产生常驻动画。
-                    LinearProgressIndicator(
-                        progress = { chapterProgress },
-                        modifier = Modifier.fillMaxWidth(),
-                        color = if (snap.failure != null && snap.bookId == bookId) dangerColor(theme.isDark) else theme.accent,
-                        trackColor = theme.text.copy(alpha = 0.12f)
-                    )
-                }
-            }
+            ReaderDock(
+                bookId = bookId,
+                graph = graph,
+                snapshot = snapState,
+                meta = meta,
+                pager = pager,
+                window = window,
+                theme = theme,
+                glass = chromeGlass,
+                shadow = chromeShadow,
+                onSleep = { showSleep = !showSleep },
+                onPrev = { gotoChapter(pager.anchor.chapter - 1) },
+                onPlay = { togglePlay() },
+                onNext = { gotoChapter(pager.anchor.chapter + 1) }
+            )
         }
 
         LaunchedEffect(showChapters) { if (showChapters && titles.isEmpty()) titles = graph.library.chapterTitles(bookId) }
@@ -1203,191 +736,3 @@ fun ReaderScreen(bookId: String, graph: AppGraph, nav: MotionDriver, autoplay: B
         }
     }
 }
-
-/** 文字层录制指纹：只在页 / 章 / 文字色 / 画布尺寸变化时重录，draw 期比较不分配 */
-private class PageRecordKey {
-    private var pages: ChapterPages? = null
-    private var page = -1
-    private var color = Color.Unspecified
-    private var size = Size.Zero
-    fun matches(p: ChapterPages, pg: Int, c: Color, s: Size) = pages === p && page == pg && color == c && size == s
-    fun set(p: ChapterPages, pg: Int, c: Color, s: Size) { pages = p; page = pg; color = c; size = s }
-}
-
-/**
- * 单页绘制：高亮按行绘制（跳过段间空白行，行尾以可见文字为界，不重排文本），正文文字走「Picture 缓存」——
- * 整章 drawText 只在 (页, 章, 文字色, 尺寸) 变化时录制一次进 [GraphicsLayer]（HWUI RenderNode 显示列表），
- * 之后每段高亮切换、每帧拖动都只是「重放显示列表 + 几个圆角矩形」，不再重新遍历整章段落生成绘制指令。
- * 这就是 iOS CALayer 的 shouldRasterize 思路，只是保留矢量显示列表而非位图，无采样模糊、零显存。
- */
-@Composable
-private fun PageCanvas(pages: ChapterPages, page: Int, active: Range?, synthesizing: Boolean, theme: ReaderTheme, modifier: Modifier) {
-    val top = pages.pageTop(page)
-    val range = pages.pages[page]
-    val layout = pages.layout
-    // 高亮矩形连内缩量一起算好：draw lambda 里零分配
-    val hlRects = remember(pages, page, active) {
-        if (active == null) emptyList() else {
-            val rs = pages.toRendered(active.start)
-            val re = pages.toRendered(active.end) // 章节 end 为开区间，映射后仍为开区间
-            val out = ArrayList<Rect>()
-            val firstLine = maxOf(layout.getLineForOffset(rs), range.first)
-            val lastLine = minOf(layout.getLineForOffset(maxOf(re - 1, rs)), range.last)
-            for (line in firstLine..lastLine) {
-                val ls = layout.getLineStart(line)
-                val le = layout.getLineEnd(line, visibleEnd = true)
-                if (le <= ls) continue // 段间占位 / 空白行
-                val s = maxOf(rs, ls)
-                val e = minOf(re, le)
-                if (s >= e) continue
-                // 起点用字符的真实水平位置（首行缩进不涂色）；终点到行尾时取行右边界
-                val left = layout.getHorizontalPosition(s, usePrimaryDirection = true)
-                val right = if (e >= le) layout.getLineRight(line) else layout.getHorizontalPosition(e, usePrimaryDirection = true)
-                if (right > left) out.add(Rect(left - 2f, layout.getLineTop(line) + 2f, right + 2f, layout.getLineBottom(line) - 2f))
-            }
-            out
-        }
-    }
-    // 合成中不再用 infiniteRepeatable：60fps 常驻动画在听书场景（动辄数小时）纯属耗电，
-    // 且 .value 在组合期读会让整页每帧重组、每帧重新提交整章 drawText。改为静态压暗。
-    val hlColor = theme.hl.copy(alpha = (theme.hl.alpha * if (synthesizing) 1.0f else 1.6f).coerceAtMost(1f))
-    val bottom = layout.getLineBottom(range.last)
-    val textColor = theme.text
-    val textLayer = rememberGraphicsLayer()
-    val recorded = remember(textLayer) { PageRecordKey() }
-    Spacer(
-        modifier.clipToBounds().drawBehind {
-            // 整章布局只画本页：裁剪到「本页最后一行底边」，下一页的行绝不漏出（画布余量只留白）
-            val clipBottom = minOf(bottom - top, size.height)
-            if (!recorded.matches(pages, page, textColor, size)) {
-                textLayer.record(this, layoutDirection, size.toIntSize()) {
-                    clipRect(left = 0f, top = 0f, right = size.width, bottom = clipBottom) {
-                        translate(top = -top) { drawText(layout, color = textColor) }
-                    }
-                }
-                recorded.set(pages, page, textColor, size)
-            }
-            if (hlRects.isNotEmpty()) {
-                clipRect(left = 0f, top = 0f, right = size.width, bottom = clipBottom) {
-                    translate(top = -top) {
-                        for (r in hlRects) {
-                            drawRoundRect(hlColor, topLeft = r.topLeft, size = r.size, cornerRadius = CornerRadius(6f, 6f))
-                        }
-                    }
-                }
-            }
-            drawLayer(textLayer)
-        }
-    )
-}
-
-/** 首次进入（没有任何旧页可留）时的骨架：从「页面消失了」变成「页面正在成形」，绝不居中转圈 */
-@Composable
-private fun PageSkeleton(textColor: Color, lineHeightPx: Float, modifier: Modifier) {
-    val a = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { a.animateTo(1f, tween(300, easing = LinearEasing)) }
-    Spacer(
-        modifier.drawBehind {
-            val lh = lineHeightPx.coerceAtLeast(20f)
-            var y = lh * 0.8f
-            var i = 0
-            while (y + lh * 0.5f < size.height && i < 30) {
-                val w = size.width * (if (i % 6 == 5) 0.52f else 0.97f)
-                drawRoundRect(
-                    textColor,
-                    topLeft = Offset(0f, y),
-                    size = Size(w, lh * 0.46f),
-                    cornerRadius = CornerRadius(3f, 3f),
-                    alpha = a.value * 0.10f
-                )
-                y += lh
-                i++
-            }
-        }
-    )
-}
-
-/** 2dp 不定进度线：位置只在 draw lambda 里读，不触发重组；仅在排版进行中存在 */
-@Composable
-private fun ThinProgressLine(color: Color, modifier: Modifier) {
-    val p = remember { Animatable(0f) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            p.snapTo(0f)
-            p.animateTo(1f, tween(1100, easing = LinearEasing))
-        }
-    }
-    Spacer(
-        modifier.height(2.dp).drawBehind {
-            val w = size.width * 0.32f
-            drawRect(color, topLeft = Offset((size.width + w) * p.value - w, 0f), size = Size(w, size.height), alpha = 0.9f)
-        }
-    )
-}
-
-/** 阅读器顶栏上的一组玻璃按钮：胶囊形，用阅读主题自己的玻璃面（见 chromeGlass） */
-@Composable
-private fun ChromeGroup(style: GlassStyle, shadow: Color, inset: Dp = 0.dp, content: @Composable RowScope.() -> Unit) {
-    val light = rememberGlassLight()
-    Row(
-        Modifier
-            .height(44.dp)
-            .glassShadow(CircleShape, shadow, blur = 14.dp, dy = 4.dp)
-            .glassSurface(CircleShape, style, light)
-            .glassLight(light)
-            .padding(horizontal = inset),
-        verticalAlignment = Alignment.CenterVertically,
-        content = content
-    )
-}
-
-/**
- * 播放坞的一个等权重槽位。五个槽位平分整行宽度，居中的那个就在坞的正中 ——
- * 靠内容自身宽度去凑居中在控件宽度不同（图标 36dp vs 「1×」文字）时必然偏。
- */
-@Composable
-private fun RowScope.DockSlot(content: @Composable () -> Unit) {
-    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { content() }
-}
-
-/**
- * 主播放键 —— 直接用 M3 自己的 [FilledIconToggleButton]。
- *
- * 之前是手搓的：一个实心圆 + 放大 1.18 倍 alpha 0.35 的同色光晕 + 染成强调色的 12dp 投影。
- * 在浅色阅读主题上那团光晕就是一坨糊，而且它想表达的「正在播放」本来就有更好的说法。
- *
- * M3 Expressive 对这类状态按钮的标准做法是**让形状说话**：
- * [IconButtonDefaults.toggleableShapes] 给出未选中 / 按下 / 选中三种形状，
- * 组件自己在其间做形变动画（走主题里的 Expressive 弹簧，也就是我们那套 CA 管线）。
- * 于是暂停时是圆、播放时形变成方圆角 —— 一眼可辨，且全部由库负责，
- * 涟漪、状态层、无障碍语义一并到位，不用我们自己描一遍。
- *
- * 配色吃**阅读主题**色而非 app 配色：阅读主题是独立于系统深浅色的用户选择，
- * 且配色现在可由用户任意更换，写死或取 app 色都会错配。
- */
-@Composable
-private fun PlayButton(playing: Boolean, accent: Color, onAccent: Color, onClick: () -> Unit) {
-    FilledIconToggleButton(
-        checked = playing,
-        onCheckedChange = { onClick() },
-        shapes = IconButtonDefaults.toggleableShapes(),
-        // 48dp：与其余槽位的触控区等高。原来 52dp 比同行的 36dp 图标高出一截，
-        // 撑爆行高并把上下的留白吃掉（实测上下间隙只剩 1.7dp 与 0.3dp）
-        modifier = Modifier.size(48.dp).semantics {
-            contentDescription = if (playing) S.reader.pause else S.reader.play
-        },
-        colors = IconButtonDefaults.filledIconToggleButtonColors(
-            containerColor = accent,
-            contentColor = onAccent,
-            checkedContainerColor = accent,
-            checkedContentColor = onAccent
-        )
-    ) {
-        // 恒显播放/暂停图标。原来合成中会换成 LoadingIndicator —— 那是个会形变的多边形，
-        // 塞进 24dp 就是一团黑块，而且每段合成都要闪一次。
-        // 「正在合成」由状态行说，按钮只负责它自己的那件事。
-        Icon(if (playing) EchoIcons.Pause else EchoIcons.Play, null, modifier = Modifier.size(24.dp))
-    }
-}
-
-private fun formatRate(r: Float): String = String.format(java.util.Locale.ROOT, "%.2f", r).trimEnd('0').trimEnd('.')

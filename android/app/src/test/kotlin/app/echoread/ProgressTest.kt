@@ -6,6 +6,8 @@ import app.echoread.core.Progress
 import app.echoread.core.bookFraction
 import app.echoread.core.readFraction
 import app.echoread.core.started
+import app.echoread.ui.reader.MonotonicProgress
+import app.echoread.ui.reader.PageRef
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -79,6 +81,24 @@ class ProgressTest {
         assertEquals(1f, bookFraction(4, 999999, 100, 5), 1e-6f)
         assertEquals(0f, bookFraction(0, -50, 100, 5), 1e-6f)
         assertTrue(bookFraction(3, 50, 100, 12) in 0f..1f)
+    }
+
+    /**
+     * 不在朗读时往回翻页，进度条得跟着退。0.7.0 的钳制只在书 / 章 / 段首变化时才重置：
+     * 同一章里往回翻，进度条停在翻到过的最远处纹丝不动。播放中段间空档归零的那一下仍然要钳住。
+     */
+    @Test
+    fun backwardPageTurnMovesTheBarButPlaybackGapsDoNot() {
+        val clamp = MonotonicProgress()
+        // 静默阅读：第 4 页翻回第 3 页
+        assertEquals(0.30f, clamp.at("b", PageRef(0, 3), 0, 0.30f), 1e-6f)
+        assertEquals(0.20f, clamp.at("b", PageRef(0, 2), 0, 0.20f), 1e-6f)
+        // 播放中、同一段：段间空档里 playbackFraction 归零，进度不回弹；之后照常往前走
+        assertEquals(0.25f, clamp.at("b", PageRef(0, 2), 120, 0.25f), 1e-6f)
+        assertEquals(0.25f, clamp.at("b", PageRef(0, 2), 120, 0.21f), 1e-6f)
+        assertEquals(0.27f, clamp.at("b", PageRef(0, 2), 120, 0.27f), 1e-6f)
+        // 换书从头算
+        assertEquals(0.05f, clamp.at("c", PageRef(0, 2), 120, 0.05f), 1e-6f)
     }
 
     /** 「未开始」与「已读 0%」是两回事 */

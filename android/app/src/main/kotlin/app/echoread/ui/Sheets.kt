@@ -265,7 +265,7 @@ private fun AppearanceSection(graph: AppGraph) {
                     for ((name, seed) in SEED_COLORS) {
                         val sel = reader.seedColor == seed.toArgb()
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            SeedDot(seed, sel) { graph.settings.updateReader { r -> r.copy(seedColor = seed.toArgb()) } }
+                            SeedDot(seed, sel, name) { graph.settings.updateReader { r -> r.copy(seedColor = seed.toArgb()) } }
                             SwatchLabel(name, sel)
                         }
                     }
