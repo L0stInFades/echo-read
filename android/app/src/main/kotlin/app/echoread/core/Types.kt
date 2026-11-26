@@ -49,9 +49,6 @@ data class BookMeta(
     override fun hashCode(): Int = id.hashCode()
 }
 
-/** 章节纯文本行（持久层唯一形态） */
-data class ChapterText(val bookId: String, val index: Int, val title: String, val text: String)
-
 enum class PlayerState { IDLE, LOADING, PLAYING, PAUSED, ERROR }
 
 /**

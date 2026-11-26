@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -27,16 +26,19 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -61,7 +63,6 @@ import app.echoread.tts.SyncStatus
 import app.echoread.tts.VoiceInfo
 import app.echoread.tts.Voices
 import app.echoread.ui.motion.EchoTransitions
-import app.echoread.ui.motion.PressScale
 import app.echoread.ui.motion.echoPress
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -601,6 +602,38 @@ private fun AddServicePage(graph: AppGraph, tts: TtsSettings, onAdded: (String) 
 
 /* ---------------- 服务设置：Key、地址、连接检查 ---------------- */
 
+/** 停手这么久才落盘 */
+private const val KEY_SAVE_DELAY_MS = 500L
+
+/**
+ * Key / 密钥输入框：框里的字即时响应，落盘推迟到停手片刻、失焦或离开页面时。
+ * 每次落盘都要走一遍硬件 Keystore 加密、再把整份设置 JSON 写进 SharedPreferences ——
+ * 逐键落盘既拖慢输入，也会把敲到一半的每个前缀都加密、缓存一遍。
+ */
+@Composable
+private fun KeyField(value: String, onSave: (String) -> Unit, label: String, placeholder: String) {
+    var text by remember { mutableStateOf(value) }
+    var dirty by remember { mutableStateOf(false) }
+    val save by rememberUpdatedState(onSave)
+    fun flush() {
+        if (!dirty) return
+        dirty = false
+        save(text)
+    }
+    // 别处改了这个值（外部传入配置、刚落盘回来的规整结果）且框里没有未落盘的输入时，跟上它
+    LaunchedEffect(value) { if (!dirty) text = value }
+    LaunchedEffect(text, dirty) {
+        if (!dirty) return@LaunchedEffect
+        delay(KEY_SAVE_DELAY_MS)
+        flush()
+    }
+    DisposableEffect(Unit) { onDispose { flush() } }
+    EchoTextField(
+        text, { text = it; dirty = true }, label = label, placeholder = placeholder, password = true, mono = true,
+        modifier = Modifier.onFocusChanged { if (!it.hasFocus) flush() }
+    )
+}
+
 @Composable
 private fun ServicePage(
     graph: AppGraph,
@@ -657,16 +690,13 @@ private fun ServicePage(
                     )
                     Spacer(Modifier.height(12.dp))
                 }
-                EchoTextField(
-                    p.apiKey, { v -> settings.updateProfile(id) { it.copy(apiKey = Providers.cleanSecret(v)) } },
-                    label = S.providers.apiKey, placeholder = spec.keyHint, password = true, mono = true
-                )
+                KeyField(p.apiKey, { v -> settings.updateProfile(id) { it.copy(apiKey = Providers.cleanSecret(v)) } }, S.providers.apiKey, spec.keyHint)
                 for (f in spec.fields) {
                     Spacer(Modifier.height(12.dp))
-                    EchoTextField(
-                        p.fields[f.id] ?: f.default, { v -> settings.updateProfile(id) { it.copy(fields = it.fields + (f.id to Providers.cleanSecret(v))) } },
-                        label = S.providers.fieldLabel(f.id), placeholder = f.hint.ifBlank { f.default }, password = f.secret, mono = true
-                    )
+                    val value = p.fields[f.id] ?: f.default
+                    val save = { v: String -> settings.updateProfile(id) { it.copy(fields = it.fields + (f.id to Providers.cleanSecret(v))) } }
+                    if (f.secret) KeyField(value, save, S.providers.fieldLabel(f.id), f.hint.ifBlank { f.default })
+                    else EchoTextField(value, save, label = S.providers.fieldLabel(f.id), placeholder = f.hint.ifBlank { f.default }, mono = true)
                 }
                 if (!ownAddress) {
                     Spacer(Modifier.height(8.dp))

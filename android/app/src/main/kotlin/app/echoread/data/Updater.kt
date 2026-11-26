@@ -3,6 +3,7 @@ package app.echoread.data
 import app.echoread.core.i18n.S
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -12,6 +13,7 @@ import app.echoread.tts.SpeechApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -59,19 +61,32 @@ sealed interface UpdateState {
  * 应用内更新（无后端）：清单走 jsDelivr CDN（国内可达）→ GitHub raw 兜底；
  * APK 挂 GitHub Release（可配镜像），下载后校验 SHA-256，再拉起系统安装器覆盖安装。
  */
-class Updater(private val context: Context) {
-    private val prefs = context.getSharedPreferences("echo-read-update", Context.MODE_PRIVATE)
+class Updater(
+    private val prefs: SharedPreferences,
+    private val cacheDir: File,
+    /** 本机已装的 (versionCode, versionName)：第一次用到时才查 */
+    installedVersion: () -> Pair<Long, String>,
+    private val sdkInt: Int = Build.VERSION.SDK_INT,
+    private val manifestUrls: List<String> = MANIFEST_URLS
+) {
+    /** 生产入口：平台依赖都从 Context 取。主构造拆成这几项，只为单测能在 JVM 上换成假的 */
+    constructor(context: Context) : this(
+        prefs = context.getSharedPreferences("echo-read-update", Context.MODE_PRIVATE),
+        cacheDir = context.cacheDir,
+        installedVersion = { installedVersionOf(context) }
+    )
+
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
     private val _state = MutableStateFlow<UpdateState>(UpdateState.Idle)
     val state: StateFlow<UpdateState> = _state
 
-    val currentVersionCode: Long by lazy {
-        runCatching { PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(context.packageName, 0)) }.getOrDefault(0L)
-    }
-    val currentVersionName: String by lazy {
-        runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: "?" }.getOrDefault("?")
-    }
+    private val installed by lazy(installedVersion)
+    val currentVersionCode: Long get() = installed.first
+    val currentVersionName: String get() = installed.second
+
+    /** 同一时刻只允许一个下载：两次并发的下载会往同一个 .part 文件里交错写入 */
+    private val downloadLock = Mutex()
 
     /** 检查更新；force=false 时 24 小时内只检查一次，且不打扰（静默） */
     suspend fun check(force: Boolean): UpdateState {
@@ -86,7 +101,7 @@ class Updater(private val context: Context) {
             Result.success(
                 withContext(Dispatchers.IO) {
                     var lastErr: Exception? = null
-                    for (url in MANIFEST_URLS) {
+                    for (url in manifestUrls) {
                         try {
                             val req = Request.Builder().url(url).header("Cache-Control", "no-cache").get().build()
                             SpeechApi.clientFor(app.echoread.core.net.CallKind.UPDATE_MANIFEST).newCall(req).execute().use { res ->
@@ -115,26 +130,26 @@ class Updater(private val context: Context) {
         } catch (e: Exception) {
             Result.failure(e)
         }
-        prefs.edit().putLong(KEY_LAST_CHECK, now).apply()
         val info = result.getOrNull()
+        // 真拿到清单才记下检查时间：一次离线启动不该把之后 24 小时的自动检查都吞掉
+        if (info != null) prefs.edit().putLong(KEY_LAST_CHECK, now).apply()
         val next = when {
             info == null -> {
                 val err = result.exceptionOrNull()?.let {
                     app.echoread.core.net.NetErrors.fromThrowable(
-                        it, endpoint = MANIFEST_URLS.firstOrNull() ?: "", method = "GET",
+                        it, endpoint = manifestUrls.firstOrNull() ?: "", method = "GET",
                         kind = app.echoread.core.net.CallKind.UPDATE_MANIFEST
                     )
                 }
                 UpdateState.Error(S.update.updateCheckFailed(err?.headline() ?: S.update.networkError), null, err)
             }
-            info.versionCode > currentVersionCode && Build.VERSION.SDK_INT >= info.minSdk -> {
+            info.versionCode > currentVersionCode && sdkInt >= info.minSdk -> {
                 // 用户已把这一版「叉掉」：静默检查不再打扰（手动检查 force=true 仍然照常提示）
                 if (!force && isDismissed(info.versionCode)) UpdateState.UpToDate
                 else {
-                    // 本地已下载好同版本安装包则直接就绪
-                    val f = apkFile(info)
-                    if (f.isFile && f.length() > 0 && (info.sha256.isEmpty() || sha256(f).equals(info.sha256, ignoreCase = true))) UpdateState.Ready(info, f)
-                    else UpdateState.Available(info)
+                    // 本地已下载好、且校验通过的同版本安装包直接就绪。算哈希要读完十几 MB，不能留在调用方（主线程）上
+                    val f = withContext(Dispatchers.IO) { verifiedApk(info) }
+                    if (f != null) UpdateState.Ready(info, f) else UpdateState.Available(info)
                 }
             }
             else -> UpdateState.UpToDate
@@ -146,10 +161,32 @@ class Updater(private val context: Context) {
     /** 该版本是否已被用户永久忽略 */
     fun isDismissed(versionCode: Long): Boolean = prefs.getLong(KEY_DISMISSED, 0L) >= versionCode
 
-    private fun apkFile(info: UpdateInfo): File = File(File(context.cacheDir, "updates").apply { mkdirs() }, "Lector-v${info.versionName}.apk")
+    /** 版本名来自网上的清单：只留文件名安全的字符，「../」之类不能把文件写到缓存目录之外 */
+    private fun apkFile(info: UpdateInfo): File =
+        File(File(cacheDir, "updates").apply { mkdirs() }, "Lector-v${info.versionName.replace(UNSAFE_NAME_CHARS, "")}.apk")
 
-    /** 下载安装包（带进度），校验 SHA-256 */
+    /** 本地已有、且与清单里的 SHA-256 一致的安装包；清单没有合法校验值时一律不认 */
+    private fun verifiedApk(info: UpdateInfo): File? {
+        if (!validSha256(info.sha256)) return null
+        val f = apkFile(info)
+        return f.takeIf { it.isFile && it.length() > 0 && sha256(it).equals(info.sha256, ignoreCase = true) }
+    }
+
+    /** 下载安装包（带进度），校验 SHA-256。已有下载在进行时不再开第二个，直接返回进行中的那次的状态 */
     suspend fun download(info: UpdateInfo): UpdateState {
+        if (!downloadLock.tryLock()) return _state.value
+        return try {
+            downloadOnce(info)
+        } finally {
+            downloadLock.unlock()
+        }
+    }
+
+    private suspend fun downloadOnce(info: UpdateInfo): UpdateState {
+        // 校验值是认这个安装包的唯一依据：清单里没有合法的 SHA-256 就不下载，绝不「没有就跳过」
+        if (!validSha256(info.sha256)) {
+            return UpdateState.Error(S.update.missingChecksum, info).also { _state.value = it }
+        }
         val target = apkFile(info)
         _state.value = UpdateState.Downloading(info, 0f)
         val result = try {
@@ -193,7 +230,7 @@ class Updater(private val context: Context) {
                                 }
                             }
                         }
-                        if (info.sha256.isNotEmpty() && !sha256(tmp).equals(info.sha256, ignoreCase = true)) {
+                        if (!sha256(tmp).equals(info.sha256, ignoreCase = true)) {
                             tmp.delete()
                             throw IllegalStateException(S.update.checksumMismatch)
                         }
@@ -228,15 +265,15 @@ class Updater(private val context: Context) {
 
     /** 拉起系统安装器；未授权「安装未知应用」时跳到系统设置页，返回 false */
     fun install(activity: Context, file: File): Boolean {
-        val pm = context.packageManager
+        val pm = activity.packageManager
         if (Build.VERSION.SDK_INT >= 26 && !pm.canRequestPackageInstalls()) {
             activity.startActivity(
-                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}"))
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             )
             return false
         }
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file)
         activity.startActivity(
             Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(uri, "application/vnd.android.package-archive")
@@ -279,14 +316,25 @@ class Updater(private val context: Context) {
         private const val KEY_DISMISSED = "dismissed-version"
         private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
         /**
-         * 更新清单地址，按顺序尝试，第一个成功即用。
-         * 第三条是国内兜底：前两个域名同时不可达时（部分网络两者都被拦），
-         * 走 GitHub 反代仍能取到清单。三条均已实测可达。
+         * 更新清单地址，按顺序尝试，第一个成功即用：仓库本身（GitHub raw）与直接镜像仓库内容的 jsDelivr。
+         * 不经第三方反代取清单 —— 清单决定装哪个包、按哪个哈希校验，反代一旦被攻破，就能同时伪造清单
+         * 和与之匹配的哈希。安装包的下载镜像可以走反代：下回来的包必须对上这份清单里的 SHA-256。
          */
         val MANIFEST_URLS = listOf(
             "https://cdn.jsdelivr.net/gh/L0stInFades/echo-read@main/android/update.json",
-            "https://raw.githubusercontent.com/L0stInFades/echo-read/main/android/update.json",
-            "https://gh-proxy.com/https://raw.githubusercontent.com/L0stInFades/echo-read/main/android/update.json"
+            "https://raw.githubusercontent.com/L0stInFades/echo-read/main/android/update.json"
         )
+
+        private val SHA256_HEX = Regex("[0-9a-fA-F]{64}")
+        private val UNSAFE_NAME_CHARS = Regex("[^A-Za-z0-9._-]")
+
+        /** 合法的 SHA-256：恰好 64 位十六进制 */
+        fun validSha256(s: String): Boolean = SHA256_HEX.matches(s)
+
+        /** 取不到包信息时 versionCode 记 0、versionName 显示「?」 */
+        private fun installedVersionOf(context: Context): Pair<Long, String> = runCatching {
+            val p = context.packageManager.getPackageInfo(context.packageName, 0)
+            PackageInfoCompat.getLongVersionCode(p) to (p.versionName ?: "?")
+        }.getOrDefault(0L to "?")
     }
 }

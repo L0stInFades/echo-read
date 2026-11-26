@@ -127,7 +127,9 @@ object EpubParser {
             for (el in els) if (el.localName() == name) return el.text().trim()
             return ""
         }
-        val title = text("title").ifEmpty { "未命名" }
+        // 缺书名时留空串，由调用方决定退回什么（文件名）：拿一句界面文案当哨兵，换了界面语言就对不上，
+        // 真叫这个名字的书也会被误判成「没有书名」
+        val title = text("title")
         val author = text("creator")
         val intro = text("description").ifEmpty { null }
 
@@ -157,18 +159,29 @@ object EpubParser {
         return OpfInfo(title, author, intro, coverPath, dirname(opfPath), manifest, spine)
     }
 
-    private fun ZipFile.readText(path: String): String? {
-        val entry = getEntry(path) ?: return null
-        return getInputStream(entry).use { it.readBytes().toString(Charsets.UTF_8) }
-    }
+    /**
+     * 解压上限：单个条目、以及一次解析累计解出的字节数。只信实际解出来的字节 ——
+     * zip 条目声明的大小可以造假，几 MB 的「解压炸弹」或损坏的压缩流能展开成几个 GB，读进内存直接 OOM。
+     * 16MB 远超任何正常的章节文件或封面图；累计 64MB 与 TXT 的单本上限同量级（正文图片不读，不计入）。
+     */
+    const val MAX_ENTRY_BYTES = 16L * 1024 * 1024
+    const val MAX_TOTAL_BYTES = 64L * 1024 * 1024
 
-    private fun ZipFile.readBytes(path: String): ByteArray? {
+    /** 一次解析的解压预算 */
+    private class Budget(var left: Long = MAX_TOTAL_BYTES)
+
+    private fun ZipFile.readText(path: String, budget: Budget): String? = readBytes(path, budget)?.toString(Charsets.UTF_8)
+
+    private fun ZipFile.readBytes(path: String, budget: Budget): ByteArray? {
         val entry = getEntry(path) ?: return null
-        return getInputStream(entry).use { it.readBytes() }
+        val bytes = getInputStream(entry).use { BoundedRead.bytes(it, minOf(MAX_ENTRY_BYTES, budget.left)) }
+            ?: throw IllegalArgumentException(S.importer.epubTooLarge)
+        budget.left -= bytes.size
+        return bytes
     }
 
     /** 从 nav / NCX 提取 href → 章节标题 映射（href 相对 nav 文档自身目录解析） */
-    private fun extractNavTitles(zip: ZipFile, opf: OpfInfo): Map<String, String> {
+    private fun extractNavTitles(zip: ZipFile, opf: OpfInfo, budget: Budget): Map<String, String> {
         val map = LinkedHashMap<String, String>()
         fun put(navBase: String, href: String, label: String) {
             val full = resolvePath(navBase, href)
@@ -179,7 +192,7 @@ object EpubParser {
         for ((_, v) in opf.manifest) {
             if (!v.properties.contains("nav")) continue
             val navPath = resolvePath(opf.base, v.href)
-            val navXml = zip.readText(navPath) ?: continue
+            val navXml = zip.readText(navPath, budget) ?: continue
             val navBase = dirname(navPath)
             val doc = Jsoup.parse(navXml)
             for (a in doc.select("nav a[href]")) put(navBase, a.attr("href"), a.text())
@@ -189,7 +202,7 @@ object EpubParser {
         val ncxItem = opf.manifest.values.firstOrNull { it.mediaType == "application/x-dtbncx+xml" }
         if (ncxItem != null) {
             val ncxPath = resolvePath(opf.base, ncxItem.href)
-            val ncxXml = zip.readText(ncxPath)
+            val ncxXml = zip.readText(ncxPath, budget)
             if (ncxXml != null) {
                 val ncxBase = dirname(ncxPath)
                 val doc = Jsoup.parse(ncxXml, "", Parser.xmlParser())
@@ -211,14 +224,15 @@ object EpubParser {
      */
     fun peekMeta(file: File): Pair<String, String>? = try {
         ZipFile(file).use { zip ->
-            val containerXml = zip.readText("META-INF/container.xml")
+            val budget = Budget()
+            val containerXml = zip.readText("META-INF/container.xml", budget)
             val opfPath = containerXml?.let {
                 Jsoup.parse(it, "", Parser.xmlParser()).allElements.firstOrNull { e -> e.localName() == "rootfile" }?.attr("full-path")
             }
-            val opfXml = if (opfPath.isNullOrEmpty()) null else zip.readText(opfPath)
+            val opfXml = if (opfPath.isNullOrEmpty()) null else zip.readText(opfPath, budget)
             if (opfXml == null) null else {
                 val opf = parseOpf(opfXml, opfPath!!)
-                if (opf.title.isBlank() || opf.title == "未命名") null else opf.title to opf.author
+                if (opf.title.isEmpty()) null else opf.title to opf.author
             }
         }
     } catch (_: Throwable) {
@@ -231,19 +245,20 @@ object EpubParser {
      */
     fun parse(file: File, fallbackName: String, coverScaler: ((ByteArray) -> ByteArray?)? = null): ParsedBook {
         ZipFile(file).use { zip ->
-            val containerXml = zip.readText("META-INF/container.xml") ?: throw IllegalArgumentException(S.importer.epubMissingContainer)
+            val budget = Budget()
+            val containerXml = zip.readText("META-INF/container.xml", budget) ?: throw IllegalArgumentException(S.importer.epubMissingContainer)
             val containerDoc = Jsoup.parse(containerXml, "", Parser.xmlParser())
             val opfPath = containerDoc.allElements.firstOrNull { it.localName() == "rootfile" }?.attr("full-path")
             if (opfPath.isNullOrEmpty()) throw IllegalArgumentException(S.importer.epubMissingOpfPath)
-            val opfXml = zip.readText(opfPath) ?: throw IllegalArgumentException(S.importer.epubMissingOpf)
+            val opfXml = zip.readText(opfPath, budget) ?: throw IllegalArgumentException(S.importer.epubMissingOpf)
             val opf = parseOpf(opfXml, opfPath)
-            if (opf.title == "未命名") opf.title = fallbackName.replace(Regex("\\.epub$", RegexOption.IGNORE_CASE), "")
+            if (opf.title.isEmpty()) opf.title = fallbackName.replace(Regex("\\.epub$", RegexOption.IGNORE_CASE), "")
 
-            val navTitles = extractNavTitles(zip, opf)
+            val navTitles = extractNavTitles(zip, opf, budget)
 
             var cover: ByteArray? = null
             if (opf.coverPath != null) {
-                val bytes = zip.readBytes(resolvePath(opf.base, opf.coverPath))
+                val bytes = zip.readBytes(resolvePath(opf.base, opf.coverPath), budget)
                 if (bytes != null) cover = if (coverScaler != null) coverScaler(bytes) else bytes
             }
 
@@ -252,7 +267,7 @@ object EpubParser {
                 val item = opf.manifest[id] ?: continue
                 if (!Regex("xhtml|html", RegexOption.IGNORE_CASE).containsMatchIn(item.mediaType)) continue
                 val path = resolvePath(opf.base, item.href)
-                val html = zip.readText(path) ?: continue
+                val html = zip.readText(path, budget) ?: continue
                 val doc = Jsoup.parse(html)
                 val paragraphs = extractParagraphs(doc)
                 if (paragraphs.isEmpty()) continue

@@ -12,6 +12,8 @@ cd "$(dirname "$0")"
 VER="${1:?versionName}"; CODE="${2:?versionCode}"; NOTES="${3:-}"; EXP="${4:-}"; NOTES_EN="${5:-}"
 REPO="L0stInFades/echo-read"; TAG="android-v$VER"; APK="dist/Lector-v$VER.apk"
 [ -f keystore.properties ] || { echo "缺少 keystore.properties（正式签名）"; exit 1; }
+# 单元测试先过：放在改版本号之前，测试不过就原样退出，不留下改了一半的 gradle.properties
+./gradlew :app:testDebugUnitTest --console=plain -q || { echo "单元测试未通过，已中止发布"; exit 1; }
 sed -i '' "s/^APP_VERSION_CODE=.*/APP_VERSION_CODE=$CODE/; s/^APP_VERSION_NAME=.*/APP_VERSION_NAME=$VER/" gradle.properties
 ./gradlew :app:assembleRelease --console=plain -q
 mkdir -p dist && cp app/build/outputs/apk/release/app-release.apk "$APK"

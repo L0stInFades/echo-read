@@ -16,7 +16,6 @@ import app.echoread.tts.SpeechApi
 import app.echoread.tts.Voices
 import app.echoread.tts.backoffDelay
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -264,6 +263,17 @@ class TtsTest {
         assertEquals(null, NetErrors.redact("  "))
         // 端点上的 query 也要去掉（可能带 key）
         assertEquals("https://x.test/v1/models", NetErrors.cleanEndpoint("https://x.test/v1/models?key=secret"))
+    }
+
+    /** Google 的 AIza… 与 ElevenLabs 的 sk_… 也要截掉；错误体里的蛇形字段名不能被误伤 */
+    @Test
+    fun redactionCoversGoogleAndUnderscoreKeys() {
+        val google = "AIzaSyA1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q"
+        val eleven = "sk_0123456789abcdef0123456789abcdef0123456789abcdef"
+        val r = NetErrors.redact("""{"error":{"message":"API key not valid: $google","task_id":"t1"},"detail":"Invalid key $eleven","disk_quota":1}""")!!
+        assertFalse(r, r.contains(google) || r.contains(eleven))
+        assertTrue(r, r.contains("AIzaSyA1…") && r.contains("sk_0123…"))
+        assertTrue(r, r.contains("task_id") && r.contains("disk_quota"))
     }
 
     @Test

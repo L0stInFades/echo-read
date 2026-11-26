@@ -34,8 +34,6 @@ object EchoIcons {
 
     val Back: ImageVector by lazy { stroke("back", 2f, "m15 18-6-6 6-6") }
     val ChevronRight: ImageVector by lazy { stroke("chevronRight", 2f, "m9 18 6-6-6-6") }
-    val ChevronDown: ImageVector by lazy { stroke("chevronDown", 2f, "m6 9 6 6 6-6") }
-    val ChevronUp: ImageVector by lazy { stroke("chevronUp", 2f, "m6 15 6-6 6 6") }
     val Toc: ImageVector by lazy { stroke("toc", 1.8f, "M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01") }
     val TextStyle: ImageVector by lazy { stroke("textStyle", 1.8f, "M4 7V5h16v2M9 20h6M12 5v15") }
     val Waves: ImageVector by lazy { stroke("waves", 1.8f, "M12 3v18M7 8v8M17 8v8M2 11v2M22 11v2") }
@@ -96,9 +94,6 @@ object EchoIcons {
     val Warning: ImageVector by lazy {
         stroke("warning", 1.8f, "M12 4.5 3.2 19.5h17.6z", "M12 10v4", "M12 17h.01")
     }
-    val Sparkle: ImageVector by lazy {
-        stroke("sparkle", 1.7f, "M12 4.5 13.7 9.3 18.5 11l-4.8 1.7L12 17.5l-1.7-4.8L5.5 11l4.8-1.7z", "M18.5 4v3", "M20 5.5h-3")
-    }
     val CheckCircle: ImageVector by lazy {
         stroke("checkCircle", 1.8f, "M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z", "m7.8 12.2 2.9 2.9 5.5-6")
     }
@@ -107,8 +102,4 @@ object EchoIcons {
     private const val BOOKMARK = "M7.5 3.5h9A1.5 1.5 0 0 1 18 5v15.5l-6-3.9-6 3.9V5a1.5 1.5 0 0 1 1.5-1.5z"
     val Bookmark: ImageVector by lazy { stroke("bookmark", 1.8f, BOOKMARK) }
     val BookmarkFilled: ImageVector by lazy { stroke("bookmarkFilled", 1.8f, BOOKMARK, filled = true) }
-
-    val Sort: ImageVector by lazy {
-        stroke("sort", 1.9f, "M4 6.5h16", "M7 12h10", "M10 17.5h4")
-    }
 }

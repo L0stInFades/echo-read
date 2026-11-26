@@ -1,10 +1,13 @@
 package app.echoread
 
+import app.echoread.core.BoundedRead
 import app.echoread.core.ParsedChapter
 import app.echoread.core.Segmenter
 import app.echoread.core.TextOps
 import app.echoread.core.TxtParser
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.nio.charset.Charset
@@ -179,6 +182,22 @@ class CoreTest {
         val giant = chapters.filter { it.title.startsWith("巨章") }
         assertTrue(giant.map { it.title }.toString(), giant.size == 2 && giant[1].title == "巨章（2）")
         assertEquals(bigPara.length, giant.sumOf { it.text.length })
+    }
+
+    /** 有界读取：恰好到上限的照收；超限的最多只多读 1 字节就停，不管对方声称多大 */
+    @Test
+    fun boundedReadStopsOneBytePastTheLimit() {
+        class Counting(size: Int) : java.io.ByteArrayInputStream(ByteArray(size) { it.toByte() }) {
+            val consumed: Int get() = pos
+        }
+        val exact = Counting(1000)
+        assertEquals(1000, BoundedRead.bytes(exact, 1000)?.size)
+        val over = Counting(1_000_000)
+        assertNull(BoundedRead.bytes(over, 1000))
+        assertEquals("读到上限 + 1 就停", 1001, over.consumed)
+        val sink = java.io.ByteArrayOutputStream()
+        assertFalse(BoundedRead.copy(Counting(70_000), sink, 65_536))
+        assertTrue(BoundedRead.copy(java.io.ByteArrayInputStream(ByteArray(0)), sink, 0))
     }
 
     @Test

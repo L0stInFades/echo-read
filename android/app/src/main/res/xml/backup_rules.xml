@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Android 11 及以下的自动备份规则（12 起由 data_extraction_rules.xml 接管）。
+  书库数据库（每本书的全文 + 阅读进度）不进备份：云备份每个应用只有 25MB 配额，书一多整份备份就会失败，
+  连设置也一起备不上。设置（SharedPreferences）照常备份；其中的 API Key 用本机 Keystore 加密，
+  恢复到别的设备上解不开，重填一次即可。
+-->
+<full-backup-content>
+    <exclude domain="database" path="echo-read.db" />
+    <exclude domain="database" path="echo-read.db-shm" />
+    <exclude domain="database" path="echo-read.db-wal" />
+    <exclude domain="database" path="echo-read.db-journal" />
+</full-backup-content>

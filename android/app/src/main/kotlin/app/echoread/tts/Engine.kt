@@ -15,7 +15,6 @@ import app.echoread.data.ChapterCache
 import app.echoread.data.DerivedChapter
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
@@ -96,12 +95,6 @@ data class EngineSnapshot(
 ) {
     /** 便捷派生：dock 的自愈提示行 */
     val retryNote: String get() = retry?.note() ?: ""
-
-    /** 便捷派生：一行错误标题 */
-    val error: String get() = failure?.headline() ?: ""
-
-    /** 可展开「详情」的网络错误（失败优先，其次是正在重试的那个） */
-    val netError: NetError? get() = failure?.net ?: retry?.error
 }
 
 /** 指数退避延迟（毫秒）：1s 起倍增、30s 封顶、±20% 抖动；attempt 从 0 计 */
@@ -178,15 +171,6 @@ class TtsEngine(
 
     /** 当前片段已朗读的比例（0..1，按音频进度）；无在播句柄时为 0 */
     fun playbackFraction(): Float = if (handle != null) playback.progressFraction() else 0f
-
-    /** 用户主动清除错误提示（跳过段计数一并归零） */
-    fun dismissFailure() {
-        if (failure == null) return
-        failure = null
-        skippedCount = 0
-        skippedFirst = -1
-        emit()
-    }
 
     private fun emit() {
         _snapshot.value = EngineSnapshot(
@@ -308,10 +292,6 @@ class TtsEngine(
         emit()
     }
 
-    fun toggle() {
-        if (state == PlayerState.PLAYING) pause() else play()
-    }
-
     /** 任意字跳转：将朗读位置定位到章节文本的指定字符偏移 */
     fun seekToOffset(offset: Int) {
         val segments = derived?.segments
@@ -343,8 +323,6 @@ class TtsEngine(
     }
 
     val hasNextChapter: Boolean get() = chapterIndex >= 0 && chapterIndex < chapterCount - 1
-    val hasPrevChapter: Boolean get() = chapterIndex > 0
-    val chapterTotal: Int get() = chapterCount
 
     /** 释放引擎：停止一切在途工作（应用退出） */
     fun stopAll() {

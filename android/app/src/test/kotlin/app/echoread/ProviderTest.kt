@@ -854,7 +854,7 @@ class ProviderTest {
             val obj = section.invoke(EnStrings)
             for (m in section.returnType.methods) {
                 if (m.returnType != String::class.java) continue
-                val args = m.parameterTypes.map { if (it == Int::class.javaPrimitiveType) 2 else "x" }.toTypedArray()
+                val args = m.parameterTypes.map { I18nTest.placeholderArg(it) }.toTypedArray()
                 val text = m.invoke(obj, *args) as String
                 if (typographic.containsMatchIn(text)) bad += "${section.name}.${m.name} = $text"
             }

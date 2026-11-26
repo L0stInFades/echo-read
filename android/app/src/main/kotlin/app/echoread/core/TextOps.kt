@@ -1,5 +1,7 @@
 package app.echoread.core
 
+import app.echoread.core.i18n.S
+
 /**
  * 一切皆偏移量：任一章节在内存中只有一份规范纯文本，段落/片段/高亮都是它的偏移区间。
  */
@@ -88,7 +90,7 @@ object TextOps {
             }
             flush()
             for (i in parts.indices) {
-                out.add(BoundChapter(if (parts.size > 1) "${c.title}（${i + 1}）" else c.title, parts[i]))
+                out.add(BoundChapter(if (parts.size > 1) S.importer.splitPartTitle(c.title, i + 1) else c.title, parts[i]))
             }
         }
         return out

@@ -100,9 +100,6 @@ object Dur {
 object Ease {
     /** 通用（Harmony 标准曲线 / M3 emphasized） */
     val Standard: Easing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
-    val Decelerate: Easing = CubicBezierEasing(0f, 0f, 0f, 1f)
-    /** 出场：仅限「离开视野」的元素 */
-    val Accelerate: Easing = CubicBezierEasing(0.3f, 0f, 1f, 1f)
     /** 纯 alpha 交叉淡入必须线性，否则中点会暗 */
     val Linear: Easing = LinearEasing
 }

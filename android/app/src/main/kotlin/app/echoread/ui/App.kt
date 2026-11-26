@@ -110,7 +110,7 @@ private fun androidx.compose.foundation.layout.BoxScope.ConfigConfirmSheet(graph
     }
 }
 
-/** 配色选择的最小订阅单元：只有这四项变化才需要重建主题 */
+/** 配色选择的最小订阅单元：只有这几项变化才需要重建主题 */
 private data class PaletteChoice(
     val dynamic: Boolean,
     val seed: Int,
@@ -120,8 +120,6 @@ private data class PaletteChoice(
     val mode: app.echoread.core.ThemeMode,
     val black: Boolean
 )
-
-private const val SHELF_KEY = "__shelf__"
 
 /**
  * 根导航：书架 ⇄ 阅读器。两屏叠放，一个 [MotionDriver] 决定一切（0 = 书架，1 = 阅读器）：
@@ -158,8 +156,6 @@ fun EchoApp(graph: AppGraph) {
             if (nav.value < 0.01f) shownBook = null
         }
     }
-    // 只订阅需要的这一个布尔，不要整个 ReaderSettings：
-    // 后者每拖动一格字号/行距/热区滑块都会发一个新实例，会把整个组合根连同书架一起作废重组。
     // 只订阅配色相关的这几个字段，不要整个 ReaderSettings：
     // 后者每拖动一格字号/行距/热区滑块都会发一个新实例，会把整个组合根连同书架一起作废重组。
     val palette by remember(graph) {

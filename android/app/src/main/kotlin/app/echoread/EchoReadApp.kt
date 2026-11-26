@@ -57,7 +57,7 @@ class AppGraph(context: Context) {
     val openRequests = MutableStateFlow<Pair<String, Boolean>?>(null)
 
     /** 待导入文件队列：文件选择器、外部分享/「打开方式」统一投递到这里，由应用级协程串行消费（不随界面进出而取消） */
-    val pendingImports = MutableStateFlow<List<Uri>>(emptyList())
+    val pendingImports = SerialQueue<Uri>(mainScope) { importOne(it) }
 
     /* ---------------- 本机书籍扫描（0.2.0 的应用内导入） ---------------- */
 
@@ -95,13 +95,13 @@ class AppGraph(context: Context) {
         scanProgress.value = 0 to 0
         scanJob = mainScope.launch {
             try {
-                val list = scanner.scan { found, scanned ->
+                val result = scanner.scan { found, scanned ->
                     if (gen == scanGen) scanProgress.value = found to scanned
                 }
                 if (gen == scanGen) {
-                    scanResults.value = list
-                    scanTruncated.value = scanner.truncated
-                    scannedTier.value = scanner.tier()
+                    scanResults.value = result.candidates
+                    scanTruncated.value = result.truncated
+                    scannedTier.value = result.tier
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -127,13 +127,6 @@ class AppGraph(context: Context) {
         mainScope.launch {
             kotlinx.coroutines.delay(3000)
             runCatching { updater.check(force = false) }
-        }
-        mainScope.launch {
-            pendingImports.collect { list ->
-                if (list.isEmpty()) return@collect
-                pendingImports.value = emptyList()
-                for (uri in list) importOne(uri)
-            }
         }
     }
 

@@ -95,6 +95,11 @@ kotlin {
     }
 }
 
+ksp {
+    // Room 按版本导出表结构（EchoDb 的 exportSchema = true），随代码提交，供以后核对迁移
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 baselineProfile {
     // 由 `:app:generateReleaseBaselineProfile` 手动生成并写入 src/release/generated/baselineProfiles/
     automaticGenerationDuringBuild = false

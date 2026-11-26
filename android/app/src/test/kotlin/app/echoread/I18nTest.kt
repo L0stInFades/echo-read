@@ -1,7 +1,9 @@
 package app.echoread
 
+import app.echoread.core.ParsedChapter
 import app.echoread.core.ReaderSettings
 import app.echoread.core.Sample
+import app.echoread.core.TextOps
 import app.echoread.core.TxtParser
 import app.echoread.core.i18n.AppLanguage
 import app.echoread.core.i18n.EnStrings
@@ -10,6 +12,7 @@ import app.echoread.core.i18n.S
 import app.echoread.core.i18n.Strings
 import app.echoread.core.i18n.ZhStrings
 import app.echoread.core.net.NetErrors
+import app.echoread.tts.GeminiTts
 import app.echoread.tts.SystemTts
 import app.echoread.tts.Voices
 import kotlinx.serialization.json.Json
@@ -27,6 +30,15 @@ class I18nTest {
     fun backToChinese() = I18n.apply(AppLanguage.ZH)
 
     private fun english() = I18n.apply(AppLanguage.EN)
+
+    companion object {
+        /** 反射调用带参文案时的占位参数：按参数的实际类型给（Int / Long 给 2，其余给 "x"） */
+        fun placeholderArg(type: Class<*>): Any = when (type) {
+            Int::class.javaPrimitiveType -> 2
+            Long::class.javaPrimitiveType -> 2L
+            else -> "x"
+        }
+    }
 
     @Test
     fun systemLanguageResolution() {
@@ -57,12 +69,30 @@ class I18nTest {
             val obj = section.invoke(pack)
             for (m in section.returnType.methods) {
                 if (m.returnType != String::class.java) continue
-                val args = m.parameterTypes.map { if (it == Int::class.javaPrimitiveType) 2 else "x" }.toTypedArray()
+                val args = m.parameterTypes.map { placeholderArg(it) }.toTypedArray()
                 val name = m.name.removePrefix("get").replaceFirstChar { it.lowercase() }
                 out["${section.name.removePrefix("get")}.$name"] = m.invoke(obj, *args) as String
             }
         }
         return out
+    }
+
+    /** 代码里拼出来的句子也走语言包：英文界面下不能冒出全角标点，中文界面保持原样 */
+    @Test
+    fun noFullWidthPunctuationInEnglish() {
+        val fullWidth = Regex("[\\u3000-\\u303f\\uff00-\\uffef]")
+        val giant = listOf(ParsedChapter("Ch", listOf("x".repeat(TextOps.CHAPTER_MAX_CHARS + 10))))
+        val noAudio = Json.parseToJsonElement("""{"error":{"message":"blocked"}}""")
+        fun retryLine() = NetErrors.fromHttp(429, null, retryAfterHeader = "7").detail().lines().first { it.startsWith("Retry-After") }
+        english()
+        assertEquals("Retry-After: 7s", retryLine())
+        assertEquals(listOf("Ch (1)", "Ch (2)"), TextOps.boundChapters(giant).map { it.title })
+        assertEquals("No audio returned; blocked", GeminiTts.describeNoAudio(noAudio).first)
+        assertEquals(emptyList<String>(), allStrings(EnStrings).filterValues { fullWidth.containsMatchIn(it) }.map { "${it.key} = ${it.value}" })
+        I18n.apply(AppLanguage.ZH)
+        assertEquals("Retry-After：7s", retryLine())
+        assertEquals(listOf("Ch（1）", "Ch（2）"), TextOps.boundChapters(giant).map { it.title })
+        assertEquals("未返回音频；blocked", GeminiTts.describeNoAudio(noAudio).first)
     }
 
     @Test

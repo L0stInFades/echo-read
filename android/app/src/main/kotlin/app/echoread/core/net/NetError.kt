@@ -187,7 +187,7 @@ data class NetError(
         transport?.let { appendLine(S.errors.detailTransport(it)) }
         if (maxAttempts > 1) appendLine(S.errors.detailAttempt(attempt, maxAttempts))
         if (elapsedMs > 0) appendLine(S.errors.detailElapsed(elapsedMs))
-        retryAfterSec?.let { appendLine("Retry-After：${it}s") }
+        retryAfterSec?.let { appendLine(S.errors.detailRetryAfter(it)) }
         bodySnippet?.takeIf { it.isNotBlank() }?.let {
             appendLine()
             appendLine(S.errors.detailBody)
@@ -265,9 +265,6 @@ data class NetError(
  */
 class NetException(val error: NetError) : IOException(error.logLine())
 
-/** 从 Throwable 取出 NetError；不是 NetException 则返回 null */
-fun Throwable.netError(): NetError? = (this as? NetException)?.error
-
 object NetErrors {
 
     /** 512 字节上限 + 结构化脱敏 */
@@ -276,6 +273,9 @@ object NetErrors {
         val cut = if (s.length > 512) s.take(512) + "…" else s
         return cut
             .replace(Regex("(sk-[A-Za-z0-9_\\-]{4})[A-Za-z0-9_\\-]{6,}"), "$1…")
+            // Google（AIza…）与 ElevenLabs 等下划线前缀（sk_…）的 Key。前面要求词边界：
+            // JSON 错误体里 task_id、disk_quota 这类蛇形字段名满地都是，不能被当成 Key 截掉
+            .replace(Regex("\\b((?:AIza|sk_)[A-Za-z0-9_\\-]{4})[A-Za-z0-9_\\-]{6,}"), "$1…")
             .replace(Regex("(?i)(\"?(?:api[_-]?key|authorization|token)\"?\\s*[:=]\\s*\"?)([^\"\\s,}]{4})[^\"\\s,}]*"), "$1$2…")
             .replace(Regex("(?i)Bearer\\s+([A-Za-z0-9_\\-]{4})[A-Za-z0-9_.\\-]*"), "Bearer $1…")
     }

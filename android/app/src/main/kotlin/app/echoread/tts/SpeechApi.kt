@@ -18,7 +18,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -527,15 +526,4 @@ object SpeechApi {
     }
 
     data class TestResult(val ok: Boolean, val message: String, val audio: ByteArray? = null, val error: NetError? = null)
-
-    /** 试听：合成「你好」，成功时把音频一并返回（调用方负责播放） */
-    suspend fun testConfig(cfg: OpenAISpeechConfig, opts: Options = Options()): TestResult = try {
-        val bytes = synthesize(cfg, S.playback.testPhrase, opts)
-        TestResult(true, S.common.connectionOk, bytes)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Throwable) {
-        val err = NetErrors.fromThrowable(e, endpoint = trimBase(cfg.baseUrl), kind = CallKind.SYNTHESIS, model = cfg.model)
-        TestResult(false, err.headline(), error = err)
-    }
 }

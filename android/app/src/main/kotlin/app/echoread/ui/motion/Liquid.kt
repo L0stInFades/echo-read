@@ -13,7 +13,6 @@ import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -222,5 +221,3 @@ fun settleIndex(pos: Float, velocityItemsPerSec: Float, n: Int, from: Int): Int 
     val nearest = Math.round(pos).coerceIn(0, n - 1)
     return target.coerceIn(nearest - 1, nearest + 1).coerceIn(0, n - 1).let { if (n == 1) from else it }
 }
-
-internal fun Offset.isInside(w: Float, h: Float): Boolean = x in 0f..w && y in 0f..h

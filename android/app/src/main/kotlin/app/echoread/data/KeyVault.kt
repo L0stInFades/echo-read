@@ -32,9 +32,19 @@ interface Vault {
 }
 
 class KeystoreVault : Vault {
-    /** 明文 → 密文。设置每改一次都会整份落盘（拖一下语速滑块就是几十次），没变的 Key 不重复加密 */
-    private val sealed = HashMap<String, String>()
-    private val opened = HashMap<String, String>()
+    /**
+     * 明文 → 密文。设置每改一次都会整份落盘（拖一下语速滑块就是几十次），没变的 Key 不重复加密。
+     * 两张表都有上限、按最近使用淘汰：每次落盘都会碰一遍在用的 Key，它们始终最新；
+     * 输入过程中留下的半截 Key 没人再碰，表一满就最先被挤出去，内存里留下的永远只有这么多。
+     * 设置可能从不同线程落盘，读写都在 [lock] 下。
+     */
+    private val sealed = Lru()
+    private val opened = Lru()
+    private val lock = Any()
+
+    private class Lru : LinkedHashMap<String, String>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, String>?): Boolean = size > CACHE_MAX
+    }
 
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance(STORE).apply { load(null) }
@@ -49,13 +59,12 @@ class KeystoreVault : Vault {
 
     override fun seal(plain: String): String {
         if (plain.isEmpty()) return plain
-        sealed[plain]?.let { return it }
+        synchronized(lock) { sealed[plain] }?.let { return it }
         return try {
             val cipher = Cipher.getInstance(TRANSFORM).apply { init(Cipher.ENCRYPT_MODE, key()) }
             val body = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
             val out = PREFIX + Base64.getEncoder().encodeToString(cipher.iv + body)
-            sealed[plain] = out
-            opened[out] = plain
+            cache(plain, out)
             out
         } catch (_: Throwable) {
             plain
@@ -64,13 +73,12 @@ class KeystoreVault : Vault {
 
     override fun open(stored: String): String {
         if (!stored.startsWith(PREFIX)) return stored
-        opened[stored]?.let { return it }
+        synchronized(lock) { opened[stored] }?.let { return it }
         return try {
             val raw = Base64.getDecoder().decode(stored.removePrefix(PREFIX))
             val cipher = Cipher.getInstance(TRANSFORM).apply { init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(128, raw, 0, IV_BYTES)) }
             val plain = String(cipher.doFinal(raw, IV_BYTES, raw.size - IV_BYTES), Charsets.UTF_8)
-            opened[stored] = plain
-            sealed[plain] = stored
+            cache(plain, stored)
             plain
         } catch (_: Throwable) {
             // 密钥不在了（恢复到另一台设备、清除了凭据存储）：这把 Key 已经读不回来，交给用户重填
@@ -78,8 +86,15 @@ class KeystoreVault : Vault {
         }
     }
 
+    private fun cache(plain: String, stored: String) = synchronized(lock) {
+        sealed[plain] = stored
+        opened[stored] = plain
+    }
+
     companion object {
         const val PREFIX = "enc1:"
+        /** 远多于一个人会配的 Key 数，在用的 Key 永远不会被挤出去而反复加密 */
+        private const val CACHE_MAX = 32
         private const val STORE = "AndroidKeyStore"
         private const val ALIAS = "lector.keys.v1"
         private const val TRANSFORM = "AES/GCM/NoPadding"

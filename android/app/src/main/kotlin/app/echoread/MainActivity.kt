@@ -20,7 +20,6 @@ import androidx.media3.session.SessionToken
 import app.echoread.tts.PlaybackService
 import app.echoread.ui.EchoApp
 import com.google.common.util.concurrent.ListenableFuture
-import kotlinx.coroutines.flow.update
 
 class MainActivity : ComponentActivity() {
     private var controllerFuture: ListenableFuture<MediaController>? = null
@@ -58,7 +57,7 @@ class MainActivity : ComponentActivity() {
         }
         if (uris.isNotEmpty()) {
             intent?.action = Intent.ACTION_MAIN
-            graph.pendingImports.update { it + uris }
+            graph.pendingImports.offer(uris)
         }
         // 外部配置：--es apiKey/baseUrl/model/voice → 弹确认卡片，用户点「使用」才写入
         val apiKey = intent?.getStringExtra(EXTRA_API_KEY)

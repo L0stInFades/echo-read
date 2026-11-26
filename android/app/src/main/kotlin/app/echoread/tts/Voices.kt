@@ -473,8 +473,6 @@ object Voices {
     /** Gemini 3.8 的 30 个预置精选音色（官方「Prebuilt voices」表）。每个音色都能说全部支持的语言，归「多语言」 */
     fun geminiPrebuiltVoices(): List<VoiceInfo> = T.gemini.map { (id, gn) -> VoiceInfo(id, id, "multi", gn.gender, gn.note) }
 
-    fun isGeminiPrebuilt(id: String): Boolean = id in GEMINI_IDS
-
     /** 自建音色：音色设计 / 改造（prompted）与音色复刻（replicated），只属于 Key 所在的项目 */
     fun isGeminiCustom(v: GeminiVoiceEntry): Boolean = v.type == "prompted" || v.type == "replicated" || v.id.startsWith("voice_")
 

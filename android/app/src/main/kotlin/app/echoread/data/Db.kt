@@ -149,7 +149,8 @@ interface BookDao {
     suspend fun deleteBookmarksOf(bookId: String)
 }
 
-@Database(entities = [BookEntity::class, ChapterEntity::class, BookmarkEntity::class], version = 2, exportSchema = false)
+/** 每个版本的表结构导出到 android/app/schemas/（随代码提交），改表时拿它核对迁移 */
+@Database(entities = [BookEntity::class, ChapterEntity::class, BookmarkEntity::class], version = 2, exportSchema = true)
 abstract class EchoDb : RoomDatabase() {
     abstract fun dao(): BookDao
 
@@ -172,11 +173,14 @@ abstract class EchoDb : RoomDatabase() {
             }
         }
 
+        /**
+         * 刻意不配任何 fallbackToDestructiveMigration：缺了某条迁移时 Room 直接抛异常、应用打不开，
+         * 这正是想要的 —— 宁可启动失败，也不能静默清掉库里用户的书架和阅读进度。
+         * （它的布尔参数是 dropAllTables，不是开关：写成 fallbackToDestructiveMigration(false) 照样会清库。）
+         */
         fun open(context: Context): EchoDb =
             Room.databaseBuilder(context.applicationContext, EchoDb::class.java, "echo-read.db")
                 .addMigrations(MIGRATION_1_2)
-                // 没有对应迁移时宁可启动失败，也不清库：库里是用户的书架和阅读进度
-                .fallbackToDestructiveMigration(false)
                 .build()
     }
 }

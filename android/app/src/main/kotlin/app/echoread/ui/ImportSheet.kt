@@ -5,7 +5,6 @@ import android.content.Intent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -21,9 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearWavyProgressIndicator
@@ -39,22 +36,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import app.echoread.AppGraph
 import app.echoread.core.i18n.I18n
 import app.echoread.data.AccessTier
 import app.echoread.data.BookCandidate
 import app.echoread.data.ScanSource
-import app.echoread.ui.motion.PressScale
 import app.echoread.ui.motion.echoPress
-import kotlinx.coroutines.flow.update
 import java.text.DateFormat
 import java.util.Date
 
@@ -118,7 +110,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
     }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) {
-            graph.pendingImports.update { it + uris }
+            graph.pendingImports.offer(uris)
             onClose()
         }
     }
@@ -268,7 +260,7 @@ fun BoxScope.ImportSheet(open: Boolean, graph: AppGraph, onClose: () -> Unit) {
         ) {
             val uris = picked.map { it.uri }
             if (uris.isNotEmpty()) {
-                graph.pendingImports.update { it + uris }
+                graph.pendingImports.offer(uris)
                 selected.clear()
                 onClose()
             }

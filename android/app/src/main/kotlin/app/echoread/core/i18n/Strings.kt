@@ -61,9 +61,9 @@ interface Strings {
         val added: String
         val title: String
         val sampleImportFailed: String
-        fun libraryBooks(booksCount: Any?): String
+        fun libraryBooks(booksCount: Int): String
         val tagline: String
-        fun keyBannerTitle(service: Any?): String
+        fun keyBannerTitle(service: String): String
         val keyBannerSubtitle: String
         val emptyTitle: String
         val emptyHint: String
@@ -71,16 +71,16 @@ interface Strings {
         val trySample: String
         val howToUseLink: String
         val searchTitleOrAuthor: String
-        fun noResultsFor(query: Any?): String
+        fun noResultsFor(query: String): String
         val importingBook: String
         val removedFromLibrary: String
         val experimental: String
-        fun updateDownloaded(versionName: Any?): String
+        fun updateDownloaded(versionName: String): String
         val connectingToDownloadServer: String
-        fun downloadingUpdate(versionName: Any?, percent: Any?): String
+        fun downloadingUpdate(versionName: String, percent: Int): String
         val updateFailed: String
-        fun updateAvailable(versionName: Any?): String
-        fun currentVersionShort(currentVersionName: Any?): String
+        fun updateAvailable(versionName: String): String
+        fun currentVersionShort(currentVersionName: String): String
         val install: String
         val allowInstallHint: String
         val updateNow: String
@@ -88,40 +88,45 @@ interface Strings {
         val skipThisVersion: String
         val experimentalWarning: String
         val continueReading: String
-        fun bookMeta(author: Any?, format: Any?, chapterCount: Any?, length: Any?): String
+        fun bookMeta(author: String, format: String, chapterCount: Int, length: String): String
         val deleteFromLibrary: String
         val notStarted: String
-        fun readPercent(percent: Any?): String
+        fun readPercent(percent: Int): String
         val justNow: String
-        fun minAgo(minutes: Any?): String
-        fun hoursAgo(hours: Any?): String
-        fun daysAgo(days: Any?): String
+        fun minAgo(minutes: Long): String
+        fun hoursAgo(hours: Long): String
+        fun daysAgo(days: Long): String
     }
 
     /** 导入书籍、扫描、解析器生成的标题 */
     interface Importer {
         val scanFailed: String
-        fun importedChapters(title: Any?, chapterCount: Any?): String
+        fun importedChapters(title: String, chapterCount: Int): String
         val importFailed: String
         val epubMissingContainer: String
         val epubMissingOpfPath: String
         val epubMissingOpf: String
-        fun partTitle(part: Any?): String
+        fun partTitle(part: Int): String
+        /** 超长章节切开后的分段标题 */
+        fun splitPartTitle(title: String, part: Int): String
         val epubNoText: String
         val opening: String
         val untitled: String
         val folder: String
         val untitledTxt: String
-        fun fileTooLarge(sizeMb: Any?, limitMb: Any?): String
+        fun fileTooLarge(sizeMb: Long, limitMb: Long): String
+        /** 提供方没报大小、读到一半才发现超限：只能说上限，说不出实际大小 */
+        fun fileOverLimit(limitMb: Long): String
+        val epubTooLarge: String
         val cantReadTheFile: String
         val onlyTxtAndEpub: String
         val noChaptersCouldBe: String
         val unknownAuthor: String
-        fun scanningFound(first: Any?): String
+        fun scanningFound(first: Int): String
         val noBooksFoundYet: String
-        fun foundBooks(candidatesCount: Any?): String
-        fun shown(shownCount: Any?): String
-        fun checkedFiles(second: Any?): String
+        fun foundBooks(candidatesCount: Int): String
+        fun shown(shownCount: Int): String
+        fun checkedFiles(second: Int): String
         val scanTruncated: String
         val stop: String
         val rescan: String
@@ -132,7 +137,7 @@ interface Strings {
         val noBooksScannedHint: String
         val noMatchingBooks: String
         val selectBooksToImport: String
-        fun importSelected(pickedCount: Any?): String
+        fun importSelected(pickedCount: Int): String
         val browseFiles: String
         val readyToScanAll: String
         val changeFolder: String
@@ -193,12 +198,12 @@ interface Strings {
         val chapterContentIsMissing: String
         val tapAnyWordTo: String
         val couldntLoadChapter: String
-        fun speedLabel(rate: Any?): String
+        fun speedLabel(rate: String): String
         val thisBookDoesntExist: String
         val backToLibrary: String
         val back: String
-        fun pageOf(page: Any?, pageCount: Any?): String
-        fun chapterOf(chapter: Any?, chapterCount: Any?): String
+        fun pageOf(page: Int, pageCount: Int): String
+        fun chapterOf(chapter: Int, chapterCount: Int): String
         val backToPlaybackButton: String
         val backToPlaybackPosition: String
         val sleepTimer: String
@@ -275,16 +280,16 @@ interface Strings {
         val prefetchSegments: String
         val prefetchHint: String
         val audioCache: String
-        fun cacheStats(count: Any?, size: Any?): String
+        fun cacheStats(count: Int, size: String): String
         val calculating: String
         val clear: String
         val audioCacheCleared: String
-        fun youreUpToDate(currentVersionName: Any?): String
+        fun youreUpToDate(currentVersionName: String): String
         val updateFoundSeeLibrary: String
         val couldntCheckForUpdates: String
         val checkingForUpdates: String
         val checkForUpdates: String
-        fun currentVersion(currentVersionName: Any?): String
+        fun currentVersion(currentVersionName: String): String
         val helpImport1: String
         val helpImport2: String
         val helpImport3: String
@@ -300,8 +305,8 @@ interface Strings {
         val swipeUpDown: String
         val noSwiping: String
         val noTapZones: String
-        fun zonesSummaryTopBottom(prevPercent: Any?, nextPercent: Any?): String
-        fun zonesSummaryLeftRight(prevPercent: Any?, nextPercent: Any?): String
+        fun zonesSummaryTopBottom(prevPercent: Int, nextPercent: Int): String
+        fun zonesSummaryLeftRight(prevPercent: Int, nextPercent: Int): String
         val noModelsSyncedHint: String
         val modelIdPlaceholder: String
         val noMatchingModels: String
@@ -319,9 +324,10 @@ interface Strings {
         val previewText: String
         val notJsonObject: String
         val noAudioReturned: String
-        fun statusSuffix(status: Any?): String
+        fun statusSuffix(status: String): String
         val contentBlocks: String
-        fun unplayableMime(mimeType: Any?): String
+        fun providerMessageSuffix(message: String): String
+        fun unplayableMime(mimeType: String): String
         val mimeNone: String
         val styleNatural: String
         val styleCalm: String
@@ -479,33 +485,32 @@ interface Strings {
         val longFormTag: String
         val qwenTts: String
         val audiobooksTag: String
-        fun pricePerMillionChars(price: Any?): String
-        fun voicesCount(n: Any?): String
+        fun pricePerMillionChars(price: String): String
+        fun voicesCount(n: Int): String
         val openVoiceIds: String
         val cloning: String
     }
 
     /** 朗读引擎、系统语音、播放 */
     interface Playback {
-        fun providerAskedToWait(retryAfterSec: Any?): String
-        fun retryNote(headline: Any?, secs: Any?, attempt: Any?, maxAttempts: Any?, why: Any?): String
-        fun segmentsFailedInRow(segmentsFailed: Any?, headline: Any?): String
-        fun skippedSegments(count: Any?, badge: Any?): String
+        fun providerAskedToWait(retryAfterSec: Long): String
+        fun retryNote(headline: String, secs: Int, attempt: Int, maxAttempts: Int, why: String): String
+        fun segmentsFailedInRow(segmentsFailed: Int, headline: String): String
+        fun skippedSegments(count: Int, badge: String): String
         val chapterContentMissing: String
         val playbackInterrupted: String
         val systemTtsFailed: String
         val noAiVoiceService: String
         val synthesisFailed: String
-        fun chapterTitle(number: Any?): String
+        fun chapterTitle(number: Int): String
         val albumTitle: String
-        fun playbackError(errorCodeName: Any?): String
+        fun playbackError(errorCodeName: String): String
         val bookNotFound: String
         val sleepTimerEnded: String
-        fun emptyAudioBody(contentType: Any?, size: Any?): String
-        fun notAudioBody(contentType: Any?, size: Any?): String
-        val testPhrase: String
+        fun emptyAudioBody(contentType: String, size: Int): String
+        fun notAudioBody(contentType: String, size: Int): String
         val systemTtsError: String
-        fun systemTtsErrorCode(code: Any?): String
+        fun systemTtsErrorCode(code: Int): String
         val systemTtsMissingEngine: String
         val systemTtsUnavailable: String
         val systemTtsRequestFailed: String
@@ -518,21 +523,21 @@ interface Strings {
         val badgeNoResponse: String
         val apiKeyNotSet: String
         val baseUrlNotSet: String
-        fun apiKeyRejected(badge: Any?): String
-        fun outOfQuota(badge: Any?): String
-        fun rateLimited(badge: Any?): String
-        fun retryAfterSuffix(seconds: Any?): String
-        fun notFound(badge: Any?): String
-        fun requestRejected(badge: Any?): String
-        fun precondition(badge: Any?): String
-        fun providerError(badge: Any?): String
+        fun apiKeyRejected(badge: String): String
+        fun outOfQuota(badge: String): String
+        fun rateLimited(badge: String): String
+        fun retryAfterSuffix(seconds: Long): String
+        fun notFound(badge: String): String
+        fun requestRejected(badge: String): String
+        fun precondition(badge: String): String
+        fun providerError(badge: String): String
         val requestTimedOut: String
         val networkConnectionFailed: String
-        fun cantReach(host: Any?): String
+        fun cantReach(host: String): String
         val secureConnectionFailed: String
-        fun unreadableResponse(badge: Any?): String
-        fun emptyAudioReturned(badge: Any?): String
-        fun requestFailed(badge: Any?): String
+        fun unreadableResponse(badge: String): String
+        fun emptyAudioReturned(badge: String): String
+        fun requestFailed(badge: String): String
         val adviceMissingKey: String
         val adviceMissingBaseUrl: String
         val adviceAuth: String
@@ -551,16 +556,17 @@ interface Strings {
         val adviceParse: String
         val adviceEmptyAudio: String
         val adviceUnknown: String
-        fun detailProviderMessage(message: Any?): String
-        fun detailProviderCode(code: Any?): String
-        fun detailCategory(category: Any?, statusClass: Any?): String
-        fun detailEndpoint(method: Any?, endpoint: Any?): String
-        fun detailModel(model: Any?): String
-        fun detailTransport(transport: Any?): String
-        fun detailAttempt(attempt: Any?, maxAttempts: Any?): String
-        fun detailElapsed(elapsedMs: Any?): String
+        fun detailProviderMessage(message: String): String
+        fun detailProviderCode(code: String): String
+        fun detailCategory(category: String, statusClass: String): String
+        fun detailEndpoint(method: String, endpoint: String): String
+        fun detailModel(model: String): String
+        fun detailTransport(transport: String): String
+        fun detailAttempt(attempt: Int, maxAttempts: Int): String
+        fun detailElapsed(elapsedMs: Long): String
+        fun detailRetryAfter(seconds: Long): String
         val detailBody: String
-        fun detailSuggestion(advice: Any?): String
+        fun detailSuggestion(advice: String): String
         val catAuth: String
         val catQuota: String
         val catRateLimit: String
@@ -581,14 +587,14 @@ interface Strings {
         val classLocal: String
         val errorDetails: String
         val labelProviderMessage: String
-        fun labelCode(code: Any?): String
+        fun labelCode(code: String): String
         val labelRequest: String
         val labelEndpoint: String
         val labelTransport: String
         val labelAttempt: String
-        fun attemptOf(attempt: Any?, maxAttempts: Any?): String
+        fun attemptOf(attempt: Int, maxAttempts: Int): String
         val labelElapsed: String
-        fun seconds(seconds: Any?): String
+        fun seconds(seconds: Long): String
         val labelBodySnippet: String
         val copyDiagnostics: String
         val copied: String
@@ -600,7 +606,7 @@ interface Strings {
     /** 朗读服务（0.5.0）：服务目录、添加与配置服务、模型与音色选择 */
     interface Providers {
         val previewText: String
-        fun undecodableAudio(encoding: Any?): String
+        fun undecodableAudio(encoding: String): String
         val noAudioField: String
         val systemVoice: String
         val systemVoiceDesc: String
@@ -612,11 +618,11 @@ interface Strings {
         val connecting: String
         val connected: String
         val ready: String
-        fun balance(amount: Any?): String
-        fun balanceFailed(badge: Any?): String
-        fun suspiciousAuth(badge: Any?): String
+        fun balance(amount: String): String
+        fun balanceFailed(badge: String): String
+        fun suspiciousAuth(badge: String): String
         fun ownVoices(count: Int): String
-        fun retiresOn(date: Any?): String
+        fun retiresOn(date: String): String
         fun limitPerRequest(count: Int): String
         val servicesTitle: String
         val yourServices: String
@@ -651,7 +657,7 @@ interface Strings {
         val importHint: String
         val paste: String
         val add: String
-        fun importFailed(reason: Any?): String
+        fun importFailed(reason: String): String
         val serviceAdded: String
         val searchModels: String
         val searchVoices: String
@@ -685,12 +691,13 @@ interface Strings {
     /** 应用内更新 */
     interface Update {
         val manifestFetchFailed: String
-        fun updateCheckFailed(reason: Any?): String
+        fun updateCheckFailed(reason: String): String
         val networkError: String
         val emptyResponse: String
         val checksumMismatch: String
+        val missingChecksum: String
         val saveFailed: String
         val downloadFailed: String
-        fun downloadFailedWith(reason: Any?): String
+        fun downloadFailedWith(reason: String): String
     }
 }

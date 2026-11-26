@@ -32,22 +32,12 @@ private sealed interface DriveSignal {
 }
 
 /**
- * 水平手势绑定：tap 与 drag 在同一个 `awaitEachGesture` 里裁决，位移 1:1 直写驱动器。
+ * 垂直手势绑定（底部弹层）：tap 与 drag 在同一个 `awaitEachGesture` 里裁决，位移 1:1 直写驱动器。
  *
  * `pointerInput(Unit)`：手势协程的 key 必须是常量，业务状态（播放中/重排版）绝不能重启手势协程 ——
  * 那正是「拖到一半手势突然失灵」的直接原因。所有可变数据必须通过 lambda 参数读取（且 lambda 只许
  * 捕获 State / @Stable 对象，不能捕获组合期的普通局部值）。
  */
-fun Modifier.driveHorizontally(
-    driver: MotionDriver,
-    enabled: () -> Boolean,
-    bounds: () -> ClosedFloatingPointRange<Float>,
-    onDragStart: () -> Unit = {},
-    onTap: ((position: Offset, size: IntSize) -> Unit)? = null,
-    onSettle: (velocityPxPerSec: Float) -> Unit,
-): Modifier = driveAxis(driver, { Orientation.Horizontal }, enabled, bounds, { 1f }, onDragStart, onTap, onSettle)
-
-/** 垂直手势绑定（底部弹层）：语义与 [driveHorizontally] 完全一致 */
 fun Modifier.driveVertically(
     driver: MotionDriver,
     enabled: () -> Boolean,

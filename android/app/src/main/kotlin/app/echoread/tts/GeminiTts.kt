@@ -8,7 +8,6 @@ import app.echoread.core.net.NetCategory
 import app.echoread.core.net.NetError
 import app.echoread.core.net.NetErrors
 import app.echoread.core.net.NetException
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -55,10 +54,6 @@ object GeminiTts {
     const val BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
     const val MODEL_FLASH = "gemini-3.8-flash-tts"
     const val MODEL_FLASH_LITE = "gemini-3.8-flash-lite-tts"
-    const val DEFAULT_VOICE = "Kore"
-
-    /** 去 Google AI Studio 创建 Key（免费层即可调用 3.8 TTS） */
-    const val KEY_PAGE = "https://aistudio.google.com/apikey"
 
     /** 试听文本：比单个「你好」长一点，才听得出音色和语气 */
     val PREVIEW_TEXT: String get() = S.gemini.previewText
@@ -174,7 +169,7 @@ object GeminiTts {
             append(S.gemini.noAudioReturned)
             if (status != null) append(S.gemini.statusSuffix(status))
             if (kinds.isNotEmpty()) append(S.gemini.contentBlocks).append(kinds.joinToString())
-            err?.str("message")?.let { append("；").append(it) }
+            err?.str("message")?.let { append(S.gemini.providerMessageSuffix(it)) }
         }
         return msg to err?.str("code")
     }
@@ -328,15 +323,5 @@ object GeminiTts {
             pages++
         } while (!token.isNullOrEmpty() && pages < MAX_VOICE_PAGES)
         out.values.toList()
-    }
-
-    /** 试听：合成一句短话，成功时把音频一并返回（调用方负责播放） */
-    suspend fun testConfig(cfg: GeminiTtsConfig): SpeechApi.TestResult = try {
-        SpeechApi.TestResult(true, S.common.connectionOk, synthesize(cfg, PREVIEW_TEXT))
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Throwable) {
-        val err = NetErrors.fromThrowable(e, endpoint = interactionsUrl(), kind = CallKind.SYNTHESIS, model = modelOf(cfg))
-        SpeechApi.TestResult(false, err.headline(), error = err)
     }
 }

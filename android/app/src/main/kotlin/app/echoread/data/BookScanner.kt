@@ -74,6 +74,21 @@ data class BookCandidate(
 }
 
 /**
+ * 一次扫描的结果。不可变、每次扫描各自一份：被取消的上一次扫描还没停下时，
+ * 它的截断标记不会串进新一次的结果里。
+ */
+data class ScanResult(
+    val candidates: List<BookCandidate>,
+    /**
+     * 是否因为触到遍历上限而提前结束。三个上限（目录深度 / 总条目数 / SAF 目录数）任一触发都算 ——
+     * 把截断的结果当成完整结果展示，会让用户以为「书就这些」而放弃。
+     */
+    val truncated: Boolean,
+    /** 这次扫描是在哪个访问档位下进行的 */
+    val tier: AccessTier
+)
+
+/**
  * 全盘扫描 TXT / EPUB。
  *
  * Android 的分区存储把「读到别人放在手机里的文档」拆成了三条互不重叠的路径，
@@ -91,22 +106,7 @@ class BookScanner(private val context: Context) {
 
     private val prefs = context.getSharedPreferences("echo-read-scan", Context.MODE_PRIVATE)
 
-    /**
-     * 上一次扫描是否因为触到遍历上限而提前结束。
-     * 三个上限（目录深度 / 总条目数 / SAF 目录数）任一触发都会置位 ——
-     * 把截断的结果当成完整结果展示，会让用户以为「书就这些」而放弃。
-     */
-    @Volatile
-    var truncated: Boolean = false
-        private set
-
     /* ---------------- 权限与授权状态 ---------------- */
-
-    /** 是否持有「所有文件访问权限」（API 30+）。API ≤ 28 时由 READ_EXTERNAL_STORAGE 等价替代 */
-    fun hasAllFilesAccess(): Boolean = when {
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> Environment.isExternalStorageManager()
-        else -> hasLegacyReadPermission()
-    }
 
     fun hasLegacyReadPermission(): Boolean =
         context.checkSelfPermission(android.Manifest.permission.READ_EXTERNAL_STORAGE) == android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -193,11 +193,11 @@ class BookScanner(private val context: Context) {
      * 执行一次全量扫描。[onProgress] 在 IO 线程上被频繁调用，传入「当前已发现数」，
      * 调用方需自行切回主线程更新 UI。
      */
-    suspend fun scan(onProgress: (found: Int, scanned: Int) -> Unit = { _, _ -> }): List<BookCandidate> =
+    suspend fun scan(onProgress: (found: Int, scanned: Int) -> Unit = { _, _ -> }): ScanResult =
         withContext(Dispatchers.IO) {
             val found = LinkedHashMap<String, BookCandidate>()
             var scanned = 0
-            truncated = false
+            var truncated = false
 
             // 先到先得 + 升级：媒体库跑在最前面（一条 SQL 就能出首批结果），但它给不出真实路径，
             // 也无法顺带读 EPUB 书名。随后文件遍历发现同一本时必须**顶掉**那条记录，
@@ -222,7 +222,7 @@ class BookScanner(private val context: Context) {
             // 文件系统遍历作为补齐：媒体库尚未扫描到的新文件只能靠它发现
             if (wholeDevice) {
                 for (root in storageRoots()) {
-                    walk(
+                    val cut = walk(
                         root,
                         onVisit = {
                             scanned++
@@ -230,13 +230,14 @@ class BookScanner(private val context: Context) {
                         },
                         onHit = { f -> offer(fromFile(f)) }
                     )
+                    if (cut) truncated = true
                 }
             }
 
             // SAF 目录授权：任何版本都可用，也是 API 29 与未授予整机权限时的唯一自动来源
             for (tree in grantedTrees()) {
                 currentCoroutineContext().ensureActive()
-                runCatching { scanTree(tree) { c -> scanned++; offer(c) } }
+                if (runCatching { scanTree(tree) { c -> scanned++; offer(c) } }.getOrDefault(false)) truncated = true
             }
 
             // EPUB 书名预览放在遍历之后单独做：开 zip 读中央目录虽快，放进目录遍历的热路径上
@@ -253,7 +254,7 @@ class BookScanner(private val context: Context) {
             }
 
             onProgress(found.size, scanned)
-            found.values.sortedByDescending { it.lastModified }
+            ScanResult(found.values.sortedByDescending { it.lastModified }, truncated, tier)
         }
 
     /* ---------------- 路径一：文件系统遍历 ---------------- */
@@ -278,39 +279,6 @@ class BookScanner(private val context: Context) {
         return roots.toList()
     }
 
-    /** [onVisit] 每遍历到一个条目就回调一次（进度用），[onHit] 只在命中书籍时回调 */
-    private suspend inline fun walk(root: File, crossinline onVisit: () -> Unit, crossinline onHit: (File) -> Unit) {
-        val stack = ArrayDeque<Pair<File, Int>>()
-        stack.push(root to 0)
-        var visited = 0
-        while (stack.isNotEmpty()) {
-            currentCoroutineContext().ensureActive()
-            val (dir, depth) = stack.pop()
-            if (depth > MAX_DEPTH) {
-                truncated = true
-                continue
-            }
-            val children = dir.listFiles() ?: continue
-            for (f in children) {
-                onVisit()
-                if (++visited > MAX_VISITS) {
-                    truncated = true
-                    return
-                }
-                val name = f.name
-                if (name.startsWith(".")) continue
-                if (f.isDirectory) {
-                    // Android/ 下全是应用私有数据，几十万个文件且不会放书
-                    if (depth == 0 && (name == "Android" || name == "LOST.DIR")) continue
-                    stack.push(f to depth + 1)
-                } else if (isBook(name)) {
-                    val len = f.length()
-                    if (len > 0 && len <= MAX_BOOK_BYTES) onHit(f)
-                }
-            }
-        }
-    }
-
     private fun fromFile(f: File): BookCandidate {
         val epub = f.name.endsWith(".epub", ignoreCase = true)
         return BookCandidate(
@@ -329,8 +297,9 @@ class BookScanner(private val context: Context) {
     /**
      * 用 [DocumentsContract] 批量查询子文档，而不是 DocumentFile.listFiles()：
      * 后者每个条目都要单独发一次 query，一个几千文件的目录能跑上十几秒。
+     * 返回是否因触到目录数上限而没有走完。
      */
-    private suspend fun scanTree(tree: Uri, onHit: (BookCandidate) -> Unit) {
+    private suspend fun scanTree(tree: Uri, onHit: (BookCandidate) -> Unit): Boolean {
         val projection = arrayOf(
             DocumentsContract.Document.COLUMN_DOCUMENT_ID,
             DocumentsContract.Document.COLUMN_DISPLAY_NAME,
@@ -343,10 +312,7 @@ class BookScanner(private val context: Context) {
         var dirs = 0
         while (stack.isNotEmpty()) {
             currentCoroutineContext().ensureActive()
-            if (++dirs > MAX_TREE_DIRS) {
-                truncated = true
-                return
-            }
+            if (++dirs > MAX_TREE_DIRS) return true
             val parentId = stack.pop()
             val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(tree, parentId)
             val cursor = runCatching { context.contentResolver.query(childrenUri, projection, null, null, null) }.getOrNull() ?: continue
@@ -377,6 +343,7 @@ class BookScanner(private val context: Context) {
                 }
             }
         }
+        return false
     }
 
     /* ---------------- 路径三：媒体库 ---------------- */
@@ -441,5 +408,41 @@ class BookScanner(private val context: Context) {
 
         fun isBook(name: String): Boolean =
             name.endsWith(".txt", ignoreCase = true) || name.endsWith(".epub", ignoreCase = true)
+
+        /**
+         * 文件系统遍历：返回是否因触到上限（目录深度 / 条目数）而没有走完。
+         * [onVisit] 每遍历到一个条目就回调一次（进度用），[onHit] 只在命中书籍时回调。
+         * 截断与否只经由返回值交给这一次的调用方，不落在任何共享状态上。
+         */
+        internal suspend inline fun walk(root: File, crossinline onVisit: () -> Unit, crossinline onHit: (File) -> Unit): Boolean {
+            val stack = ArrayDeque<Pair<File, Int>>()
+            stack.push(root to 0)
+            var visited = 0
+            var cut = false
+            while (stack.isNotEmpty()) {
+                currentCoroutineContext().ensureActive()
+                val (dir, depth) = stack.pop()
+                if (depth > MAX_DEPTH) {
+                    cut = true
+                    continue
+                }
+                val children = dir.listFiles() ?: continue
+                for (f in children) {
+                    onVisit()
+                    if (++visited > MAX_VISITS) return true
+                    val name = f.name
+                    if (name.startsWith(".")) continue
+                    if (f.isDirectory) {
+                        // Android/ 下全是应用私有数据，几十万个文件且不会放书
+                        if (depth == 0 && (name == "Android" || name == "LOST.DIR")) continue
+                        stack.push(f to depth + 1)
+                    } else if (isBook(name)) {
+                        val len = f.length()
+                        if (len > 0 && len <= MAX_BOOK_BYTES) onHit(f)
+                    }
+                }
+            }
+            return cut
+        }
     }
 }

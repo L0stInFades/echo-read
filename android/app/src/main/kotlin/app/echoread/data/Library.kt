@@ -8,6 +8,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import app.echoread.core.BookFormat
 import app.echoread.core.BookMeta
+import app.echoread.core.BoundedRead
 import app.echoread.core.EpubParser
 import app.echoread.core.Hash
 import app.echoread.core.ParsedBook
@@ -52,6 +53,7 @@ class LibraryRepo(
             val ext = name.substringAfterLast('.', "").lowercase()
             // 体积闸门：解析要把整个文件读进内存，上百 MB 的「.txt」（厂商 bugreport、聊天记录导出、
             // 数据库 dump）会直接 OOM。宁可明确拒绝，也不要让进程崩掉。
+            // 提供方报的大小只用来提前拒绝；真正的闸门是下面的有界读取 —— 不少提供方根本不报大小（SIZE 为 0）。
             val bytes = fileSize(uri)
             if (bytes > MAX_IMPORT_BYTES) {
                 throw IllegalArgumentException(S.importer.fileTooLarge(bytes / 1024 / 1024, MAX_IMPORT_BYTES / 1024 / 1024))
@@ -59,15 +61,16 @@ class LibraryRepo(
             val parsed: ParsedBook = withContext(Dispatchers.IO) {
                 when (ext) {
                     "txt", "text" -> {
-                        val bytes = context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                            ?: throw IllegalArgumentException(S.importer.cantReadTheFile)
+                        val input = context.contentResolver.openInputStream(uri) ?: throw IllegalArgumentException(S.importer.cantReadTheFile)
+                        val bytes = input.use { BoundedRead.bytes(it, MAX_IMPORT_BYTES) } ?: throw overLimit()
                         TxtParser.parse(name, bytes)
                     }
                     "epub" -> {
                         val tmp = File.createTempFile("import-", ".epub", context.cacheDir)
                         try {
-                            context.contentResolver.openInputStream(uri)?.use { input -> tmp.outputStream().use { input.copyTo(it) } }
-                                ?: throw IllegalArgumentException(S.importer.cantReadTheFile)
+                            val input = context.contentResolver.openInputStream(uri) ?: throw IllegalArgumentException(S.importer.cantReadTheFile)
+                            val fits = input.use { i -> tmp.outputStream().use { BoundedRead.copy(i, it, MAX_IMPORT_BYTES) } }
+                            if (!fits) throw overLimit()
                             EpubParser.parse(tmp, name, ::scaleCover)
                         } finally {
                             tmp.delete()
@@ -129,6 +132,9 @@ class LibraryRepo(
                 .sortedByDescending { it.lastReadAt ?: it.createdAt }
         }
     }
+
+    /** 读到一半才发现超限：说不出实际大小，只说上限 */
+    private fun overLimit() = IllegalArgumentException(S.importer.fileOverLimit(MAX_IMPORT_BYTES / 1024 / 1024))
 
     /** 文件大小；取不到时返回 0（不阻断导入） */
     private fun fileSize(uri: Uri): Long {

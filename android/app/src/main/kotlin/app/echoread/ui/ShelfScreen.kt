@@ -4,10 +4,6 @@ import app.echoread.core.i18n.S
 import app.echoread.ui.motion.EchoMotion
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.material3.animateFloatingActionButton
-import android.net.Uri
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
@@ -35,7 +31,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ContainedLoadingIndicator
 import androidx.compose.material3.LoadingIndicator
@@ -58,7 +53,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
@@ -94,7 +88,6 @@ import androidx.compose.ui.platform.LocalContext
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.text.Collator
-import java.util.Locale
 import app.echoread.ui.motion.Dur
 import app.echoread.ui.motion.Ease
 import app.echoread.ui.motion.EchoTransitions
@@ -500,11 +493,11 @@ private fun UpdateCard(graph: AppGraph) {
                     }
                     Text(
                         when (s) {
-                            is UpdateState.Ready -> S.shelf.updateDownloaded(info?.versionName)
+                            is UpdateState.Ready -> S.shelf.updateDownloaded(s.info.versionName)
                             is UpdateState.Downloading -> if (s.progress <= 0f) S.shelf.connectingToDownloadServer
-                            else S.shelf.downloadingUpdate(info?.versionName, (s.progress * 100).toInt())
+                            else S.shelf.downloadingUpdate(s.info.versionName, (s.progress * 100).toInt())
                             is UpdateState.Error -> S.shelf.updateFailed
-                            else -> S.shelf.updateAvailable(info?.versionName)
+                            else -> S.shelf.updateAvailable(info?.versionName.orEmpty())
                         },
                         color = c.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold
                     )
