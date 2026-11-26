@@ -1,15 +1,14 @@
 {
-  "versionCode": 21,
-  "versionName": "0.8.0-exp",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v0.8.0-exp/Lector-v0.8.0-exp.apk",
+  "versionCode": 22,
+  "versionName": "1.0.0",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v1.0.0/Lector-v1.0.0.apk",
   "mirrors": [
-    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v0.8.0-exp/Lector-v0.8.0-exp.apk",
-    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v0.8.0-exp/Lector-v0.8.0-exp.apk",
-    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v0.8.0-exp/Lector-v0.8.0-exp.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v1.0.0/Lector-v1.0.0.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v1.0.0/Lector-v1.0.0.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v1.0.0/Lector-v1.0.0.apk"
   ],
-  "notes": "【实验版】改动较大，可能有未发现的问题。不想升级可以点更新卡片上的「稍后再说 / ✕」。\n液态玻璃重写：照 FlClash 的做法从头写了一遍材质 —— 背后的画面几乎不模糊、提饱和后透过来，只在边缘一圈被掰弯，上下两条细高光、最外一圈暗线。悬浮的按钮与提示条都换了新材质。\n分段控件：选中项底下一块浅色托盘；按住它会悬起成一枚透镜，跟着手指走，透镜里的字放大、经过边缘时被掰弯；松手才选中。从分段控件上开始滑动列表不会再误选。\n按下玻璃按钮时整块鼓起、被手指带着走，手指下有一团光；书架右上角与阅读器顶栏的按钮组整组一起鼓。\n导入按钮与书架小标题保留 0.7.1 的玻璃质感，换上新的边；圆形导入按钮正上、正下的两个亮点修掉了。\n面板去掉了一圈发亮的描边。\n更新说明重做：卡片上露出前两条改动，点「更新说明」看全文；下载途中卡片滚出屏幕不再中断下载。",
-  "sha256": "06a69ef61364dc8e0249eb72a12e62d9dbfeba92c3fef4a68e631e449612824e",
+  "notes": "正式版：不再带「实验版」标记。\n书架与设置：声波图标进朗读设置，齿轮进应用设置；「怎么用」改成三步上手，收进设置。\n空书架只留「导入第一本书」；导入面板的扫描状态不再闪。",
+  "sha256": "f57c6b16dac25b1af750e5334425b7c184d10e0b272cd9933e30ec13616ef356",
   "minSdk": 26,
-  "experimental": true,
-  "notesEn": "[Experimental] Bigger changes; there may be undiscovered issues. To skip it, tap the X on the update card.\nLiquid glass, rebuilt: the material is written from scratch after FlClash. What is behind the glass stays nearly sharp and more saturated, bends only at the rim, with thin highlights along the top and bottom and a fine dark edge. Floating buttons and toasts use the new material.\nSegmented controls: the selected item sits on a soft pill. Hold it and it lifts into a lens that follows your finger; the text inside is magnified and bends at the lens edge. The choice is made when you let go. A scroll that starts on a segmented control no longer selects anything.\nGlass buttons swell as a whole when pressed, lean toward your finger and light up under it. The button groups at the top of the library and the reader swell together.\nThe Import button and the compact library title keep the 0.7.1 glass with the new edge. Fixed two bright dots at the top and bottom of the round Import button.\nPanels no longer have a bright outline.\nWhat's new, redesigned: the update card shows the first two changes and What's new lists them all. A download no longer stops when the card scrolls off screen."
+  "notesEn": "Stable release: no longer marked Experimental.\nLibrary and settings: the waveform icon opens Voice settings, the gear opens Settings; How to use is now three short steps in Settings.\nThe empty library has one action, Import your first book, and Rescan in the Import sheet no longer flickers."
 }
