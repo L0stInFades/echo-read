@@ -1,14 +1,14 @@
 {
-  "versionCode": 23,
-  "versionName": "1.0.1",
-  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v1.0.1/Lector-v1.0.1.apk",
+  "versionCode": 24,
+  "versionName": "1.0.2",
+  "apkUrl": "https://github.com/L0stInFades/echo-read/releases/download/android-v1.0.2/Lector-v1.0.2.apk",
   "mirrors": [
-    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v1.0.1/Lector-v1.0.1.apk",
-    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v1.0.1/Lector-v1.0.1.apk",
-    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v1.0.1/Lector-v1.0.1.apk"
+    "https://gh-proxy.com/https://github.com/L0stInFades/echo-read/releases/download/android-v1.0.2/Lector-v1.0.2.apk",
+    "https://ghfast.top/https://github.com/L0stInFades/echo-read/releases/download/android-v1.0.2/Lector-v1.0.2.apk",
+    "https://gh.llkk.cc/https://github.com/L0stInFades/echo-read/releases/download/android-v1.0.2/Lector-v1.0.2.apk"
   ],
-  "notes": "系统语音：在只会自己出声的引擎上（如联想平板）不再一直显示「正在合成…」、读两段就停；暂停后从刚才那一句接着读，不再从段首重来。\n新安装默认用系统语音，不再凭空多出 OpenRouter 和 Gemini；把服务删光后，它们不会再带着 Key 回来。",
-  "sha256": "c2a86bf347aa601aff267ab226f03f1723e664fd46fc005ab0be03b6aa8a659e",
+  "notes": "系统语音：读不出当前文字时（比如手机里选的是英文语音，书是中文），不再一声不响地把整本书翻过去，而是停下来说明原因；只有标点的段落直接略过。\n暂停后续播：在只会自己出声的引擎上（如联想平板），读过英文段落再暂停，继续时不再漏掉两三句。\n英文界面：朗读出错时，「详情」按钮不再被挤没。",
+  "sha256": "3eddc8bdd9cacb1f15da69b2ef624a9191b5a2d526092ce04edc116af4252440",
   "minSdk": 26,
-  "notesEn": "System voice: on engines that only speak aloud (such as Lenovo tablets) it no longer shows Generating... the whole time or stops after two passages, and after a pause it picks up from the sentence you were on instead of the start of the passage.\nA fresh install starts with the system voice instead of listing OpenRouter and Gemini, and removing all services no longer brings them back with their keys."
+  "notesEn": "System voice: when it cannot read the text (for example the phone is set to an English voice and the book is Chinese), playback now stops and says why instead of silently flipping through the whole book. Passages with only punctuation are skipped.\nResume after pause: on engines that only speak aloud (such as Lenovo tablets), resuming no longer skips a couple of sentences when an English passage came just before.\nEnglish UI: the Details button on a playback error is no longer squeezed out."
 }
