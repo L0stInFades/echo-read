@@ -3,6 +3,8 @@ package app.echoread
 import android.speech.tts.TextToSpeech
 import app.echoread.core.PlayerState
 import app.echoread.core.TtsSettings
+import app.echoread.core.i18n.S
+import app.echoread.core.net.NetCategory
 import app.echoread.core.net.NetErrors
 import app.echoread.core.net.NetException
 import app.echoread.tts.EngineFailure
@@ -347,10 +349,11 @@ class EngineTest {
         try {
             var now = 0L
             var tts: FakeTts? = null
-            val sys = SystemTts(TestContext(), clock = { now }) { _, onInit ->
+            val out = FakeOutput()
+            val sys = SystemTts(TestContext(), out, root, clock = { now }) { _, onInit ->
                 FakeTts(onInit).also { tts = it; it.headerOnly = true; it.aloud = { now += 5_000 }; it.init(TextToSpeech.SUCCESS) }
             }
-            val rig = EngineRig(this, root, settings = TtsSettings(active = TtsSettings.SYSTEM), systemTts = sys)
+            val rig = EngineRig(this, root, out, settings = TtsSettings(active = TtsSettings.SYSTEM), systemTts = sys)
             val e = rig.engine
             rig.load()
             e.play()
@@ -373,6 +376,33 @@ class EngineTest {
             e.play()
             assertEquals("还没出声就暂停：续播从这一段开头读", 3, tts!!.spoken.size)
             assertEquals(2, e.current.segmentIndex)
+        } finally {
+            Dispatchers.resetMain()
+        }
+    }
+
+    /**
+     * 交回静音的系统语音引擎（一加 PJX110 自带的引擎：系统里选着英文语音时读中文）。以前 0.16 秒的静音一段接一段地「播」，
+     * 整本书无声地翻过去、进度跟着跑；现在按这一段没读成处理，连续两段就停下，报的是原因，不是「请求失败（无响应）」
+     */
+    @Test
+    fun systemVoiceThatReturnsSilenceStopsWithAnError() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            val out = FakeOutput()
+            val sys = SystemTts(TestContext(), out, root) { _, onInit -> FakeTts(onInit).also { it.silent = true; it.init(TextToSpeech.SUCCESS) } }
+            val rig = EngineRig(this, root, out, settings = TtsSettings(active = TtsSettings.SYSTEM), systemTts = sys)
+            val e = rig.engine
+            rig.load()
+            e.play()
+            advanceUntilIdle()
+            assertEquals(PlayerState.ERROR, e.current.state)
+            assertTrue("没有一段静音被当成读过", out.handles.isEmpty())
+            assertEquals("只跳过了头一段，位置没有被带着跑", 1, e.current.segmentIndex)
+            val failure = e.current.failure as EngineFailure.Session
+            assertEquals(NetCategory.SYSTEM_VOICE, failure.error.category)
+            assertEquals(S.playback.segmentsFailedInRow(2, S.playback.systemTtsProducedNo), failure.headline())
+            assertTrue("详情里有当时看到的现象", failure.error.detail().contains("no sound"))
         } finally {
             Dispatchers.resetMain()
         }

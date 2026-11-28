@@ -110,6 +110,8 @@ internal fun ReaderStatusPill(
                 style = MaterialTheme.typography.labelMedium,
                 maxLines = 1, overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
+                    // 先给「详情」留出位置，长文案自己省略：英文的失败标题比一行宽，不让的话「详情」被挤成一竖条、点不到
+                    .weight(1f, fill = false)
                     .widthIn(max = 300.dp)
                     .then(
                         if (returnable && failure == null && retryNote == null)

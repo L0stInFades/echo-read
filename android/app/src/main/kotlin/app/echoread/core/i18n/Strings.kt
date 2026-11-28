@@ -559,6 +559,7 @@ interface Strings {
         val adviceTls: String
         val adviceParse: String
         val adviceEmptyAudio: String
+        val adviceSystemVoice: String
         val adviceUnknown: String
         fun detailProviderMessage(message: String): String
         fun detailProviderCode(code: String): String

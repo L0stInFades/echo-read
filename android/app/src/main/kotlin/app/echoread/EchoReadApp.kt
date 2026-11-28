@@ -39,10 +39,10 @@ class AppGraph(context: Context) {
     val library = LibraryRepo(context, db.dao(), chapterCache)
     val bookmarks = BookmarkRepo(db.dao())
     val audioCache = AudioCache(File(context.cacheDir, "tts-audio"))
-    val systemTts = SystemTts(context)
     val playback = Playback(context)
+    val systemTts = SystemTts(context, playback, File(context.cacheDir, "tts-tmp"))
     val network = AndroidNetworkStatus(context)
-    val engine = TtsEngine(mainScope, chapterCache, audioCache, systemTts, playback, File(context.cacheDir, "tts-tmp"), network)
+    val engine = TtsEngine(mainScope, chapterCache, audioCache, systemTts, playback, network)
     val player = PlayerController(engine, library, settings, mainScope, onNotice = { Toaster.show(it) })
     val updater = Updater(context)
 

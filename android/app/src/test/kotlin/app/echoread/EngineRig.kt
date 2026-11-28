@@ -37,6 +37,8 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 /*
  * 朗读引擎在 JVM 上的装配与替身（EngineTest / PipelineTest / PlaybackTest / PlayerControllerTest 共用）。
@@ -179,13 +181,30 @@ class FakeSynth {
     }
 }
 
-/** 平台 TextToSpeech 的替身：初始化结果、合成之后回不回调都由测试决定 */
+/** 一段 16 位单声道 WAV（框架写出来的样子）：44 字节的头 + [samples] 个采样，幅度 [level]（0 = 静音） */
+fun wav(samples: Int, level: Int = 8000): ByteArray {
+    val b = ByteBuffer.allocate(44 + samples * 2).order(ByteOrder.LITTLE_ENDIAN)
+    b.put("RIFF".toByteArray()).putInt(36 + samples * 2).put("WAVE".toByteArray())
+    b.put("fmt ".toByteArray()).putInt(16).putShort(1).putShort(1).putInt(24000).putInt(48000).putShort(2).putShort(16)
+    b.put("data".toByteArray()).putInt(samples * 2)
+    repeat(samples) { b.putShort((if (it % 2 == 0) level else -level).toShort()) }
+    return b.array()
+}
+
+/**
+ * 平台 TextToSpeech 的替身：初始化结果、合成之后回不回调都由测试决定。
+ * 真机上见过的每一种脾气在这里各有一个开关，默认是规规矩矩交出音频的引擎（小米 Redmi Note 8）。
+ */
 class FakeTts(private val onInit: TextToSpeech.OnInitListener) : TextToSpeech(null, null) {
     var listener: UtteranceProgressListener? = null
     var answers = true
-    /** 合成到文件只写一个空 WAV 头（联想的云端语音）；[aloud] 是它自己把这段读出声的那段时间 */
+    /** 合成到文件只写一个空 WAV 头（联想平板的云端语音）；[aloud] 是引擎交差之前花掉的那段时间（它自己把这段读出声） */
     var headerOnly = false
     var aloud: () -> Unit = {}
+    /** 交回一段完整却没有声音的 WAV（一加 PJX110 自带的引擎：系统里选着英文语音时，中文一律如此） */
+    var silent = false
+    /** 每次合成到文件的正文 */
+    val synthesized = ArrayList<String>()
     var stops = 0
     var shutdowns = 0
     var rate = 1f
@@ -199,9 +218,11 @@ class FakeTts(private val onInit: TextToSpeech.OnInitListener) : TextToSpeech(nu
     }
 
     override fun synthesizeToFile(text: CharSequence?, params: Bundle?, file: File?, utteranceId: String?): Int {
+        synthesized += text.toString()
         if (answers) {
-            file!!.writeBytes(ByteArray(if (headerOnly) 44 else 128))
-            if (headerOnly) aloud()
+            // 0.16 秒：一加交回的静音就是这么长
+            file!!.writeBytes(if (headerOnly) wav(0) else wav(3840, if (silent) 0 else 8000))
+            aloud()
             listener!!.onDone(utteranceId)
         }
         return SUCCESS
@@ -256,7 +277,7 @@ class EngineRig(
     chapterTexts: List<String> = listOf(chapterText(0, 6), chapterText(1, 6)),
     /** prefetch = 1：前瞻窗口只有下一段，请求的先后好推 */
     val settings: TtsSettings = TtsSettings(openai = OpenAISpeechConfig(apiKey = "k"), prefetch = 1),
-    systemTts: SystemTts = SystemTts(TestContext())
+    systemTts: SystemTts = SystemTts(TestContext(), out, File(root, "tmp"))
 ) {
     val main = test.appScope()
     val io = StandardTestDispatcher(test.testScheduler)
@@ -265,7 +286,7 @@ class EngineRig(
     val audioCache = AudioCache(File(root, "audio"), io)
     val synth = FakeSynth()
     val pipeline = SynthPipeline(main, audioCache, io, { test.testScheduler.currentTime }) { t, text -> synth.invoke(t, text) }
-    val engine = TtsEngine(main, chapters, audioCache, systemTts, out, File(root, "tmp"), object : NetworkStatus {}, pipeline)
+    val engine = TtsEngine(main, chapters, audioCache, systemTts, out, object : NetworkStatus {}, pipeline)
     val fake: FakeOutput get() = out as FakeOutput
     val chapterCount = chapterTexts.size
 

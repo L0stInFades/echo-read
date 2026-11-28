@@ -15,17 +15,27 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
+import java.io.RandomAccessFile
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
+/** 系统语音这一段没出声。[seen] 是当时在引擎那儿看到的现象（交回多少字节、花了多久），进错误详情 */
+class NoAudioException(val seen: String) : IllegalStateException(S.playback.systemTtsProducedNo)
+
 /**
- * 系统语音（Android TextToSpeech）：离线兜底。合成到 WAV 文件后走与 AI 语音完全相同的
- * ExoPlayer 播放管线，锁屏控制、倍速、后台续播一并复用。
- * 不肯写文件、只肯自己出声的引擎（见 [speaksAloud]）改走 [speak]：引擎自己读，句柄跟着它的回调走。
+ * 系统语音（Android TextToSpeech）：离线兜底。朗读引擎只认 [play] 这一个入口，各家引擎的脾气都收在这个文件里：
+ * - 交得出音频的（绝大多数）：合成到 WAV 文件后走与 AI 语音完全相同的 ExoPlayer 播放管线，锁屏控制、倍速、后台续播一并复用；
+ * - 不肯写文件、只肯自己出声的（见 [speaksAloud]）：改走 [speak]，引擎自己读，句柄跟着它的回调走；
+ * - 交不出声音的（绑不上、不回调、交回一段静音）：限时之内报出原因，绝不当成读过。
+ * 只按看到的行为分，不按厂商或包名分：新机型上遇到的新脾气，先在单测的替身里复现，再落到这三类之一。
  */
 class SystemTts(
     private val context: Context,
+    /** 交得出音频的引擎，合成出的 WAV 交给它播 */
+    private val output: AudioOutput,
+    /** 合成出的 WAV 临时放在这儿，播完即删 */
+    private val tempDir: File,
     /** 时钟（毫秒）；参数化只为单测换成虚拟时间 */
     private val clock: () -> Long = System::currentTimeMillis,
     /** 创建平台的 TextToSpeech；参数化只为单测换成替身 */
@@ -42,6 +52,18 @@ class SystemTts(
     @Volatile
     var speaksAloud = false
         private set
+
+    /** 绑着的是哪个引擎（包名 + 版本）。进错误详情：没有这一条，别人手机上的问题无从复现 */
+    val engineId: String
+        get() {
+            val pkg = runCatching { tts?.defaultEngine }.getOrNull()?.takeIf { it.isNotBlank() } ?: return "system-tts"
+            val version = runCatching { context.packageManager.getPackageInfo(pkg, 0).versionName }.getOrNull()
+            return listOfNotNull(pkg, version).joinToString(" ")
+        }
+
+    init {
+        tempDir.mkdirs()
+    }
 
     private val listener = object : UtteranceProgressListener() {
         override fun onStart(utteranceId: String?) {}
@@ -123,11 +145,31 @@ class SystemTts(
         return engine
     }
 
+    /** 朗读一段，返回跟着这段声音走的句柄；协程取消即停下 */
+    suspend fun play(text: String, rate: Float): PlayHandle {
+        // 没有一个读得出来的字（「……」「＊＊＊」）：各家引擎对这种输入有的给静音、有的秒回、有的报错，不去问它，直接翻过去
+        if (text.none { it.isLetterOrDigit() }) return PlayHandle.Ended
+        if (speaksAloud) return speak(text, rate)
+        val file = File(tempDir, "sys-${System.nanoTime()}.wav")
+        val wrote = try {
+            synthesizeToFile(text, file)
+        } catch (e: Throwable) {
+            file.delete()
+            throw e
+        }
+        // 引擎没交出音频、自己把这段读完了：这段算播过，下一段起让它直接朗读
+        if (!wrote) {
+            file.delete()
+            return PlayHandle.Ended
+        }
+        return output.play(file, rate, deleteAfter = true)
+    }
+
     /**
      * 合成一段文本到 WAV 文件（挂起直到写完；协程取消即停止合成）。
      * 返回 false：引擎没写出音频，而是自己把这段读出了声 —— 这段已经听过了，之后改走 [speak]。
      */
-    suspend fun synthesizeToFile(text: String, file: File): Boolean {
+    internal suspend fun synthesizeToFile(text: String, file: File): Boolean {
         val engine = prepared(text)
         val id = UUID.randomUUID().toString()
         val done = CompletableDeferred<Unit>()
@@ -151,9 +193,13 @@ class SystemTts(
             runCatching { engine.stop() }
             throw IllegalStateException(S.playback.systemTtsTimedOut)
         }
-        if (file.isFile && file.length() >= 64) return true
-        // 说写完了，文件里却没有一个采样：耗时够读完一句，是引擎自己读出了声；秒回的空文件才是真没合成出来
-        if (clock() - startedAt < SPOKE_ALOUD_MIN_MS) throw IllegalStateException(S.playback.systemTtsProducedNo)
+        val bytes = if (file.isFile) file.length() else 0L
+        if (bytes >= 64 && audible(file)) return true
+        val took = clock() - startedAt
+        // 交回了音频却从头到尾是静音：引擎眼下的语音读不了这种文字（一加自带的引擎在系统里选着英文语音时，中文一律
+        // 交回 0.16 秒的静音）。不能当成读过，否则整本书会被无声地「读」完、进度跟着跑。
+        // 文件里一个采样都没有：秒回的是真没合成出来；耗时够读完一句的，是引擎自己读出了声
+        if (bytes >= 64 || took < SPOKE_ALOUD_MIN_MS) throw NoAudioException("file: $bytes B, no sound · ${text.length} chars · $took ms")
         speaksAloud = true
         return false
     }
@@ -163,7 +209,7 @@ class SystemTts(
      * 不到一秒就说「读完了」的并没有出声（联想的云端语音离线时什么也不读就交差）：按这一段失败处理，跳段逻辑照旧。
      * 倍速交给引擎自己的语速，从下一口起生效。
      */
-    suspend fun speak(text: String, rate: Float): PlayHandle {
+    internal suspend fun speak(text: String, rate: Float): PlayHandle {
         val h = Spoken(prepared(text), text, rate)
         watchAudible()
         h.start()
@@ -173,7 +219,7 @@ class SystemTts(
             h.stop()
             throw e
         }
-        if (early != null) throw IllegalStateException(S.playback.systemTtsProducedNo)
+        if (early != null) throw NoAudioException("aloud: done in under $SPOKE_ALOUD_MIN_MS ms · ${text.length} chars")
         return h
     }
 
@@ -303,6 +349,30 @@ class SystemTts(
 
         /** 一口话至少要这么久才算真的读出了声（联想的云端语音读一句要好几秒，离线或坏掉的引擎是秒回的） */
         internal const val SPOKE_ALOUD_MIN_MS = 1_000L
+
+        /** 16 位采样的幅度超过它才算有声音（满幅 32767）。实测：一加交回的静音峰值是 4，正常朗读在几千到一万 */
+        private const val AUDIBLE = 256
+
+        /**
+         * 引擎写出的 WAV 里有没有声音：找到一个听得见的采样就算有，所以正常的一段只读开头几 KB，
+         * 从头读到尾的只有真是静音的那种。8 位、浮点这些少见的位深不去解，照旧交给播放器。
+         */
+        internal fun audible(file: File): Boolean = runCatching {
+            RandomAccessFile(file, "r").use { f ->
+                val buf = ByteArray(16 * 1024)
+                f.readFully(buf, 0, 44) // 框架写的 WAV 头固定 44 字节，位深在第 34 字节
+                if (buf[34].toInt() != 16) return@use true
+                while (true) {
+                    val n = f.read(buf)
+                    if (n < 2) break
+                    for (i in 0 until n - 1 step 2) {
+                        val v = (buf[i].toInt() and 0xff) or (buf[i + 1].toInt() shl 8)
+                        if (v > AUDIBLE || v < -AUDIBLE) return@use true
+                    }
+                }
+                false
+            }
+        }.getOrDefault(false)
 
         private val CLAUSE_ENDS = charArrayOf('，', '。', '！', '？', '；', '：', '、', '…', ',', '.', '!', '?', ';', ':', '\n')
 

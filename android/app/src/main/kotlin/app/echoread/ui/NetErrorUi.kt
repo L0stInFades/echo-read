@@ -87,7 +87,7 @@ fun BoxScope.ErrorDetailSheet(error: NetError?, onDismiss: () -> Unit) {
         Spacer(Modifier.height(6.dp))
         Text(e.advice(), color = c.text2, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 4.dp))
 
-        e.providerMessage?.takeIf { it.isNotBlank() }?.let { msg ->
+        e.providerMessage?.takeIf { it.isNotBlank() && it != e.headline() }?.let { msg ->
             Spacer(Modifier.height(18.dp))
             SectionLabel(S.errors.labelProviderMessage)
             EchoCard(padding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 12.dp)) {

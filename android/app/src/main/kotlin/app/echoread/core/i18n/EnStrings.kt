@@ -524,6 +524,7 @@ object EnStrings : Strings {
         override val adviceTls = "Check that the system clock is correct and that no proxy is intercepting traffic."
         override val adviceParse = "The endpoint may not be OpenAI-compatible, or a gateway returned a web page instead."
         override val adviceEmptyAudio = "Try a different voice or model."
+        override val adviceSystemVoice = "Check the voice and language under text-to-speech in system settings, or switch to another voice service."
         override val adviceUnknown = "Open the details and copy them to report the problem."
         override fun detailProviderMessage(message: String) = "Provider message: ${message}"
         override fun detailProviderCode(code: String) = "Provider code: ${code}"

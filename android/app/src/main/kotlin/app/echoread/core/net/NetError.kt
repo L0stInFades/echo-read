@@ -54,6 +54,8 @@ enum class NetCategory {
     EMPTY_AUDIO,
     CONFIG_MISSING_KEY,
     CONFIG_MISSING_BASE_URL,
+    /** 本机的系统语音引擎没读成这一段：没有 HTTP 语义，原因在 [NetError.providerMessage]，是哪个引擎在 [NetError.endpoint] */
+    SYSTEM_VOICE,
     UNKNOWN
 }
 
@@ -143,6 +145,7 @@ data class NetError(
             NetCategory.TLS -> S.errors.secureConnectionFailed
             NetCategory.PARSE -> S.errors.unreadableResponse(badge())
             NetCategory.EMPTY_AUDIO -> S.errors.emptyAudioReturned(badge())
+            NetCategory.SYSTEM_VOICE -> providerMessage ?: S.playback.systemTtsFailed
             NetCategory.UNKNOWN -> S.errors.requestFailed(badge())
         }
     }
@@ -169,6 +172,7 @@ data class NetError(
         NetCategory.TLS -> S.errors.adviceTls
         NetCategory.PARSE -> S.errors.adviceParse
         NetCategory.EMPTY_AUDIO -> S.errors.adviceEmptyAudio
+        NetCategory.SYSTEM_VOICE -> S.errors.adviceSystemVoice
         NetCategory.UNKNOWN -> S.errors.adviceUnknown
     }
 
@@ -176,7 +180,8 @@ data class NetError(
     fun detail(): String = buildString {
         appendLine(headline())
         appendLine()
-        providerMessage?.takeIf { it.isNotBlank() }?.let {
+        // 标题已经是这句话的（系统语音）不再重复一遍
+        providerMessage?.takeIf { it.isNotBlank() && it != headline() }?.let {
             appendLine(S.errors.detailProviderMessage(it))
             providerCode?.takeIf { c -> c.isNotBlank() }?.let { c -> appendLine(S.errors.detailProviderCode(c)) }
             appendLine()
@@ -212,6 +217,7 @@ data class NetError(
         NetCategory.EMPTY_AUDIO -> S.errors.catEmptyAudio
         NetCategory.CONFIG_MISSING_KEY -> S.errors.catMissingKey
         NetCategory.CONFIG_MISSING_BASE_URL -> S.errors.catMissingBaseUrl
+        NetCategory.SYSTEM_VOICE -> S.providers.systemVoice
         NetCategory.UNKNOWN -> S.errors.catUnknown
     }
 
@@ -246,6 +252,8 @@ data class NetError(
         NetCategory.CONNECTIVITY -> if (!online) Disposition.STOP_SESSION else Disposition.RETRY
         NetCategory.SERVER -> if (status == 501) Disposition.SKIP_SEGMENT else Disposition.RETRY
         NetCategory.RATE_LIMIT, NetCategory.TIMEOUT -> Disposition.RETRY
+        // 本机引擎读不了这一段：跳过它，连续两段都这样引擎才停下报错
+        NetCategory.SYSTEM_VOICE -> Disposition.SKIP_SEGMENT
         NetCategory.UNKNOWN -> Disposition.RETRY
     }
 

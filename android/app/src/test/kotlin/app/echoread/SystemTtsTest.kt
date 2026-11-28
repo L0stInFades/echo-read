@@ -3,6 +3,8 @@ package app.echoread
 import android.speech.tts.TextToSpeech
 import app.echoread.core.i18n.S
 import app.echoread.tts.AbortedException
+import app.echoread.tts.NoAudioException
+import app.echoread.tts.PlayHandle
 import app.echoread.tts.SystemTts
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -19,6 +21,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -47,7 +50,7 @@ class SystemTtsTest {
     fun failedInitIsRetriedAndEarlyCallbacksAreHandled() = runTest {
         val created = ArrayList<FakeTts>()
         var status = TextToSpeech.ERROR
-        val sys = SystemTts(TestContext()) { _, onInit -> FakeTts(onInit).also { created += it; it.init(status) } }
+        val sys = SystemTts(TestContext(), FakeOutput(), root) { _, onInit -> FakeTts(onInit).also { created += it; it.init(status) } }
         val first = runCatching { sys.synthesizeToFile("你好", File(root, "a.wav")) }.exceptionOrNull()
         assertEquals(S.playback.systemTtsMissingEngine, first?.message)
         assertEquals("失败的实例被关掉", 1, created.single().shutdowns)
@@ -66,7 +69,7 @@ class SystemTtsTest {
     @Test
     fun silentEngineTimesOut() = runTest {
         var tts: FakeTts? = null
-        val sys = SystemTts(TestContext()) { _, onInit ->
+        val sys = SystemTts(TestContext(), FakeOutput(), root) { _, onInit ->
             FakeTts(onInit).also { tts = it; it.answers = false; it.init(TextToSpeech.SUCCESS) }
         }
         val e = runCatching { sys.synthesizeToFile("你好", File(root, "a.wav")) }.exceptionOrNull()
@@ -83,7 +86,7 @@ class SystemTtsTest {
     fun engineThatSpeaksAloudIsLetToSpeak() = runTest {
         var now = 0L
         var tts: FakeTts? = null
-        val sys = SystemTts(TestContext(), clock = { now }) { _, onInit ->
+        val sys = SystemTts(TestContext(), FakeOutput(), root, clock = { now }) { _, onInit ->
             FakeTts(onInit).also { tts = it; it.headerOnly = true; it.aloud = { now += 6_000 }; it.init(TextToSpeech.SUCCESS) }
         }
         val out = File(root, "a.wav")
@@ -112,7 +115,7 @@ class SystemTtsTest {
     fun speechThatEndsAtOnceIsAFailure() = runTest {
         var now = 0L
         var tts: FakeTts? = null
-        val sys = SystemTts(TestContext(), clock = { now }) { _, onInit ->
+        val sys = SystemTts(TestContext(), FakeOutput(), root, clock = { now }) { _, onInit ->
             FakeTts(onInit).also { tts = it; it.headerOnly = true; it.aloud = { now += 5_000 }; it.init(TextToSpeech.SUCCESS) }
         }
         assertFalse(sys.synthesizeToFile("你好", File(root, "a.wav")))
@@ -130,7 +133,7 @@ class SystemTtsTest {
     fun resumeContinuesFromTheClauseThatWasPlaying() = runTest {
         var now = 0L
         var tts: FakeTts? = null
-        val sys = SystemTts(TestContext(), clock = { now }) { _, onInit ->
+        val sys = SystemTts(TestContext(), FakeOutput(), root, clock = { now }) { _, onInit ->
             FakeTts(onInit).also { tts = it; it.headerOnly = true; it.aloud = { now += 5_000 }; it.init(TextToSpeech.SUCCESS) }
         }
         assertFalse(sys.synthesizeToFile("你好", File(root, "a.wav")))
@@ -174,7 +177,7 @@ class SystemTtsTest {
     /** 秒回的空文件是真没合成出来（不是引擎自己读出了声）：照旧按这一段失败处理，不改走直接朗读 */
     @Test
     fun quickEmptyFileIsStillAFailure() = runTest {
-        val sys = SystemTts(TestContext(), clock = { 0L }) { _, onInit ->
+        val sys = SystemTts(TestContext(), FakeOutput(), root, clock = { 0L }) { _, onInit ->
             FakeTts(onInit).also { it.headerOnly = true; it.init(TextToSpeech.SUCCESS) }
         }
         val e = runCatching { sys.synthesizeToFile("你好", File(root, "a.wav")) }.exceptionOrNull()
@@ -182,11 +185,56 @@ class SystemTtsTest {
         assertFalse(sys.speaksAloud)
     }
 
+    /**
+     * 交回一段完整却没有声音的 WAV（一加 PJX110 自带的引擎：系统里选着英文语音时，中文一律交回 0.16 秒的静音）。
+     * 不能当成读过，否则整本书会被无声地一路「读」完、进度跟着跑。它也不是「自己读出了声」的那一类：
+     * 音频是交了的，只是里面没有声音，花多久都一样
+     */
+    @Test
+    fun silentAudioIsAFailure() = runTest {
+        var now = 0L
+        val sys = SystemTts(TestContext(), FakeOutput(), root, clock = { now }) { _, onInit ->
+            FakeTts(onInit).also { it.silent = true; it.aloud = { now += 5_000 }; it.init(TextToSpeech.SUCCESS) }
+        }
+        val e = runCatching { sys.synthesizeToFile("你好", File(root, "a.wav")) }.exceptionOrNull()
+        assertEquals(S.playback.systemTtsProducedNo, e?.message)
+        assertFalse(sys.speaksAloud)
+        assertEquals("当时看到了什么，留给错误详情", "file: 7724 B, no sound · 2 chars · 5000 ms", (e as NoAudioException).seen)
+    }
+
+    /** 有没有声音看的是采样：静音之后才开口也算有；别的位深不去解，有数据就交给播放器 */
+    @Test
+    fun audibleLooksAtTheSamples() {
+        fun file(bytes: ByteArray) = File(root, "t.wav").also { it.writeBytes(bytes) }
+        assertTrue(SystemTts.audible(file(wav(3840))))
+        assertFalse(SystemTts.audible(file(wav(3840, level = 0))))
+        assertFalse("一加的静音不是全零，峰值是 4", SystemTts.audible(file(wav(3840, level = 4))))
+        assertFalse(SystemTts.audible(file(wav(0))))
+        assertTrue(SystemTts.audible(file(wav(40_000, level = 0).also { it[it.size - 1] = 0x40 })))
+        assertTrue(SystemTts.audible(file(wav(100, level = 0).also { it[34] = 8 })))
+    }
+
+    /** 朗读引擎只认 play：交得出音频的交给播放器；没有一个读得出来的字的段落不去问引擎，直接翻过去 */
+    @Test
+    fun playHandsAudioToTheOutputAndSkipsWhatCannotBeSpoken() = runTest {
+        var tts: FakeTts? = null
+        val out = FakeOutput()
+        val sys = SystemTts(TestContext(), out, root) { _, onInit -> FakeTts(onInit).also { tts = it; it.init(TextToSpeech.SUCCESS) } }
+        assertSame(PlayHandle.Ended, sys.play("……", 1f))
+        assertSame(PlayHandle.Ended, sys.play("＊ ＊ ＊\n", 1f))
+        assertNull("只有标点的段落连引擎都不用建", tts)
+
+        val h = sys.play("你好", 1f)
+        assertSame(out.current, h)
+        assertEquals(root, out.current.file.parentFile)
+        assertEquals(listOf("你好"), tts!!.synthesized)
+    }
+
     /** 初始化迟迟不回调：等满上限放弃、关掉这个实例，下一段从头再来；作废的实例晚到的回调不再碰它 */
     @Test
     fun hungInitTimesOutAndStartsOver() = runTest {
         val created = ArrayList<FakeTts>()
-        val sys = SystemTts(TestContext()) { _, onInit ->
+        val sys = SystemTts(TestContext(), FakeOutput(), root) { _, onInit ->
             FakeTts(onInit).also { created += it; if (created.size > 1) it.init(TextToSpeech.SUCCESS) }
         }
         val e = runCatching { sys.synthesizeToFile("你好", File(root, "a.wav")) }.exceptionOrNull()

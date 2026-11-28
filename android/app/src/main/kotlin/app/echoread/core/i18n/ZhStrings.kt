@@ -521,6 +521,7 @@ object ZhStrings : Strings {
         override val adviceTls = "检查系统时间是否准确，以及是否有网络中间人代理。"
         override val adviceParse = "该地址可能不是 OpenAI 兼容接口，或被网关拦截返回了网页。"
         override val adviceEmptyAudio = "换一个音色或模型再试。"
+        override val adviceSystemVoice = "到系统设置的「文字转语音」里检查语音和语言，或换一个朗读服务。"
         override val adviceUnknown = "可展开详情复制后反馈。"
         override fun detailProviderMessage(message: String) = "服务商原话：${message}"
         override fun detailProviderCode(code: String) = "服务商代码：${code}"

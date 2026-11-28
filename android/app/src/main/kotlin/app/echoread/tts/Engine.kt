@@ -23,7 +23,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import java.io.File
 import kotlin.coroutines.coroutineContext
 import kotlin.math.min
 import kotlin.math.pow
@@ -115,7 +114,6 @@ class TtsEngine(
     private val audioCache: AudioCache,
     private val systemTts: SystemTts,
     private val playback: AudioOutput,
-    private val tempDir: File,
     private val network: NetworkStatus = object : NetworkStatus {},
     /** 合成流水线。做成参数只为单测能换上跑虚拟时间的那一份；生产用默认值 */
     private val pipeline: SynthPipeline = SynthPipeline(scope, audioCache)
@@ -162,7 +160,6 @@ class TtsEngine(
     private var pendingFailure: EngineFailure? = null
 
     init {
-        tempDir.mkdirs()
         pipeline.onChanged = { ensureLookahead() }
         // 预取失败：只有「配置坏了」这一类才上报，且暂停中也报 ——
         // 这是应用最早能发现无效 Key 的时刻（打开书的瞬间，用户还没按播放）。
@@ -509,14 +506,15 @@ class TtsEngine(
         }
     }
 
-    /** 把任意异常归一成 NetError；系统 TTS 走本地引擎，没有 HTTP 语义 */
+    /** 把任意异常归一成 NetError；系统 TTS 走本地引擎，没有 HTTP 语义：详情里带上是哪个引擎、当时看到了什么 */
     private fun classify(e: Throwable): NetError {
         if (settings.usesSystemVoice) {
             return NetError(
-                category = NetCategory.UNKNOWN,
+                category = NetCategory.SYSTEM_VOICE,
                 providerMessage = e.message ?: S.playback.systemTtsFailed,
-                endpoint = "system-tts",
+                endpoint = systemTts.engineId,
                 method = "LOCAL",
+                bodySnippet = (e as? NoAudioException)?.seen,
                 transport = e.javaClass.simpleName
             )
         }
@@ -540,27 +538,8 @@ class TtsEngine(
     /** 合成一个片段并返回可播放句柄（带缓存、指数退避重试；协程取消即中止） */
     private suspend fun createHandle(text: String, gen: Int): PlayHandle {
         val rate = settings.rate
-        if (settings.usesSystemVoice) {
-            // 只肯自己出声的引擎（见 SystemTts.speaksAloud）：让它直接朗读，句柄跟着它的回调走
-            if (systemTts.speaksAloud) return systemTts.speak(text, rate)
-            val file = File(tempDir, "sys-${System.nanoTime()}.wav")
-            val wrote = try {
-                systemTts.synthesizeToFile(text, file)
-            } catch (e: Throwable) {
-                file.delete()
-                throw e
-            }
-            if (gen != generation) {
-                file.delete()
-                throw AbortedException()
-            }
-            // 引擎没交出音频、自己把这段读完了：这段算播过，下一段起让它直接朗读
-            if (!wrote) {
-                file.delete()
-                return PlayHandle.Ended
-            }
-            return playback.play(file, rate, deleteAfter = true)
-        }
+        // 系统语音：交得出音频还是只肯自己出声，由它自己分辨（见 SystemTts.play）
+        if (settings.usesSystemVoice) return systemTts.play(text, rate)
 
         // 退避重试窗口可达分钟级，期间改音色/模型不换代：缓存键与全部重试锚定入口配置快照
         val target = SynthTarget.of(settings) ?: throw IllegalStateException(S.playback.noAiVoiceService)

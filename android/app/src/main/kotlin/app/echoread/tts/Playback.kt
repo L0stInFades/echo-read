@@ -29,7 +29,7 @@ interface PlayHandle {
     fun stop()
     fun setRate(rate: Float)
 
-    /** 已经出过声的一段（只肯自己朗读的系统语音引擎在合成时就把它读完了）：引擎照常推进到下一段 */
+    /** 不必再出声的一段（只有标点；或只肯自己朗读的系统语音引擎在合成时就把它读完了）：引擎照常推进到下一段 */
     object Ended : PlayHandle {
         override suspend fun awaitEnded() {}
         override fun pause() {}
