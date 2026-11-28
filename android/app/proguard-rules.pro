@@ -15,3 +15,6 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# 错误详情里会显示异常的类名（NetError.transport）：自家的这个不改名，否则正式包里只剩一两个字母
+-keepnames class app.echoread.tts.NoAudioException
