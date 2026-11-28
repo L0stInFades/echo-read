@@ -226,9 +226,11 @@ class SystemTts(
     /** 直接朗读时正在读的那一段 */
     private var speaking: Spoken? = null
 
-    /** 引擎每读一个字要多少毫秒（1× 语速），按读完的每一口校准；0 = 还没量过 */
-    @Volatile
-    private var msPerChar = 0.0
+    /**
+     * 引擎每读一个字要多少毫秒（1× 语速），按读完的每一口校准；没量过的不在表里。中文、英文各记各的：
+     * 英文一个字母七八十毫秒、汉字两百多，混着记的话，读完一段英文再估中文会快出三倍，续播时漏掉两三句
+     */
+    private val msPerChar = ConcurrentHashMap<Locale, Double>()
 
     // 别的应用的播放器认不出是谁的，但「有媒体在出声」看得到：焦点在我们手上、自己的播放器又闲着，出声的就是引擎
     private val audible = object : AudioManager.AudioPlaybackCallback() {
@@ -290,7 +292,7 @@ class SystemTts(
         private fun finished() {
             val at = audibleAt
             val chars = text.length - from
-            if (at > 0 && chars >= 8) ((clock() - at) * rate.toDouble() / chars).takeIf { it in 40.0..800.0 }?.let { msPerChar = it }
+            if (at > 0 && chars >= 8) ((clock() - at) * rate.toDouble() / chars).takeIf { it in 40.0..800.0 }?.let { msPerChar[localeFor(text)] = it }
             ended.complete(Unit)
         }
 
@@ -306,7 +308,8 @@ class SystemTts(
             val at = audibleAt
             if (utterance != null && at > 0) {
                 // 没量过就按常见语速估：汉字一个字约 230 毫秒、拉丁字母约 75 毫秒（宁慢勿快：估慢了多听半句，估快了会漏）
-                val perChar = msPerChar.takeIf { it > 0 } ?: if (localeFor(text) == Locale.US) 75.0 else 230.0
+                val locale = localeFor(text)
+                val perChar = msPerChar[locale] ?: if (locale == Locale.US) 75.0 else 230.0
                 from = resumeFrom(text, from + ((clock() - at) * rate / perChar).toInt())
             }
             halt()

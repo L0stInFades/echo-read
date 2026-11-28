@@ -162,6 +162,33 @@ class SystemTtsTest {
         assertEquals(text.substring(10), tts!!.texts.last())
     }
 
+    /**
+     * 中文、英文的语速各记各的（联想平板实测：英文一个字母约 75 毫秒，汉字约 215 毫秒）。以前只记一个数：
+     * 读完一段英文再在中文段落里暂停，位置被估快了三倍，续播直接跳到段尾，漏掉两三句
+     */
+    @Test
+    fun speedLearnedFromEnglishIsNotUsedForChinese() = runTest {
+        var now = 0L
+        var tts: FakeTts? = null
+        val sys = SystemTts(TestContext(), FakeOutput(), root, clock = { now }) { _, onInit ->
+            FakeTts(onInit).also { tts = it; it.headerOnly = true; it.aloud = { now += 5_000 }; it.init(TextToSpeech.SUCCESS) }
+        }
+        assertFalse(sys.synthesizeToFile("你好", File(root, "a.wav")))
+        val english = sys.speak("It was a dark and stormy night.", 1f)
+        sys.engineAudible()
+        now += 75L * 31
+        tts!!.listener!!.onDone(tts!!.spoken.last())
+        english.awaitEnded()
+
+        val text = "第一句话，第二句话。第三句话，第四句话。"
+        val h = sys.speak(text, 1f)
+        sys.engineAudible()
+        now += 230L * 7 // 汉字的常见语速下约读到第 7 个字：第二小句当中
+        h.pause()
+        h.resume()
+        assertEquals("从第二小句接着读，没有被英文的语速带到段尾", text.substring(5), tts!!.texts.last())
+    }
+
     /** 续播位置：退回那一小句的开头；估过头了也至少留最后一句 */
     @Test
     fun resumePointBacksUpToTheClause() {
