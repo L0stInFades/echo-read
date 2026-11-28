@@ -28,6 +28,15 @@ interface PlayHandle {
     fun resume()
     fun stop()
     fun setRate(rate: Float)
+
+    /** 已经出过声的一段（只肯自己朗读的系统语音引擎在合成时就把它读完了）：引擎照常推进到下一段 */
+    object Ended : PlayHandle {
+        override suspend fun awaitEnded() {}
+        override fun pause() {}
+        override fun resume() {}
+        override fun stop() {}
+        override fun setRate(rate: Float) {}
+    }
 }
 
 /**
@@ -142,7 +151,8 @@ class Playback(
     }
 
     override fun progressFraction(): Float {
-        if (!playerCreated) return 0f
+        // 没有在播的文件（系统语音由引擎自己朗读时）：播放器里留着的是上一段，进度不算数
+        if (!playerCreated || current == null) return 0f
         val d = player.duration
         return if (d > 0) (player.currentPosition.toFloat() / d).coerceIn(0f, 1f) else 0f
     }

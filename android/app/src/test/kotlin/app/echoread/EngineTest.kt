@@ -1,15 +1,22 @@
 package app.echoread
 
+import android.speech.tts.TextToSpeech
 import app.echoread.core.PlayerState
+import app.echoread.core.TtsSettings
 import app.echoread.core.net.NetErrors
 import app.echoread.core.net.NetException
 import app.echoread.tts.EngineFailure
+import app.echoread.tts.SystemTts
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -326,5 +333,48 @@ class EngineTest {
         assertEquals(PlayerState.PLAYING, e.current.state)
         assertEquals(1, rig.fake.handles.size)
         assertEquals(1, rig.synth.count(segTag(0, 0)))
+    }
+
+    /* ---------------- 系统语音 ---------------- */
+
+    /**
+     * 只肯自己出声的系统语音引擎（联想平板自带的云端语音）：合成到文件只写个空 WAV 头，自己把这段读出来。
+     * 以前整段都挂着「合成中」，连续两段之后报「系统语音未生成音频」停播；现在第一段算听过，之后让它直接朗读
+     */
+    @Test
+    fun systemVoiceThatSpeaksAloudReadsOn() = runTest {
+        Dispatchers.setMain(UnconfinedTestDispatcher(testScheduler))
+        try {
+            var now = 0L
+            var tts: FakeTts? = null
+            val sys = SystemTts(TestContext(), clock = { now }) { _, onInit ->
+                FakeTts(onInit).also { tts = it; it.headerOnly = true; it.aloud = { now += 5_000 }; it.init(TextToSpeech.SUCCESS) }
+            }
+            val rig = EngineRig(this, root, settings = TtsSettings(active = TtsSettings.SYSTEM), systemTts = sys)
+            val e = rig.engine
+            rig.load()
+            e.play()
+            advanceTimeBy(SystemTts.SPOKE_ALOUD_MIN_MS + 1)
+            assertEquals("第一段在合成时就被引擎读完了，算播过", 1, e.current.segmentIndex)
+            assertNull("没有报「未生成音频」", e.current.failure)
+            assertFalse("引擎直接朗读：不再挂着合成中", e.current.synthesizing)
+            assertEquals(1, tts!!.spoken.size)
+            assertTrue("不经播放器", rig.fake.handles.isEmpty())
+
+            tts!!.listener!!.onDone(tts!!.spoken.last())
+            advanceTimeBy(SystemTts.SPOKE_ALOUD_MIN_MS + 1)
+            assertEquals(2, e.current.segmentIndex)
+            assertEquals(2, tts!!.spoken.size)
+            assertFalse(e.current.synthesizing)
+
+            e.pause()
+            assertEquals(PlayerState.PAUSED, e.current.state)
+            assertEquals("暂停即叫停引擎", 1, tts!!.stops)
+            e.play()
+            assertEquals("还没出声就暂停：续播从这一段开头读", 3, tts!!.spoken.size)
+            assertEquals(2, e.current.segmentIndex)
+        } finally {
+            Dispatchers.resetMain()
+        }
     }
 }

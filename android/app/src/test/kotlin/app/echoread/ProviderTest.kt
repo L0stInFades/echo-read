@@ -664,8 +664,29 @@ class ProviderTest {
         assertEquals("AIzaX", switched.gemini.apiKey)
     }
 
+    /** 新安装一个服务都没加，先用系统语音；把加过的服务删光了也不会凭空冒回来（连同删掉的 Key） */
     @Test
-    fun freshInstallDefaultsFollowLanguage() {
+    fun freshInstallStartsWithTheSystemVoice() {
+        val plain = object : app.echoread.data.Vault {
+            override fun seal(plain: String) = plain
+            override fun open(stored: String) = stored
+        }
+        val prefs = MemoryPrefs()
+        val store = SettingsStore(TestContext(prefs), plain)
+        assertTrue(store.tts.value.profiles.isEmpty())
+        assertTrue(store.tts.value.usesSystemVoice)
+        val or = store.addProfile(spec("openrouter"))
+        store.updateProfile(or.id) { it.copy(apiKey = "sk-or-1") }
+        store.setActive(or.id)
+        store.removeProfile(or.id)
+        assertTrue(store.tts.value.profiles.isEmpty())
+        assertTrue(store.tts.value.usesSystemVoice)
+        assertTrue("重开应用也一样", SettingsStore(TestContext(prefs), plain).tts.value.profiles.isEmpty())
+    }
+
+    /** 0.4.x 里没配置过 AI 语音的旧存档：迁移出来的默认音色跟界面语言走 */
+    @Test
+    fun untouchedLegacyDefaultsFollowLanguage() {
         val zh = SettingsStore.sanitizeTts(TtsSettings())
         assertEquals("openrouter", zh.active)
         assertEquals("zf_xiaoxiao", zh.profiles[0].voice)

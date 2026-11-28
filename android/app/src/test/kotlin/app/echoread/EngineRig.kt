@@ -3,6 +3,9 @@ package app.echoread
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.SharedPreferences
+import android.os.Bundle
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import app.echoread.core.OpenAISpeechConfig
 import app.echoread.core.Providers
 import app.echoread.core.Range
@@ -176,6 +179,57 @@ class FakeSynth {
     }
 }
 
+/** 平台 TextToSpeech 的替身：初始化结果、合成之后回不回调都由测试决定 */
+class FakeTts(private val onInit: TextToSpeech.OnInitListener) : TextToSpeech(null, null) {
+    var listener: UtteranceProgressListener? = null
+    var answers = true
+    /** 合成到文件只写一个空 WAV 头（联想的云端语音）；[aloud] 是它自己把这段读出声的那段时间 */
+    var headerOnly = false
+    var aloud: () -> Unit = {}
+    var stops = 0
+    var shutdowns = 0
+    var rate = 1f
+    /** 每次 speak 的 utteranceId 与正文 */
+    val spoken = ArrayList<String>()
+    val texts = ArrayList<String>()
+
+    override fun setOnUtteranceProgressListener(listener: UtteranceProgressListener?): Int {
+        this.listener = listener
+        return SUCCESS
+    }
+
+    override fun synthesizeToFile(text: CharSequence?, params: Bundle?, file: File?, utteranceId: String?): Int {
+        if (answers) {
+            file!!.writeBytes(ByteArray(if (headerOnly) 44 else 128))
+            if (headerOnly) aloud()
+            listener!!.onDone(utteranceId)
+        }
+        return SUCCESS
+    }
+
+    override fun speak(text: CharSequence?, queueMode: Int, params: Bundle?, utteranceId: String?): Int {
+        spoken += utteranceId!!
+        texts += text.toString()
+        return SUCCESS
+    }
+
+    override fun setSpeechRate(speechRate: Float): Int {
+        rate = speechRate
+        return SUCCESS
+    }
+
+    override fun stop(): Int {
+        stops++
+        return SUCCESS
+    }
+
+    override fun shutdown() {
+        shutdowns++
+    }
+
+    fun init(status: Int) = onInit.onInit(status)
+}
+
 /** applicationContext 指向自己、SharedPreferences 放在内存里的 Context（其余调用走 mockable android.jar 的默认值） */
 class TestContext(private val prefs: SharedPreferences = MemoryPrefs()) : ContextWrapper(null) {
     override fun getApplicationContext(): Context = this
@@ -201,7 +255,8 @@ class EngineRig(
     val out: AudioOutput = FakeOutput(),
     chapterTexts: List<String> = listOf(chapterText(0, 6), chapterText(1, 6)),
     /** prefetch = 1：前瞻窗口只有下一段，请求的先后好推 */
-    val settings: TtsSettings = TtsSettings(openai = OpenAISpeechConfig(apiKey = "k"), prefetch = 1)
+    val settings: TtsSettings = TtsSettings(openai = OpenAISpeechConfig(apiKey = "k"), prefetch = 1),
+    systemTts: SystemTts = SystemTts(TestContext())
 ) {
     val main = test.appScope()
     val io = StandardTestDispatcher(test.testScheduler)
@@ -210,7 +265,7 @@ class EngineRig(
     val audioCache = AudioCache(File(root, "audio"), io)
     val synth = FakeSynth()
     val pipeline = SynthPipeline(main, audioCache, io, { test.testScheduler.currentTime }) { t, text -> synth.invoke(t, text) }
-    val engine = TtsEngine(main, chapters, audioCache, SystemTts(TestContext()), out, File(root, "tmp"), object : NetworkStatus {}, pipeline)
+    val engine = TtsEngine(main, chapters, audioCache, systemTts, out, File(root, "tmp"), object : NetworkStatus {}, pipeline)
     val fake: FakeOutput get() = out as FakeOutput
     val chapterCount = chapterTexts.size
 

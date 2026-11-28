@@ -38,8 +38,8 @@ class SettingsStore(context: Context, private val vault: Vault = KeystoreVault()
         I18n.apply(_reader.value.language)
     }
 
-    // 落盘的是密文（见 KeyVault）：读进内存先解开，再做迁移与值域守卫
-    private val _tts = MutableStateFlow(sanitizeTts(load(KEY_TTS, TtsSettings.serializer())?.let { Sealing.opened(it, vault) } ?: TtsSettings()))
+    // 落盘的是密文（见 KeyVault）：读进内存先解开，再做迁移与值域守卫。新安装一个服务都没加，先用系统语音
+    private val _tts = MutableStateFlow(sanitizeTts(load(KEY_TTS, TtsSettings.serializer())?.let { Sealing.opened(it, vault) } ?: TtsSettings(active = TtsSettings.SYSTEM)))
     val tts: StateFlow<TtsSettings> = _tts
 
     /** 各服务在线拉到的模型表 / 音色表（缓存，离线可用），按服务 ID 存 */
@@ -186,7 +186,8 @@ class SettingsStore(context: Context, private val vault: Vault = KeystoreVault()
             if (!(out.rate >= 0.25f && out.rate <= 4f)) out = out.copy(rate = fb.rate)
             if (out.maxChunkChars < 40) out = out.copy(maxChunkChars = fb.maxChunkChars)
             if (out.prefetch !in 0..5) out = out.copy(prefetch = fb.prefetch)
-            if (out.profiles.isEmpty()) out = migrate(out)
+            // 只迁 0.4.x 的旧存档（它没有 active 字段）：服务删光了不能凭空冒出 OpenRouter 和 Gemini，删掉的 Key 也不能跟着回来
+            if (out.profiles.isEmpty() && out.active.isEmpty()) out = migrate(out)
             // 导入的定义不能顶替内置服务商的 ID：否则一段粘贴来的 JSON 就能把已存的 Key 引到别的主机上
             val builtInIds = Providers.builtIn.map { it.id }.toSet()
             out = out.copy(customSpecs = out.customSpecs.filter { it.id !in builtInIds }.distinctBy { it.id })

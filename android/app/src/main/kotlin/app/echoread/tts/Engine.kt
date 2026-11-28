@@ -541,8 +541,10 @@ class TtsEngine(
     private suspend fun createHandle(text: String, gen: Int): PlayHandle {
         val rate = settings.rate
         if (settings.usesSystemVoice) {
+            // 只肯自己出声的引擎（见 SystemTts.speaksAloud）：让它直接朗读，句柄跟着它的回调走
+            if (systemTts.speaksAloud) return systemTts.speak(text, rate)
             val file = File(tempDir, "sys-${System.nanoTime()}.wav")
-            try {
+            val wrote = try {
                 systemTts.synthesizeToFile(text, file)
             } catch (e: Throwable) {
                 file.delete()
@@ -551,6 +553,11 @@ class TtsEngine(
             if (gen != generation) {
                 file.delete()
                 throw AbortedException()
+            }
+            // 引擎没交出音频、自己把这段读完了：这段算播过，下一段起让它直接朗读
+            if (!wrote) {
+                file.delete()
+                return PlayHandle.Ended
             }
             return playback.play(file, rate, deleteAfter = true)
         }

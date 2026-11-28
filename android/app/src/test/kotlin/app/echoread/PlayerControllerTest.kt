@@ -1,6 +1,7 @@
 package app.echoread
 
 import app.echoread.core.PlayerState
+import app.echoread.core.Providers
 import app.echoread.core.i18n.AppLanguage
 import app.echoread.core.i18n.I18n
 import app.echoread.core.i18n.S
@@ -40,11 +41,13 @@ class PlayerControllerTest {
     private inner class Rig(test: TestScope) {
         val engine = EngineRig(test, root)
         private val context = TestContext()
+        /** 新安装默认用系统语音；这些用例走 AI 语音（合成是替身）：加一个 OpenRouter 用上 */
+        private val settings = SettingsStore(context, plainVault).apply { setActive(addProfile(Providers.spec(Providers.OPENROUTER)!!).id) }
         /** 控制器交给界面层的提示（生产里由 AppGraph 接到 toast 上） */
         val notices = ArrayList<String>()
         /** 时钟加一个大偏移：生产里 lastSave 的初值 0 离「现在」很远，装载后第一次落库不受节流 */
         val controller = PlayerController(
-            engine.engine, LibraryRepo(context, engine.dao, engine.chapters), SettingsStore(context, plainVault), engine.main,
+            engine.engine, LibraryRepo(context, engine.dao, engine.chapters), settings, engine.main,
             onNotice = { notices += it }
         ) { 1_000_000L + test.testScheduler.currentTime }
         val saves get() = engine.dao.progress
